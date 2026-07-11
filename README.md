@@ -35,12 +35,35 @@ docker compose -f infra/paper-workspace/compose.yaml down
 
 브라우저가 로컬 Caddy 인증서를 신뢰하지 않으면 개발용 인증서 경고가 표시될 수 있습니다.
 
+## 여러 논문을 한 서버에서 관리
+
+서버 루트는 논문 목록 허브이고, 각 논문은 독립된 주소로 열립니다.
+
+```text
+https://paper.example.com/                 논문 목록
+https://paper.example.com/p/aaai27         특정 논문 작업공간
+https://paper.example.com/p/forecasting    다른 논문 작업공간
+```
+
+논문 제목을 URL에 그대로 넣지 않고 영문·숫자·`-`·`_`로 구성된 slug를 사용합니다. 제목은 각 카드와 작업공간 상단에 표시하므로 제목을 수정해도 링크가 깨지지 않습니다. `PAPER_PROJECTS_DIR` 아래에 slug 폴더를 만들고, 폴더 안에 `project.json`과 `main.tex`를 둔 뒤 루트 `index.json`의 `projects` 배열에 카드를 추가하면 됩니다.
+
+```json
+{
+  "projects": [
+    {"slug":"aaai27", "display_name":"AAAI-27 Paper", "description":"Main submission"},
+    {"slug":"forecasting", "display_name":"Forecasting Study", "description":"Time-series experiments"}
+  ]
+}
+```
+
+브라우저 초안은 논문 slug별로 분리되고, 협업 커서와 서버 백업도 논문별 ID로 분리됩니다. 기존 단일 논문 설정을 유지하려면 `PAPER_PROJECT_DIR`만 사용할 수 있지만, 목록 허브를 사용하려면 `PAPER_PROJECTS_DIR`를 설정하세요.
+
 ## 내 논문 연결
 
 1. 예제 폴더를 Git 밖의 새 폴더로 복사합니다.
 2. `main.tex`, `.bib`, 학회에서 직접 받은 `.cls`·`.sty`·`.bst`, 그림을 그 폴더에 둡니다.
 3. `project.json`의 `files`에 컴파일에 필요한 파일을 모두 적습니다. 그림은 `{"path":"Figures/plot.pdf","type":"asset"}`처럼 표시합니다. 원본 위치와 컴파일 위치가 다르면 `{"path":"venue.sty","source":"vendor/venue.sty"}`처럼 안전한 상대 경로를 매핑할 수 있습니다.
-4. `.env`의 `PAPER_PROJECT_DIR`을 그 폴더의 절대 경로로 바꾸고 Compose를 다시 시작합니다.
+4. 단일 논문 모드라면 `.env`의 `PAPER_PROJECT_DIR`을 그 폴더의 절대 경로로 바꾸고, 여러 논문 모드라면 `PAPER_PROJECTS_DIR` 아래 slug 폴더로 배치한 뒤 Compose를 다시 시작합니다.
 
 `entrypoint`는 현재 `main.tex`이어야 합니다. 파일 경로에는 절대 경로나 `..`를 사용할 수 없습니다. 컴파일 API는 최대 120개 파일, 요청 12 MB, binary asset 합계 8 MB를 허용합니다. 브라우저 업로드는 파일당 2 MB로 제한됩니다.
 

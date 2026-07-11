@@ -85,6 +85,7 @@ services:
     read_only: true
     volumes:
       - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/usr/share/nginx/html/project:ro
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/usr/share/nginx/html/projects:ro
     security_opt:
       - no-new-privileges:true
     cap_drop:

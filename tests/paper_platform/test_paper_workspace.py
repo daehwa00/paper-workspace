@@ -36,6 +36,22 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "sync-soft-focus" in html
 
 
+def test_projects_have_a_slug_scoped_hub_and_browser_state() -> None:
+    html = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
+    hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
+    assert "project-list" in html
+    assert "/projects/index.json" in hub
+    assert "projectSlug" in app
+    assert "paper-workspace:${projectSlug}" in app
+    assert "`${projectBase}/project/project.json`" in app
+    assert "PAPER_PROJECTS_DIR" in compose
+    assert "/p/([A-Za-z0-9]" in caddy
+    assert "/projects/{re.project_asset.1}/{re.project_asset.2}" in caddy
+
+
 def test_asset_selection_opens_a_zoomable_preview_and_download() -> None:
     html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
@@ -59,7 +75,7 @@ def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
     assert "installPanelResizers" in app
     assert "setPointerCapture" in app
     assert "/app.css?v=20260710-pdf-page-indicator-1" in html
-    assert "/app.js?v=20260711-asset-preview-1" in html
+    assert "/app.js?v=20260711-project-routing-1" in html
 
 
 def test_editor_and_pdf_have_independent_persistent_zoom_controls() -> None:

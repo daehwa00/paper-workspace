@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101828" />
+    <title>Paper Workspace · 논문 목록</title>
+    <link rel="stylesheet" href="/hub.css?v=20260711-project-hub-1" />
+  </head>
+  <body>
+    <header class="hub-topbar"><div><p class="eyebrow">PAPER WORKSPACE</p><h1>논문 작업공간</h1></div><span class="secure-pill">공유 서버</span></header>
+    <main class="hub-main">
+      <section class="hub-intro"><div><p class="eyebrow blue">YOUR PROJECTS</p><h2>작업할 논문을 선택하세요</h2><p>논문마다 편집 내용과 협업 커서, PDF 렌더링, 백업이 분리됩니다.</p></div><label class="search"><span aria-hidden="true">⌕</span><input id="project-search" type="search" placeholder="논문 검색" aria-label="논문 검색" /></label></section>
+      <section id="project-list" class="project-grid" aria-live="polite"><div class="loading-card">논문 목록을 불러오는 중…</div></section>
+      <section class="hub-help"><strong>새 논문을 추가하려면</strong><p>서버의 프로젝트 라이브러리에 새 slug 폴더와 <code>project.json</code>을 추가한 뒤 목록을 갱신합니다. 주소는 <code>/p/slug</code> 형식으로 고정되어 제목 변경에도 안전합니다.</p></section>
+    </main>
+    <script src="/hub.js?v=20260711-project-hub-1"></script>
+  </body>
+</html>

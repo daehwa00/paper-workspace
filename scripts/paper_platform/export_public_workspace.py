@@ -19,6 +19,7 @@ PUBLIC_PATHS = (
     Path("apps/paper_workspace/password_gate"),
     Path("infra/paper-workspace"),
     Path("examples/paper-workspace-project"),
+    Path("examples/project-library"),
     Path("docs/demo"),
     Path("docs/paper-platform"),
     Path("tests/paper_platform"),

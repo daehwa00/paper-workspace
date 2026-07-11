@@ -1,0 +1,10 @@
+{
+  "id": "example-paper",
+  "version": "1",
+  "display_name": "Example Paper",
+  "entrypoint": "main.tex",
+  "files": [
+    { "path": "main.tex", "managed": true },
+    { "path": "references.bib", "managed": true }
+  ]
+}

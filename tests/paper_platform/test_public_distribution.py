@@ -29,6 +29,16 @@ def test_example_project_has_a_manifest_and_no_conference_assets() -> None:
     assert not any("aaai" in path.name.lower() for path in example.rglob("*"))
 
 
+def test_example_project_library_has_a_hub_catalog_and_slug_project() -> None:
+    library = ROOT / "examples/project-library"
+    catalog = json.loads((library / "index.json").read_text(encoding="utf-8"))
+    assert catalog["projects"]
+    project = catalog["projects"][0]
+    assert project["slug"] == "example-paper"
+    assert (library / project["slug"] / "project.json").is_file()
+    assert (library / project["slug"] / "main.tex").is_file()
+
+
 def test_publication_files_explain_safe_export_and_secret_handling() -> None:
     documentation_root = ROOT / "apps/paper_workspace" if (ROOT / "apps/paper_workspace/README.md").exists() else ROOT
     readme = (documentation_root / "README.md").read_text(encoding="utf-8")
