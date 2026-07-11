@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_PATHS = (
     Path("apps/paper_workspace/static"),
     Path("apps/paper_workspace/compiler"),
+    Path("apps/paper_workspace/backup"),
     Path("apps/paper_workspace/collaboration"),
     Path("apps/paper_workspace/codex_bridge"),
     Path("infra/paper-workspace"),

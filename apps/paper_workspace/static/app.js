@@ -50,6 +50,58 @@ const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.
 $('collab-name').onclick=()=>{$('name-input').value=actor.name;const selected=document.querySelector(`input[name="profile-color"][value="${actor.color}"]`);if(selected)selected.checked=true;$('name-dialog').showModal();};$('name-dialog').addEventListener('close',()=>{if($('name-dialog').returnValue!=='confirm')return;const name=$('name-input').value.trim();const color=document.querySelector('input[name="profile-color"]:checked')?.value;if(!name)return;actor.name=name.slice(0,32);if(collaboratorPalette.includes(color))actor.color=color;localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=collaboratorInitial(actor.name);$('collab-name').style.background=actor.color;$('name-toast').hidden=true;if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'join',project:collaborationRoom,actor}));});
 $('open-name-settings').onclick=()=>{$('name-toast').hidden=true;$('collab-name').click();};
 const save = () => { try{localStorage.setItem('paper-workspace', JSON.stringify(state));$('save-state').textContent='자동 저장됨';return true;}catch{$('save-state').textContent='저장 공간 부족';alert('브라우저 저장 공간이 부족합니다. 큰 파일을 제거한 뒤 다시 시도해 주세요.');return false;} };
+const backupIntervalMs=10*60*1000;
+let backupInitialized=false;
+let backupBusy=false;
+let lastBackupSignature=null;
+function backupProjectId(){const normalized=String(projectManifest.id||'default').replace(/[^A-Za-z0-9_-]+/g,'-').replace(/^[^A-Za-z0-9]+/,'').slice(0,64);return encodeURIComponent(normalized||'default')}
+function backupApi(path=''){return `/api/backups/projects/${backupProjectId()}/snapshots${path}`}
+function backupPayload(){
+  if(state.current&&state.files[state.current]!==undefined)state.files[state.current]=$('editor').value;
+  return {title:String(state.projectTitle||titleOf(state.files['paper/main.tex']||'')||'Untitled Paper').slice(0,160),files:Object.fromEntries(Object.entries(state.files).filter(([,content])=>typeof content==='string').sort(([left],[right])=>left.localeCompare(right))),comments:Array.isArray(state.comments)?state.comments:[]};
+}
+function backupSignature(payload=backupPayload()){return JSON.stringify(payload)}
+function setBackupStatus(message){$('backup-status').textContent=message}
+function backupDate(value){const date=new Date(value);return Number.isNaN(date.getTime())?'시간 정보 없음':new Intl.DateTimeFormat('ko-KR',{dateStyle:'short',timeStyle:'short'}).format(date)}
+function backupItems(result){return Array.isArray(result)?result:Array.isArray(result?.snapshots)?result.snapshots:Array.isArray(result?.items)?result.items:[]}
+function renderBackupHistory(items){
+  const list=$('backup-list');
+  if(!items.length){list.innerHTML='<p class="backup-empty">아직 서버 백업이 없습니다.</p>';return}
+  list.replaceChildren(...items.map(snapshot=>{
+    const id=String(snapshot.id||snapshot.snapshot_id||'');
+    const card=document.createElement('article');card.className='backup-card';
+    const meta=document.createElement('div');meta.className='backup-card-meta';
+    const title=document.createElement('strong');title.textContent=snapshot.title||snapshot.payload?.title||'논문 백업';
+    const detail=document.createElement('span');const reason=snapshot.reason==='manual'?'수동':snapshot.reason==='pre-restore'?'복원 전':'자동';detail.textContent=`${backupDate(snapshot.created_at||snapshot.createdAt)} · ${reason}${snapshot.actor?` · ${snapshot.actor}`:''}`;
+    const restore=document.createElement('button');restore.type='button';restore.className='backup-restore';restore.textContent='복원';restore.disabled=!id;restore.onclick=()=>restoreServerBackup(id,restore);
+    meta.append(title,detail);card.append(meta,restore);return card
+  }))
+}
+async function loadBackupHistory(){
+  try{const response=await fetch(backupApi(),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업 기록을 불러오지 못했습니다.');const items=backupItems(result);renderBackupHistory(items);setBackupStatus(items.length?`최근 백업 ${backupDate(items[0].created_at||items[0].createdAt)}`:'10분 자동 백업 대기 중');}
+  catch(error){renderBackupHistory([]);setBackupStatus(`연결 오류 · ${error.message}`)}
+}
+async function createServerBackup(reason='manual',{quiet=false}={}){
+  if(backupBusy)return false;
+  const snapshot=backupPayload();const signature=backupSignature(snapshot);
+  if(reason==='auto'&&signature===lastBackupSignature)return false;
+  backupBusy=true;$('create-backup').disabled=true;setBackupStatus(reason==='pre-restore'?'현재 상태를 보존하는 중…':'서버에 저장하는 중…');
+  try{const response=await fetch(backupApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshot,actor:actor.name,reason})});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업에 실패했습니다.');lastBackupSignature=signature;await loadBackupHistory();setBackupStatus(result.deduplicated?'변경 없음 · 기존 백업 유지':`백업 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);return true}
+  catch(error){setBackupStatus(`백업 실패 · ${error.message}`);if(!quiet)alert(`서버 백업에 실패했습니다.\n${error.message}`);return false}
+  finally{backupBusy=false;$('create-backup').disabled=false}
+}
+async function restoreServerBackup(snapshotId,button){
+  if(backupBusy||!confirm('이 백업으로 원고를 복원할까요? 현재 상태는 먼저 별도 백업으로 저장됩니다.'))return;
+  button.disabled=true;
+  const protectedCurrent=await createServerBackup('pre-restore');
+  if(!protectedCurrent){button.disabled=false;return}
+  backupBusy=true;setBackupStatus('백업을 복원하는 중…');
+  try{const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=result.payload||result.snapshot?.payload||result.snapshot||result;if(!snapshot.files||typeof snapshot.files!=='object'||Array.isArray(snapshot.files)||Object.values(snapshot.files).some(content=>typeof content!=='string'))throw new Error('백업의 원고 파일 형식이 올바르지 않습니다.');state.files={...snapshot.files};state.comments=Array.isArray(snapshot.comments)?snapshot.comments:[];state.projectTitle=typeof snapshot.title==='string'?snapshot.title.slice(0,160):state.projectTitle;state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);if(!state.current)throw new Error('백업에 복원할 원고 파일이 없습니다.');state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();save();lastBackupSignature=backupSignature(snapshot);setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
+  catch(error){setBackupStatus(`복원 실패 · ${error.message}`);alert(`백업을 복원하지 못했습니다.\n${error.message}`)}
+  finally{backupBusy=false;button.disabled=false;$('create-backup').disabled=false}
+}
+function initializeServerBackups(){if(backupInitialized)return;backupInitialized=true;loadBackupHistory();setInterval(()=>createServerBackup('auto',{quiet:true}),backupIntervalMs)}
+$('create-backup').onclick=()=>createServerBackup('manual');
 function titleOf(tex){return (tex.match(/\\title\{([^}]*)\}/)||['','Untitled Paper'])[1]}
 function setProjectTitle(value,{updateTex=false}={}){const title=value.trim().slice(0,160)||'Untitled Paper';state.projectTitle=title;$('project-title').value=title;document.title=`${title} · Paper Workspace`;if(updateTex){const source=state.files['paper/main.tex']||'';if(/\\title\{[^}]*\}/.test(source)){const latexTitle=title.replace(/[{}]/g,'');state.files['paper/main.tex']=source.replace(/\\title\{[^}]*\}/,()=>`\\title{${latexTitle}}`);if(state.current==='paper/main.tex')$('editor').value=state.files['paper/main.tex'];if(save())compileAfterSave()}}}
 function syncProjectTitleFromTex(force=false){if(state.current!=='paper/main.tex'&&!force)return;const title=titleOf(state.files['paper/main.tex']||$('editor').value);if(title&&(force||title!==state.projectTitle))setProjectTitle(title)}
@@ -198,7 +250,7 @@ async function loadProject(){
     }
     if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=value;
   }
-  setEditor();syncProjectTitleFromTex(true);render();listFiles();save();
+  setEditor();syncProjectTitleFromTex(true);render();listFiles();save();initializeServerBackups();
   if(isLatexDocument(state.files['paper/main.tex']))await runUpdate();
   else{$('render-state').textContent='원고 로드 오류';$('suggestion').innerHTML='<div class="suggestion"><strong>원고를 불러오지 못했습니다.</strong><br>유효한 LaTeX 원고를 유지하고 서버 소스는 적용하지 않았습니다.</div>';}
 }

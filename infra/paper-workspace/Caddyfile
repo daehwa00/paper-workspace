@@ -5,6 +5,9 @@
             header_up Authorization "Bearer {$CODEX_BRIDGE_TOKEN}"
         }
     }
+    handle_path /api/backups/* {
+        reverse_proxy backup:8010
+    }
     handle_path /api/* {
         reverse_proxy compiler:8000
     }

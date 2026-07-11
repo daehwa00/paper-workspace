@@ -52,3 +52,21 @@ def test_public_export_is_allowlist_based() -> None:
     assert "paper/" not in exporter
     assert "auth.json" in exporter
     assert "secret" in exporter.lower()
+
+
+def test_backup_service_is_persistent_and_routed_separately() -> None:
+    compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile").read_text(encoding="utf-8")
+    exporter = (ROOT / "scripts/paper_platform/export_public_workspace.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "backup:" in compose
+    assert "backup_data:/data" in compose
+    assert "backup_data:" in compose
+    assert "BACKUP_RETENTION" in compose
+    assert "handle_path /api/backups/*" in caddy
+    assert caddy.index("handle_path /api/backups/*") < caddy.index("handle_path /api/*")
+    assert 'Path("apps/paper_workspace/backup")' in exporter
+    backup_image = (ROOT / "apps/paper_workspace/backup/Dockerfile").read_text(encoding="utf-8")
+    assert "chmod 755 /app" in backup_image

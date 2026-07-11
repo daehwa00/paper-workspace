@@ -1,0 +1,291 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import sqlite3
+from datetime import datetime, timezone
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+
+MAX_REQUEST_BYTES = 12_000_000
+MAX_SNAPSHOT_BYTES = 10_000_000
+MAX_PROJECT_FILES = 240
+DEFAULT_RETENTION = 50
+PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/?$")
+ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/([1-9][0-9]*)/?$")
+
+
+class ValidationError(ValueError):
+    pass
+
+
+class SnapshotNotFound(LookupError):
+    pass
+
+
+def validate_project_id(project_id: object) -> str:
+    if not isinstance(project_id, str) or not PROJECT_ID_PATTERN.fullmatch(project_id):
+        raise ValidationError("invalid project id")
+    return project_id
+
+
+def validate_project_path(name: object) -> str:
+    if not isinstance(name, str) or not name or len(name) > 240 or "\\" in name:
+        raise ValidationError("invalid project path")
+    if name.startswith("/") or "//" in name:
+        raise ValidationError("invalid project path")
+    parts = name.split("/")
+    if len(parts) > 12 or any(part in {"", ".", ".."} for part in parts):
+        raise ValidationError("invalid project path")
+    if any(any(ord(character) < 32 for character in part) for part in parts):
+        raise ValidationError("invalid project path")
+    if PurePosixPath(name).is_absolute():
+        raise ValidationError("invalid project path")
+    return name
+
+
+def canonical_snapshot(snapshot: object) -> tuple[dict[str, Any], bytes]:
+    if not isinstance(snapshot, dict):
+        raise ValidationError("snapshot must be an object")
+    files = snapshot.get("files")
+    assets = snapshot.get("assets", {})
+    if not isinstance(files, dict) or not files:
+        raise ValidationError("snapshot files must be a non-empty object")
+    if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
+        raise ValidationError("snapshot contains too many project files")
+    for collection in (files, assets):
+        for name, content in collection.items():
+            validate_project_path(name)
+            if not isinstance(content, str):
+                raise ValidationError("project file contents must be strings")
+    if set(files) & set(assets):
+        raise ValidationError("a path cannot be both a source file and an asset")
+    title = snapshot.get("title")
+    if title is not None and (not isinstance(title, str) or len(title) > 500):
+        raise ValidationError("invalid project title")
+    comments = snapshot.get("comments")
+    if comments is not None and not isinstance(comments, (list, dict)):
+        raise ValidationError("invalid comments")
+    try:
+        encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ValidationError("snapshot must contain JSON values") from error
+    if len(encoded) > MAX_SNAPSHOT_BYTES:
+        raise ValidationError("snapshot is too large")
+    # Decode the canonical representation so callers cannot mutate the stored value
+    # through a reference retained from the request object.
+    return json.loads(encoded), encoded
+
+
+def validate_optional_text(value: object, field: str, maximum: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > maximum or any(ord(character) < 32 for character in value):
+        raise ValidationError(f"invalid {field}")
+    return value
+
+
+class BackupStore:
+    def __init__(self, database_path: str | Path, retention: int = DEFAULT_RETENTION) -> None:
+        if not 1 <= retention <= 1000:
+            raise ValueError("retention must be between 1 and 1000")
+        self.database_path = Path(database_path)
+        self.retention = retention
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path, timeout=10)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout = 10000")
+        connection.execute("PRAGMA journal_mode = WAL")
+        return connection
+
+    def _initialize(self) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    actor TEXT,
+                    reason TEXT,
+                    size_bytes INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    UNIQUE(project_id, content_hash)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS snapshots_project_order ON snapshots(project_id, id DESC)"
+            )
+
+    @staticmethod
+    def _metadata(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "created_at": row["created_at"],
+            "hash": row["content_hash"],
+            "actor": row["actor"],
+            "reason": row["reason"],
+            "size_bytes": row["size_bytes"],
+        }
+
+    def create(
+        self,
+        project_id: object,
+        snapshot: object,
+        actor: object = None,
+        reason: object = None,
+    ) -> tuple[dict[str, Any], bool]:
+        project = validate_project_id(project_id)
+        _, encoded = canonical_snapshot(snapshot)
+        author = validate_optional_text(actor, "actor", 120)
+        backup_reason = validate_optional_text(reason, "reason", 80)
+        digest = hashlib.sha256(encoded).hexdigest()
+        created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO snapshots(
+                    project_id, created_at, content_hash, actor, reason, size_bytes, payload
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (project, created_at, digest, author, backup_reason, len(encoded), encoded.decode("utf-8")),
+            )
+            if cursor.rowcount == 0:
+                existing = connection.execute(
+                    "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
+                ).fetchone()
+                assert existing is not None
+                return self._metadata(existing), True
+            snapshot_id = cursor.lastrowid
+            connection.execute(
+                """
+                DELETE FROM snapshots
+                WHERE project_id = ? AND id NOT IN (
+                    SELECT id FROM snapshots WHERE project_id = ? ORDER BY id DESC LIMIT ?
+                )
+                """,
+                (project, project, self.retention),
+            )
+            row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
+        assert row is not None
+        return self._metadata(row), False
+
+    def list(self, project_id: object) -> list[dict[str, Any]]:
+        project = validate_project_id(project_id)
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM snapshots WHERE project_id = ? ORDER BY id DESC LIMIT ?",
+                (project, self.retention),
+            ).fetchall()
+        return [self._metadata(row) for row in rows]
+
+    def get(self, project_id: object, snapshot_id: object) -> dict[str, Any]:
+        project = validate_project_id(project_id)
+        if not isinstance(snapshot_id, int) or snapshot_id < 1:
+            raise ValidationError("invalid snapshot id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM snapshots WHERE project_id = ? AND id = ?", (project, snapshot_id)
+            ).fetchone()
+        if row is None:
+            raise SnapshotNotFound("snapshot not found")
+        return {**self._metadata(row), "payload": json.loads(row["payload"])}
+
+    def healthcheck(self) -> None:
+        with self._connect() as connection:
+            connection.execute("SELECT 1").fetchone()
+
+
+class BackupHandler(BaseHTTPRequestHandler):
+    store: BackupStore
+
+    def do_GET(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        try:
+            if path == "/health":
+                self.store.healthcheck()
+                self._json(HTTPStatus.OK, {"status": "ok"})
+                return
+            if match := COLLECTION_PATTERN.fullmatch(path):
+                self._json(HTTPStatus.OK, {"snapshots": self.store.list(match.group(1))})
+                return
+            if match := ITEM_PATTERN.fullmatch(path):
+                self._json(HTTPStatus.OK, {"snapshot": self.store.get(match.group(1), int(match.group(2)))})
+                return
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+        except ValidationError as error:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except SnapshotNotFound as error:
+            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        match = COLLECTION_PATTERN.fullmatch(path)
+        if match is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        try:
+            payload = self._request_json()
+            metadata, deduplicated = self.store.create(
+                match.group(1), payload.get("snapshot"), payload.get("actor"), payload.get("reason")
+            )
+            self._json(
+                HTTPStatus.OK if deduplicated else HTTPStatus.CREATED,
+                {"snapshot": metadata, "deduplicated": deduplicated},
+            )
+        except ValidationError as error:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+    def _request_json(self) -> dict[str, Any]:
+        try:
+            size = int(self.headers.get("Content-Length", ""))
+        except ValueError as error:
+            raise ValidationError("invalid content length") from error
+        if size < 1 or size > MAX_REQUEST_BYTES:
+            raise ValidationError("request is empty or too large")
+        try:
+            payload = json.loads(self.rfile.read(size))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValidationError("request body must be valid JSON") from error
+        if not isinstance(payload, dict):
+            raise ValidationError("request body must be an object")
+        return payload
+
+    def _json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *_: object) -> None:
+        return
+
+
+def create_server() -> ThreadingHTTPServer:
+    database_path = os.environ.get("BACKUP_DB_PATH", "/data/backups.sqlite3")
+    try:
+        retention = int(os.environ.get("BACKUP_RETENTION", str(DEFAULT_RETENTION)))
+    except ValueError as error:
+        raise ValueError("BACKUP_RETENTION must be an integer") from error
+    BackupHandler.store = BackupStore(database_path, retention)
+    return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
+
+
+if __name__ == "__main__":
+    create_server().serve_forever()

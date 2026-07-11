@@ -35,6 +35,32 @@ services:
     cap_drop:
       - ALL
     restart: unless-stopped
+  backup:
+    build:
+      context: ../..
+      dockerfile: apps/paper_workspace/backup/Dockerfile
+    environment:
+      BACKUP_DB_PATH: /data/backups.sqlite3
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-50}
+    volumes:
+      - backup_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    pids_limit: 64
+    cpus: 0.5
+    restart: unless-stopped
   compiler:
     build:
       context: ../..
@@ -71,6 +97,8 @@ services:
   caddy:
     image: caddy:2.10.2-alpine
     depends_on:
+      backup:
+        condition: service_healthy
       codex-bridge:
         condition: service_started
       collaboration:
@@ -95,5 +123,6 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 volumes:
+  backup_data:
   caddy_data:
   caddy_config:

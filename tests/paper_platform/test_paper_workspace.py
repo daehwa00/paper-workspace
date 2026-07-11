@@ -307,3 +307,19 @@ def test_project_manifest_controls_server_managed_files() -> None:
     assert "projectManifest.files.filter(item=>item.managed)" in app
     assert "state.projectVersion!==projectManifest.version" in app
     assert "browser-before-server-sync" in app
+
+
+def test_changed_projects_are_backed_up_to_server_every_ten_minutes() -> None:
+    html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    assert 'id="backup-status"' in html
+    assert 'id="create-backup"' in html
+    assert 'id="backup-list"' in html
+    assert "const backupIntervalMs=10*60*1000" in app
+    assert "signature===lastBackupSignature" in app
+    assert "createServerBackup('pre-restore')" in app
+    assert "setInterval(()=>createServerBackup('auto'" in app
+    backup_payload = app[app.index("function backupPayload"):app.index("function backupSignature")]
+    assert "state.assets" not in backup_payload
+    assert ".replace(/[^A-Za-z0-9_-]+/g,'-')" in app
