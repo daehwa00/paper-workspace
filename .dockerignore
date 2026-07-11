@@ -1,0 +1,16 @@
+.git
+.env
+.codex
+auth.json
+paper
+private
+data
+datasets
+results
+checkpoints
+**/__pycache__
+**/.pytest_cache
+**/*.pdf
+**/*.aux
+**/*.log
+**/*.synctex.gz
