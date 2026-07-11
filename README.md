@@ -53,6 +53,7 @@ docker compose -f infra/paper-workspace/compose.yaml down
 - PDF 본문 클릭으로 SyncTeX 원본 줄 이동
 - 선택 영역의 댓글 또는 Codex 수정 요청
 - 파일·폴더 drag-and-drop, PDF 다운로드
+- `Figures/` 같은 그림 파일을 클릭해 편집기 자리에서 미리보기·확대/축소·다운로드
 - 사이드바·도우미 접기, 각 패널과 편집기/PDF 확대·축소
 
 ## 10분 단위 서버 백업

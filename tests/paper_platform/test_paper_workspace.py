@@ -36,6 +36,17 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "sync-soft-focus" in html
 
 
+def test_asset_selection_opens_a_zoomable_preview_and_download() -> None:
+    html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    for identifier in ("asset-viewer", "asset-image", "asset-zoom-in", "asset-zoom-out", "asset-download"):
+        assert f'id="{identifier}"' in html
+    assert "showAssetPreview" in app
+    assert "isImageAsset" in app
+    assert "assetZoom" in app
+    assert "link.download=baseName(path)" in app
+
+
 def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
     html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     css = (ROOT / "apps/paper_workspace/static/app.css").read_text(encoding="utf-8")
@@ -48,7 +59,7 @@ def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
     assert "installPanelResizers" in app
     assert "setPointerCapture" in app
     assert "/app.css?v=20260710-pdf-page-indicator-1" in html
-    assert "/app.js?v=20260710-mathematical-derivations-1" in html
+    assert "/app.js?v=20260711-asset-preview-1" in html
 
 
 def test_editor_and_pdf_have_independent_persistent_zoom_controls() -> None:
