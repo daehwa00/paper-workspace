@@ -45,6 +45,18 @@ def test_publication_files_explain_safe_export_and_secret_handling() -> None:
     assert "/home/qlab" not in env_example
 
 
+def test_public_readme_includes_safe_example_demo_assets() -> None:
+    documentation_root = ROOT / "apps/paper_workspace" if (ROOT / "apps/paper_workspace/README.md").exists() else ROOT
+    readme = (documentation_root / "README.md").read_text(encoding="utf-8")
+    demo = ROOT / "docs/demo"
+
+    assert "examples/paper-workspace-project" in readme
+    assert "실제 연구 원고" in readme
+    assert (demo / "workspace-overview.png").is_file()
+    assert (demo / "edit-and-render-flow.gif").is_file()
+    assert (demo / "workspace-overview.svg").is_file()
+
+
 def test_public_export_is_allowlist_based() -> None:
     exporter = (ROOT / "scripts/paper_platform/export_public_workspace.py").read_text(encoding="utf-8")
 

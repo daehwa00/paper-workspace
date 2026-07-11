@@ -4,6 +4,18 @@
 
 > **현재 범위:** 편집 중인 문서는 브라우저 `localStorage`에 즉시 저장되고, 변경된 프로젝트는 10분 간격으로 서버 SQLite에 복구 지점을 만듭니다. WebSocket은 접속 상태와 커서만 공유하며 텍스트를 병합하지 않습니다. 계정·권한 관리도 아직 없으므로 중요한 원고는 Git 같은 별도 저장소에도 보관하세요.
 
+## 데모
+
+아래 이미지는 저장소에 포함된 `examples/paper-workspace-project`만으로 만든 예시입니다. 실제 연구 원고, 심사 자료, 실험 결과, 서버 주소나 인증 정보는 캡처에 사용하지 않았습니다.
+
+![Paper Workspace example project](docs/demo/workspace-overview.png)
+
+편집기에서 저장하고 PDF를 다시 렌더링하는 흐름은 다음 애니메이션에서 확인할 수 있습니다.
+
+![Edit, save, and render workflow](docs/demo/edit-and-render-flow.gif)
+
+데모의 화면은 기능을 설명하기 위한 정적 예시이며, 실행 방법은 아래의 빠른 시작 명령으로 재현할 수 있습니다.
+
 ## 빠른 시작
 
 필요한 것은 Git, Docker Engine, Docker Compose v2입니다. TeX Live 이미지가 크므로 첫 빌드는 수 GB를 내려받을 수 있습니다.
