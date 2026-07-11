@@ -52,6 +52,8 @@ def test_public_export_is_allowlist_based() -> None:
     assert "paper/" not in exporter
     assert "auth.json" in exporter
     assert "secret" in exporter.lower()
+    for private_name in (".env.auth", ".env.password", ".auth", "allowed-emails"):
+        assert private_name in exporter
 
 
 def test_backup_service_is_persistent_and_routed_separately() -> None:
@@ -88,3 +90,14 @@ def test_optional_github_oauth_override_protects_every_route() -> None:
     assert "OAUTH2_PROXY_COOKIE_SECRET" in env
     assert "OAUTH2_PROXY_REDIRECT_URL" in env
     assert ".auth/allowed-emails" in (ROOT / "infra/paper-workspace/allowed-emails.example").read_text(encoding="utf-8")
+
+
+def test_optional_shared_password_override_is_exported_without_a_secret() -> None:
+    compose = (ROOT / "infra/paper-workspace/compose.password.yaml").read_text(encoding="utf-8")
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    env = (ROOT / "infra/paper-workspace/.env.password.example").read_text(encoding="utf-8")
+
+    assert "password-gate" in compose
+    assert "forward_auth password-gate:8079" in caddy
+    assert "PAPER_ACCESS_PASSWORD=replace-with-your-private-lab-password" in env
+    assert "210628" not in env

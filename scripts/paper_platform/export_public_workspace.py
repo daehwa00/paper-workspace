@@ -16,6 +16,7 @@ PUBLIC_PATHS = (
     Path("apps/paper_workspace/backup"),
     Path("apps/paper_workspace/collaboration"),
     Path("apps/paper_workspace/codex_bridge"),
+    Path("apps/paper_workspace/password_gate"),
     Path("infra/paper-workspace"),
     Path("examples/paper-workspace-project"),
     Path("docs/paper-platform"),
@@ -30,7 +31,17 @@ ROOT_FILES = {
     Path("apps/paper_workspace/public.gitignore"): Path(".gitignore"),
     Path("apps/paper_workspace/public.dockerignore"): Path(".dockerignore"),
 }
-IGNORED_NAMES = {".env", "auth.json", "__pycache__", ".pytest_cache", ".DS_Store"}
+IGNORED_NAMES = {
+    ".env",
+    ".env.auth",
+    ".env.password",
+    ".auth",
+    "auth.json",
+    "allowed-emails",
+    "__pycache__",
+    ".pytest_cache",
+    ".DS_Store",
+}
 SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),

@@ -98,6 +98,23 @@ docker compose -f infra/paper-workspace/compose.yaml \
 
 `.auth/allowed-emails`에 등록된 Google 계정만 허용됩니다. 인증을 켜면 workspace, 컴파일, 백업, Codex, WebSocket이 모두 같은 로그인 세션 뒤에 놓입니다. 원본 포트(80/443)를 직접 공개하는 환경에서는 인증 프록시를 우회하지 못하도록 방화벽도 함께 설정해야 합니다. 현재는 allowlist 파일을 통한 초대 방식이며, 자동 초대 메일 발송은 SMTP 자격증명을 추가한 후 연결할 수 있습니다.
 
+### 소규모 연구실용 공유 비밀번호
+
+Google 계정 로그인이 부담스럽다면 선택형 password-gate를 사용할 수 있습니다. 한 번 입력하면 `HttpOnly`, `Secure`, `SameSite` 세션 쿠키가 발급되어 설정된 기간 동안 다시 묻지 않습니다.
+
+```bash
+cp infra/paper-workspace/.env.password.example infra/paper-workspace/.env.password
+```
+
+`.env.password`의 `PAPER_ACCESS_PASSWORD`를 연구실 비밀번호로 바꾸고 긴 `PAPER_SESSION_SECRET`을 설정한 뒤 실행합니다.
+
+```bash
+docker compose -f infra/paper-workspace/compose.yaml \
+  -f infra/paper-workspace/compose.password.yaml up --build -d
+```
+
+모든 사용자가 같은 비밀번호를 공유하므로 개인별 감사·폐기·역할 구분은 제공하지 않습니다. 신뢰하는 소규모 연구실에서만 사용하고, 비밀번호가 노출되면 즉시 교체하세요.
+
 ## 폴더 구조
 
 ```text

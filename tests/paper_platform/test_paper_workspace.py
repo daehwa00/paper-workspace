@@ -253,7 +253,7 @@ def test_codex_bridge_uses_chatgpt_auth_without_exposing_it_to_browser() -> None
     assert "gpt-5.6-sol" in bridge
     assert "model_reasoning_effort" in bridge
     assert 'CMD ["sh", "/app/start.sh"]' in dockerfile
-    assert (ROOT / "infra/paper-workspace/.gitignore").read_text(encoding="utf-8").splitlines() == [".env", ".env.auth", ".auth/"]
+    assert (ROOT / "infra/paper-workspace/.gitignore").read_text(encoding="utf-8").splitlines() == [".env", ".env.auth", ".auth/", ".env.password"]
 
 
 def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
