@@ -81,21 +81,22 @@ PAPER_BIND_ADDRESS=0.0.0.0
 
 DNS를 서버로 연결하고 80/443 포트를 허용하면 Caddy가 TLS 인증서를 관리합니다. 컴파일러와 collaboration socket에도 사용자 인증, 프로젝트 권한, 요청 quota가 필요합니다. 현재 구현을 익명 인터넷 서비스로 운영하는 것은 권장하지 않습니다.
 
-### 도메인이 없을 때: GitHub OAuth
+### 도메인이 없을 때: Google OAuth
 
-Cloudflare Access는 Cloudflare에서 관리하는 도메인이 필요합니다. 도메인을 준비하지 않은 경우에는 현재 `nip.io` 주소에서도 사용할 수 있는 선택형 GitHub OAuth 프록시를 사용합니다.
+Cloudflare Access는 Cloudflare에서 관리하는 도메인이 필요합니다. 도메인을 준비하지 않은 경우에는 현재 `nip.io` 주소에서도 사용할 수 있는 선택형 Google OAuth 프록시를 사용합니다.
 
-1. GitHub Developer Settings에서 OAuth App을 만들고 callback URL을 `https://YOUR_PAPER_DOMAIN/oauth2/callback`으로 등록합니다.
+1. Google Cloud Console에서 OAuth Web application을 만들고 callback URL을 `https://YOUR_PAPER_DOMAIN/oauth2/callback`으로 등록합니다.
 2. `infra/paper-workspace/.env.auth.example`을 `.env.auth`로 복사하고 Client ID, Secret, cookie secret을 입력합니다.
-3. `PAPER_DOMAIN`과 callback URL의 호스트를 동일하게 맞춥니다.
-4. 인증 Compose override를 함께 실행합니다.
+3. `allowed-emails.example`을 `.auth/allowed-emails`로 복사한 뒤 실제 Google 계정 이메일만 남깁니다.
+4. `PAPER_DOMAIN`과 callback URL의 호스트를 동일하게 맞춥니다.
+5. 인증 Compose override를 함께 실행합니다.
 
 ```bash
 docker compose -f infra/paper-workspace/compose.yaml \
   -f infra/paper-workspace/compose.auth.yaml up --build -d
 ```
 
-기본 예제는 `daehwa00` GitHub 사용자만 허용합니다. 인증을 켜면 workspace, 컴파일, 백업, Codex, WebSocket이 모두 같은 로그인 세션 뒤에 놓입니다. 원본 포트(80/443)를 직접 공개하는 환경에서는 인증 프록시를 우회하지 못하도록 방화벽도 함께 설정해야 합니다.
+`.auth/allowed-emails`에 등록된 Google 계정만 허용됩니다. 인증을 켜면 workspace, 컴파일, 백업, Codex, WebSocket이 모두 같은 로그인 세션 뒤에 놓입니다. 원본 포트(80/443)를 직접 공개하는 환경에서는 인증 프록시를 우회하지 못하도록 방화벽도 함께 설정해야 합니다. 현재는 allowlist 파일을 통한 초대 방식이며, 자동 초대 메일 발송은 SMTP 자격증명을 추가한 후 연결할 수 있습니다.
 
 ## 폴더 구조
 

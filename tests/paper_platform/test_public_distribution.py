@@ -78,10 +78,13 @@ def test_optional_github_oauth_override_protects_every_route() -> None:
     env = (ROOT / "infra/paper-workspace/.env.auth.example").read_text(encoding="utf-8")
 
     assert "oauth2-proxy:v7.12.0" in compose
+    assert "--provider=google" in compose
+    assert "allowed-emails:/etc/oauth2-proxy/allowed-emails:ro" in compose
     assert "forward_auth oauth2-proxy:4180" in caddy
     assert "copy_headers X-Auth-Request-User" in caddy
     assert "oauth2/start?rd={http.request.uri}" in caddy
     for route in ("/api/codex", "/api/backups/*", "/api/*", "/collab"):
         assert route in caddy
     assert "OAUTH2_PROXY_COOKIE_SECRET" in env
-    assert "OAUTH2_PROXY_GITHUB_USERS=daehwa00" in env
+    assert "OAUTH2_PROXY_REDIRECT_URL" in env
+    assert ".auth/allowed-emails" in (ROOT / "infra/paper-workspace/allowed-emails.example").read_text(encoding="utf-8")

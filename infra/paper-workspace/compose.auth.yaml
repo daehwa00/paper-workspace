@@ -5,7 +5,7 @@ services:
       - path: .env.auth
         required: true
     command:
-      - --provider=github
+      - --provider=google
       - --http-address=0.0.0.0:4180
       - --upstream=static://202
       - --reverse-proxy=true
@@ -15,7 +15,11 @@ services:
       - --cookie-secure=true
       - --cookie-httponly=true
       - --cookie-samesite=lax
-      - --scope=read:user,user:email
+      - --scope=openid email profile
+      - --email-domain=*
+      - --authenticated-emails-file=/etc/oauth2-proxy/allowed-emails
+    volumes:
+      - ./.auth/allowed-emails:/etc/oauth2-proxy/allowed-emails:ro
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev

@@ -1,0 +1,4 @@
+# Copy this file to .auth/allowed-emails and replace the examples.
+# One Google account email per line; blank lines and # comments are ignored.
+owner@gmail.com
+coauthor@gmail.com
