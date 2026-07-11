@@ -28,3 +28,5 @@ The collaboration server broadcasts only presence and cursor selection. It does 
 ## Public deployment boundary
 
 Compose binds to loopback by default. Caddy routes `/api/backups/*` before the general compiler API and strips that prefix before proxying. Caddy's bridge token authenticates proxy-to-bridge traffic, not people, and backup project identifiers are not authorization credentials. Before Internet exposure, put the complete site behind user authentication and project authorization, add compile/collaboration/backup quotas, and replicate the backup database off-host. Anonymous public exposure can read or fill snapshots if left unprotected, consume host compute, and consume the operator's Codex quota.
+
+For hosts without a managed domain, the repository includes an optional GitHub OAuth proxy override (`compose.auth.yaml`). It is disabled in the base Compose file until a GitHub OAuth App's client credentials and cookie secret are supplied. The override protects the static app and all API/WebSocket routes through one session.

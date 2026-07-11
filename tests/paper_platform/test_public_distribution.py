@@ -70,3 +70,18 @@ def test_backup_service_is_persistent_and_routed_separately() -> None:
     assert 'Path("apps/paper_workspace/backup")' in exporter
     backup_image = (ROOT / "apps/paper_workspace/backup/Dockerfile").read_text(encoding="utf-8")
     assert "chmod 755 /app" in backup_image
+
+
+def test_optional_github_oauth_override_protects_every_route() -> None:
+    compose = (ROOT / "infra/paper-workspace/compose.auth.yaml").read_text(encoding="utf-8")
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile.auth").read_text(encoding="utf-8")
+    env = (ROOT / "infra/paper-workspace/.env.auth.example").read_text(encoding="utf-8")
+
+    assert "oauth2-proxy:v7.12.0" in compose
+    assert "forward_auth oauth2-proxy:4180" in caddy
+    assert "copy_headers X-Auth-Request-User" in caddy
+    assert "oauth2/start?rd={http.request.uri}" in caddy
+    for route in ("/api/codex", "/api/backups/*", "/api/*", "/collab"):
+        assert route in caddy
+    assert "OAUTH2_PROXY_COOKIE_SECRET" in env
+    assert "OAUTH2_PROXY_GITHUB_USERS=daehwa00" in env
