@@ -24,16 +24,33 @@ services:
     mem_limit: 1g
     pids_limit: 128
     cpus: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
   collaboration:
     build:
       context: ../..
       dockerfile: apps/paper_workspace/collaboration/Dockerfile
+    volumes:
+      - collaboration_data:/data
     read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    mem_limit: 128m
+    pids_limit: 32
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8765').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
   backup:
     build:
@@ -42,8 +59,13 @@ services:
     environment:
       BACKUP_DB_PATH: /data/backups.sqlite3
       BACKUP_RETENTION: ${BACKUP_RETENTION:-50}
+      BACKUP_EXPORT_DIR: /exports
+      BACKUP_ASSET_DIR: /data/assets
+      BACKUP_MAX_ASSET_BYTES: ${BACKUP_MAX_ASSET_BYTES:-16777216}
+      BACKUP_MAX_PROJECT_ASSET_BYTES: ${BACKUP_MAX_PROJECT_ASSET_BYTES:-134217728}
     volumes:
-      - backup_data:/data
+      - ${BACKUP_DATA_SOURCE:-backup_data}:/data
+      - ${BACKUP_EXPORT_SOURCE:-backup_exports}:/exports
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=2)"]
       interval: 30s
@@ -67,6 +89,12 @@ services:
       dockerfile: apps/paper_workspace/compiler/Dockerfile
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     read_only: true
+    environment:
+      PAPER_PROJECTS_ROOT: /projects
+      PAPER_DEFAULT_PROJECT_ROOT: /project-default
+    volumes:
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/projects:ro
+      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/project-default:ro
     tmpfs:
       - /tmp:size=256m,noexec,nosuid,nodev
     security_opt:
@@ -76,6 +104,12 @@ services:
     mem_limit: 1g
     pids_limit: 128
     cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
   workspace:
     build:
@@ -90,6 +124,9 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    mem_limit: 256m
+    pids_limit: 32
+    cpus: 0.5
     tmpfs:
       - /tmp:size=32m,noexec,nosuid,nodev
       - /var/cache/nginx:size=16m,noexec,nosuid,nodev
@@ -101,11 +138,11 @@ services:
       backup:
         condition: service_healthy
       codex-bridge:
-        condition: service_started
+        condition: service_healthy
       collaboration:
-        condition: service_started
+        condition: service_healthy
       compiler:
-        condition: service_started
+        condition: service_healthy
       workspace:
         condition: service_healthy
     environment:
@@ -122,8 +159,13 @@ services:
       - caddy_config:/config
     security_opt:
       - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 64
+    cpus: 0.5
     restart: unless-stopped
 volumes:
   backup_data:
+  backup_exports:
+  collaboration_data:
   caddy_data:
   caddy_config:

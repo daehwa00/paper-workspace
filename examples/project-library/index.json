@@ -4,7 +4,8 @@
       "slug": "example-paper",
       "display_name": "Example Paper",
       "description": "A small, reproducible paper project used to demonstrate the workspace.",
-      "updated_at": "Example"
+      "updated_at": "Example",
+      "thumbnail": "/projects/example-paper/thumbnail.png"
     }
   ]
 }

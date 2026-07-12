@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import sqlite3
+import tempfile
+import urllib.parse
+import zlib
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +23,10 @@ DEFAULT_RETENTION = 50
 PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/?$")
 ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/([1-9][0-9]*)/?$")
+ASSET_COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/assets/?$")
+ASSET_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/assets/(.+)$")
+DEFAULT_MAX_ASSET_BYTES = 16 * 1024 * 1024
+DEFAULT_MAX_PROJECT_ASSET_BYTES = 128 * 1024 * 1024
 
 
 class ValidationError(ValueError):
@@ -72,6 +80,9 @@ def canonical_snapshot(snapshot: object) -> tuple[dict[str, Any], bytes]:
     comments = snapshot.get("comments")
     if comments is not None and not isinstance(comments, (list, dict)):
         raise ValidationError("invalid comments")
+    tasks = snapshot.get("tasks")
+    if tasks is not None and (not isinstance(tasks, list) or len(tasks) > 500):
+        raise ValidationError("invalid tasks")
     try:
         encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     except (TypeError, ValueError) as error:
@@ -92,12 +103,15 @@ def validate_optional_text(value: object, field: str, maximum: int) -> str | Non
 
 
 class BackupStore:
-    def __init__(self, database_path: str | Path, retention: int = DEFAULT_RETENTION) -> None:
+    def __init__(self, database_path: str | Path, retention: int = DEFAULT_RETENTION, export_dir: str | Path | None = None) -> None:
         if not 1 <= retention <= 1000:
             raise ValueError("retention must be between 1 and 1000")
         self.database_path = Path(database_path)
         self.retention = retention
+        self.export_dir = Path(export_dir) if export_dir else None
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.export_dir:
+            self.export_dir.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -115,15 +129,23 @@ class BackupStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    checked_at TEXT,
                     content_hash TEXT NOT NULL,
                     actor TEXT,
                     reason TEXT,
                     size_bytes INTEGER NOT NULL,
-                    payload TEXT NOT NULL,
+                    payload BLOB NOT NULL,
+                    payload_encoding TEXT NOT NULL DEFAULT 'json',
                     UNIQUE(project_id, content_hash)
                 )
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(snapshots)")}
+            if "payload_encoding" not in columns:
+                connection.execute("ALTER TABLE snapshots ADD COLUMN payload_encoding TEXT NOT NULL DEFAULT 'json'")
+            if "checked_at" not in columns:
+                connection.execute("ALTER TABLE snapshots ADD COLUMN checked_at TEXT")
+                connection.execute("UPDATE snapshots SET checked_at = created_at WHERE checked_at IS NULL")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS snapshots_project_order ON snapshots(project_id, id DESC)"
             )
@@ -134,6 +156,7 @@ class BackupStore:
             "id": row["id"],
             "project_id": row["project_id"],
             "created_at": row["created_at"],
+            "checked_at": row["checked_at"] or row["created_at"],
             "hash": row["content_hash"],
             "actor": row["actor"],
             "reason": row["reason"],
@@ -157,18 +180,24 @@ class BackupStore:
             cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO snapshots(
-                    project_id, created_at, content_hash, actor, reason, size_bytes, payload
+                    project_id, created_at, checked_at, content_hash, actor, reason, size_bytes, payload, payload_encoding
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (project, created_at, digest, author, backup_reason, len(encoded), encoded.decode("utf-8")),
+                (project, created_at, created_at, digest, author, backup_reason, len(encoded), zlib.compress(encoded, level=6), "zlib"),
             )
             if cursor.rowcount == 0:
+                connection.execute(
+                    "UPDATE snapshots SET checked_at = ? WHERE project_id = ? AND content_hash = ?",
+                    (created_at, project, digest),
+                )
                 existing = connection.execute(
                     "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
                 ).fetchone()
                 assert existing is not None
-                return self._metadata(existing), True
+                metadata = self._metadata(existing)
+                self._export(project, metadata, encoded)
+                return metadata, True
             snapshot_id = cursor.lastrowid
             connection.execute(
                 """
@@ -181,7 +210,23 @@ class BackupStore:
             )
             row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
         assert row is not None
+        self._export(project, self._metadata(row), encoded)
         return self._metadata(row), False
+
+    def _export(self, project: str, metadata: dict[str, Any], encoded: bytes) -> None:
+        if not self.export_dir:
+            return
+        project_dir = self.export_dir / project
+        project_dir.mkdir(parents=True, exist_ok=True)
+        target = project_dir / f"{metadata['id']}-{metadata['hash'][:12]}.json.zlib"
+        if not target.exists():
+            with tempfile.NamedTemporaryFile(dir=project_dir, delete=False) as temporary:
+                temporary.write(zlib.compress(encoded, level=6))
+                temporary_path = Path(temporary.name)
+            os.replace(temporary_path, target)
+        exports = sorted(project_dir.glob("*.json.zlib"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for stale in exports[self.retention :]:
+            stale.unlink(missing_ok=True)
 
     def list(self, project_id: object) -> list[dict[str, Any]]:
         project = validate_project_id(project_id)
@@ -202,15 +247,73 @@ class BackupStore:
             ).fetchone()
         if row is None:
             raise SnapshotNotFound("snapshot not found")
-        return {**self._metadata(row), "payload": json.loads(row["payload"])}
+        raw_payload = row["payload"]
+        if row["payload_encoding"] == "zlib":
+            raw_payload = zlib.decompress(bytes(raw_payload)).decode("utf-8")
+        elif isinstance(raw_payload, bytes):
+            raw_payload = raw_payload.decode("utf-8")
+        return {**self._metadata(row), "payload": json.loads(raw_payload)}
 
     def healthcheck(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1").fetchone()
 
 
+class AssetStore:
+    def __init__(self, root: str | Path, max_file_bytes: int = DEFAULT_MAX_ASSET_BYTES,
+                 max_project_bytes: int = DEFAULT_MAX_PROJECT_ASSET_BYTES) -> None:
+        self.root = Path(root)
+        self.max_file_bytes = max_file_bytes
+        self.max_project_bytes = max_project_bytes
+        if min(max_file_bytes, max_project_bytes) < 1 or max_file_bytes > max_project_bytes:
+            raise ValueError("invalid asset quotas")
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, project_id: object, name: object) -> Path:
+        project = validate_project_id(project_id)
+        clean_name = validate_project_path(name)
+        return self.root / project / clean_name
+
+    def list(self, project_id: object) -> list[dict[str, Any]]:
+        project = validate_project_id(project_id)
+        project_dir = self.root / project
+        if not project_dir.exists():
+            return []
+        return [{"path": path.relative_to(project_dir).as_posix(), "size_bytes": path.stat().st_size}
+                for path in sorted(project_dir.rglob("*")) if path.is_file()]
+
+    def put(self, project_id: object, name: object, content: bytes) -> dict[str, Any]:
+        if len(content) > self.max_file_bytes:
+            raise ValidationError("asset is too large")
+        target = self._path(project_id, name)
+        project_dir = self.root / validate_project_id(project_id)
+        current_size = target.stat().st_size if target.exists() else 0
+        total = sum(path.stat().st_size for path in project_dir.rglob("*") if path.is_file()) if project_dir.exists() else 0
+        if total - current_size + len(content) > self.max_project_bytes:
+            raise ValidationError("project asset quota exceeded")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as temporary:
+            temporary.write(content)
+            temporary_path = Path(temporary.name)
+        os.replace(temporary_path, target)
+        return {"path": validate_project_path(name), "size_bytes": len(content)}
+
+    def get(self, project_id: object, name: object) -> bytes:
+        target = self._path(project_id, name)
+        if not target.is_file():
+            raise SnapshotNotFound("asset not found")
+        return target.read_bytes()
+
+    def delete(self, project_id: object, name: object) -> None:
+        target = self._path(project_id, name)
+        if not target.is_file():
+            raise SnapshotNotFound("asset not found")
+        target.unlink()
+
+
 class BackupHandler(BaseHTTPRequestHandler):
     store: BackupStore
+    assets: AssetStore
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -218,6 +321,14 @@ class BackupHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 self.store.healthcheck()
                 self._json(HTTPStatus.OK, {"status": "ok"})
+                return
+            if match := ASSET_COLLECTION_PATTERN.fullmatch(path):
+                self._json(HTTPStatus.OK, {"assets": self.assets.list(match.group(1))})
+                return
+            if match := ASSET_ITEM_PATTERN.fullmatch(path):
+                name = urllib.parse.unquote(match.group(2))
+                content = self.assets.get(match.group(1), name)
+                self._bytes(HTTPStatus.OK, content, mimetypes.guess_type(name)[0] or "application/octet-stream")
                 return
             if match := COLLECTION_PATTERN.fullmatch(path):
                 self._json(HTTPStatus.OK, {"snapshots": self.store.list(match.group(1))})
@@ -249,6 +360,43 @@ class BackupHandler(BaseHTTPRequestHandler):
         except ValidationError as error:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
 
+    def do_PUT(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        match = ASSET_ITEM_PATTERN.fullmatch(path)
+        if match is None:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            return
+        try:
+            size = self._content_length(self.assets.max_file_bytes)
+            metadata = self.assets.put(match.group(1), urllib.parse.unquote(match.group(2)), self.rfile.read(size))
+            self._json(HTTPStatus.CREATED, {"asset": metadata})
+        except ValidationError as error:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        match = ASSET_ITEM_PATTERN.fullmatch(path)
+        try:
+            if match is None:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return
+            self.assets.delete(match.group(1), urllib.parse.unquote(match.group(2)))
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.end_headers()
+        except ValidationError as error:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except SnapshotNotFound as error:
+            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+
+    def _content_length(self, maximum: int) -> int:
+        try:
+            size = int(self.headers.get("Content-Length", ""))
+        except ValueError as error:
+            raise ValidationError("invalid content length") from error
+        if size < 0 or size > maximum:
+            raise ValidationError("request is too large")
+        return size
+
     def _request_json(self) -> dict[str, Any]:
         try:
             size = int(self.headers.get("Content-Length", ""))
@@ -273,6 +421,14 @@ class BackupHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _bytes(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, *_: object) -> None:
         return
 
@@ -283,7 +439,12 @@ def create_server() -> ThreadingHTTPServer:
         retention = int(os.environ.get("BACKUP_RETENTION", str(DEFAULT_RETENTION)))
     except ValueError as error:
         raise ValueError("BACKUP_RETENTION must be an integer") from error
-    BackupHandler.store = BackupStore(database_path, retention)
+    BackupHandler.store = BackupStore(database_path, retention, os.environ.get("BACKUP_EXPORT_DIR"))
+    BackupHandler.assets = AssetStore(
+        os.environ.get("BACKUP_ASSET_DIR", "/data/assets"),
+        int(os.environ.get("BACKUP_MAX_ASSET_BYTES", str(DEFAULT_MAX_ASSET_BYTES))),
+        int(os.environ.get("BACKUP_MAX_PROJECT_ASSET_BYTES", str(DEFAULT_MAX_PROJECT_ASSET_BYTES))),
+    )
     return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
 
 

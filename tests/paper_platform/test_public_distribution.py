@@ -37,6 +37,7 @@ def test_example_project_library_has_a_hub_catalog_and_slug_project() -> None:
     assert project["slug"] == "example-paper"
     assert (library / project["slug"] / "project.json").is_file()
     assert (library / project["slug"] / "main.tex").is_file()
+    assert (library / project["slug"] / "thumbnail.png").is_file()
 
 
 def test_publication_files_explain_safe_export_and_secret_handling() -> None:
@@ -73,6 +74,9 @@ def test_public_export_is_allowlist_based() -> None:
     assert "PUBLIC_PATHS" in exporter
     assert "paper/" not in exporter
     assert "auth.json" in exporter
+    assert '"node_modules"' in exporter
+    assert '"test-results"' in exporter
+    assert '"playwright-report"' in exporter
     assert "secret" in exporter.lower()
     for private_name in (".env.auth", ".env.password", ".auth", "allowed-emails"):
         assert private_name in exporter
@@ -86,7 +90,8 @@ def test_backup_service_is_persistent_and_routed_separately() -> None:
     )
 
     assert "backup:" in compose
-    assert "backup_data:/data" in compose
+    assert "BACKUP_DATA_SOURCE:-backup_data" in compose
+    assert "BACKUP_EXPORT_SOURCE:-backup_exports" in compose
     assert "backup_data:" in compose
     assert "BACKUP_RETENTION" in compose
     assert "handle_path /api/backups/*" in caddy
@@ -123,3 +128,16 @@ def test_optional_shared_password_override_is_exported_without_a_secret() -> Non
     assert "forward_auth password-gate:8079" in caddy
     assert "PAPER_ACCESS_PASSWORD=replace-with-your-private-lab-password" in env
     assert "210628" not in env
+
+
+def test_brand_icons_are_public_before_authentication() -> None:
+    password_caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    oauth_caddy = (ROOT / "infra/paper-workspace/Caddyfile.auth").read_text(encoding="utf-8")
+    icon_paths = ("/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest")
+
+    for path in icon_paths:
+        assert path in password_caddy
+        assert path in oauth_caddy
+
+    assert password_caddy.index("/apple-touch-icon.png") < password_caddy.index("forward_auth")
+    assert oauth_caddy.index("@public_brand_asset") < oauth_caddy.index("forward_auth")

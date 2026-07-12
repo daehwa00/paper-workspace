@@ -42,6 +42,9 @@ IGNORED_NAMES = {
     "allowed-emails",
     "__pycache__",
     ".pytest_cache",
+    "node_modules",
+    "test-results",
+    "playwright-report",
     ".DS_Store",
 }
 SECRET_PATTERNS = (
@@ -57,11 +60,14 @@ def allowed_file(path: Path) -> bool:
 def copy_public_path(relative: Path, destination: Path) -> None:
     source = ROOT / relative
     for item in source.rglob("*"):
+        item_relative = item.relative_to(source)
+        if any(part in IGNORED_NAMES for part in item_relative.parts):
+            continue
         if item.is_symlink():
             raise RuntimeError(f"Refusing to export symlink: {item.relative_to(ROOT)}")
-        if not item.is_file() or not allowed_file(item.relative_to(source)):
+        if not item.is_file() or not allowed_file(item_relative):
             continue
-        target = destination / relative / item.relative_to(source)
+        target = destination / relative / item_relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
 
