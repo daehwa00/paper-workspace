@@ -27,6 +27,7 @@ PUBLIC_PATHS = (
 )
 ROOT_FILES = {
     Path("apps/paper_workspace/README.md"): Path("README.md"),
+    Path("apps/paper_workspace/README.ko.md"): Path("README.ko.md"),
     Path("apps/paper_workspace/LICENSE"): Path("LICENSE"),
     Path("apps/paper_workspace/THIRD_PARTY_NOTICES.md"): Path("THIRD_PARTY_NOTICES.md"),
     Path("apps/paper_workspace/SECURITY.md"): Path("SECURITY.md"),

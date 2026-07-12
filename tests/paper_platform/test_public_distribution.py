@@ -46,10 +46,13 @@ def test_publication_files_explain_safe_export_and_secret_handling() -> None:
     notices = (documentation_root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
     env_example = (ROOT / "infra/paper-workspace/.env.example").read_text(encoding="utf-8")
 
-    for heading in ("빠른 시작", "내 논문 연결", "Codex 연결", "외부 공개", "문제 해결"):
+    for heading in ("Quick start", "Connect your manuscript", "Codex integration", "Public deployment", "Troubleshooting"):
         assert heading in readme
     assert "auth.json" in readme
-    assert "커밋" in readme
+    assert "commit" in readme.lower()
+    korean = (documentation_root / "README.ko.md").read_text(encoding="utf-8")
+    for heading in ("빠른 시작", "내 논문 연결", "Codex 연결", "외부 공개", "문제 해결"):
+        assert heading in korean
     assert "PDF.js" in notices
     assert "CODEX_BRIDGE_TOKEN" in env_example
     assert "PAPER_PROJECT_DIR" in env_example
@@ -62,7 +65,7 @@ def test_public_readme_includes_safe_example_demo_assets() -> None:
     demo = ROOT / "docs/demo"
 
     assert "examples/paper-workspace-project" in readme
-    assert "실제 연구 원고" in readme
+    assert "no research manuscript" in readme.lower()
     assert (demo / "workspace-overview.png").is_file()
     assert (demo / "collaboration-review.png").is_file()
     assert (demo / "edit-and-render-flow.gif").is_file()

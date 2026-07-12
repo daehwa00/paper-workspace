@@ -24,6 +24,26 @@ def test_custom_workspace_has_no_texlyre_brand_or_login() -> None:
     assert "syncProjectTitleFromTex" in app
 
 
+def test_workspace_supports_persisted_english_and_korean_locales() -> None:
+    html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    engine = (ROOT / "apps/paper_workspace/static/i18n.js").read_text(encoding="utf-8")
+    workspace = (ROOT / "apps/paper_workspace/static/workspace-i18n.js").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
+
+    assert '<html lang="en">' in html
+    assert 'id="workspace-language"' in html
+    assert 'value="en"' in html and 'value="ko"' in html
+    assert "/i18n.js?v=__I18N_JS_HASH__" in html
+    assert "/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__" in html
+    assert "?lang=en|ko" not in engine
+    assert "queryLanguage() || storedLanguage() || browserLanguage() || 'en'" in engine
+    assert "paper-workspace-language" in engine
+    assert "Send request to Codex" in workspace
+    assert "Submission readiness" in workspace
+    assert "__I18N_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_I18N_JS_HASH__" in dockerfile
+
+
 def test_workspace_and_hub_use_the_character_favicon() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
@@ -113,7 +133,8 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert 'id="project-sort"' in html
     assert html.count('class="project-skeleton"') == 3
     assert "paper-workspace:project-sort" in hub
-    assert "최근 작업순" in html
+    assert "Recently active" in html
+    assert "최근 작업순" in hub
     assert "편집 기록 있음" in hub
     assert "paper-workspace:last-active:" in app
     assert "grid-template-columns:repeat(auto-fill" in css
@@ -257,8 +278,8 @@ def test_profile_defaults_to_me_and_never_to_a_specific_person() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
 
-    assert "name:(storedActorName||'나').trim()||'나'" in app
-    assert "if(actor.name!=='나')$('name-toast').hidden=true" in app
+    assert "const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me'" in app
+    assert "if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in hub
     assert "?'daehwa':storedActorName" not in app

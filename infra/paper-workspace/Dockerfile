@@ -14,6 +14,8 @@ RUN set -eu; \
     replace_hash index.html __UX_CSS_HASH__ ux.css; \
     replace_hash index.html __THEME_CSS_HASH__ theme.css; \
     replace_hash index.html __THEME_JS_HASH__ theme.js; \
+    replace_hash index.html __I18N_JS_HASH__ i18n.js; \
+    replace_hash index.html __WORKSPACE_I18N_JS_HASH__ workspace-i18n.js; \
     replace_hash index.html __PAPER_COLLAB_HASH__ vendor/paper-collab.js; \
     replace_hash index.html __PAPER_EDITOR_HASH__ vendor/paper-editor.js; \
     replace_hash index.html __APP_JS_HASH__ app.js; \
@@ -21,6 +23,7 @@ RUN set -eu; \
     replace_hash hub.html __HUB_UX_CSS_HASH__ hub-ux.css; \
     replace_hash hub.html __THEME_CSS_HASH__ theme.css; \
     replace_hash hub.html __THEME_JS_HASH__ theme.js; \
+    replace_hash hub.html __I18N_JS_HASH__ i18n.js; \
     replace_hash hub.html __HUB_JS_HASH__ hub.js; \
     ! grep -R '__[A-Z_]*_HASH__' index.html hub.html; \
     find /usr/share/nginx/html -type d -exec chmod 755 {} +
