@@ -14,6 +14,10 @@
         rewrite * /hub.html
         reverse_proxy workspace:8080
     }
+    @public_thumbnail path_regexp public_thumbnail ^/projects/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/thumbnail\.(?:png|jpe?g|webp)$
+    handle @public_thumbnail {
+        reverse_proxy workspace:8080
+    }
     handle /api/codex {
         reverse_proxy codex-bridge:8790 {
             header_up Authorization "Bearer {$CODEX_BRIDGE_TOKEN}"
@@ -25,7 +29,7 @@
     handle_path /api/* {
         reverse_proxy compiler:8000
     }
-    handle /collab {
+    handle /collab* {
         reverse_proxy collaboration:8765
     }
     reverse_proxy workspace:8080

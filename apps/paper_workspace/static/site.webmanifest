@@ -1,0 +1,23 @@
+{
+  "name": "Paper Workspace",
+  "short_name": "Paper Workspace",
+  "description": "공동 논문 편집과 PDF 렌더링을 위한 연구실 작업공간",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#172b4d",
+  "theme_color": "#172b4d",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png?v=2",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/favicon-64.png?v=2",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

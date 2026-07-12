@@ -1,0 +1,30 @@
+{
+  "name": "paper-workspace-collaboration",
+  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:client": "esbuild client.js --bundle --format=iife --global-name=PaperCollab --minify --outfile=../static/vendor/paper-collab.js && esbuild editor.js --bundle --format=iife --global-name=PaperEditor --minify --outfile=../static/vendor/paper-editor.js",
+    "test:e2e": "playwright test",
+    "test:e2e:ci": "CI=1 playwright test --reporter=line",
+    "start": "HOST=0.0.0.0 PORT=8765 node node_modules/y-websocket/bin/server.cjs"
+  },
+  "dependencies": {
+    "y-indexeddb": "9.0.12",
+    "y-leveldb": "0.2.0",
+    "y-websocket": "2.1.0",
+    "yjs": "13.6.31"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.1",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
+    "@playwright/test": "1.61.1",
+    "codemirror-lang-latex": "^0.4.1",
+    "esbuild": "0.25.6"
+  }
+}

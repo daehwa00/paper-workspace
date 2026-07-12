@@ -2,7 +2,9 @@
 
 브라우저에서 LaTeX를 편집하고, 격리된 TeX Live 컨테이너로 PDF를 만들며, PDF에서 원본 줄로 이동하고, 공동 작업자의 위치와 Codex 수정 제안을 확인하는 self-hosted 논문 작업 공간입니다.
 
-> **현재 범위:** 편집 중인 문서는 브라우저 `localStorage`에 즉시 저장되고, 변경된 프로젝트는 10분 간격으로 서버 SQLite에 복구 지점을 만듭니다. WebSocket은 접속 상태와 커서만 공유하며 텍스트를 병합하지 않습니다. 계정·권한 관리도 아직 없으므로 중요한 원고는 Git 같은 별도 저장소에도 보관하세요.
+> **현재 범위:** 텍스트, 텍스트 파일 트리, 폴더, 댓글, 할 일은 Yjs CRDT로 공동 편집되고 브라우저 IndexedDB와 서버 LevelDB에 지속됩니다. 브라우저에서 올린 이미지·PDF는 서버 자산 저장소와 IndexedDB에 함께 보관되고 Yjs 메타데이터를 통해 공동 편집자에게 즉시 나타납니다. 변경된 프로젝트는 10분 간격으로 압축된 서버 SQLite 복구 지점을 만들며, 운영 환경에서는 DB·자산과 snapshot export를 서로 다른 외부/NFS 경로에 두는 것을 권장합니다.
+
+LaTeX 편집기는 CodeMirror의 줄 번호, 구문 강조, 괄호 매칭, 검색, 자동완성, undo/redo를 제공합니다. 상단 상태 버튼은 공동 편집·브라우저 저장·PDF·서버 백업 상태를 한곳에서 보여주며, 모바일에서는 파일·원고·PDF·도우미 집중 화면을 전환합니다.
 
 ## 데모
 
@@ -65,7 +67,17 @@ https://paper.example.com/p/forecasting    다른 논문 작업공간
 3. `project.json`의 `files`에 컴파일에 필요한 파일을 모두 적습니다. 그림은 `{"path":"Figures/plot.pdf","type":"asset"}`처럼 표시합니다. 원본 위치와 컴파일 위치가 다르면 `{"path":"venue.sty","source":"vendor/venue.sty"}`처럼 안전한 상대 경로를 매핑할 수 있습니다.
 4. 단일 논문 모드라면 `.env`의 `PAPER_PROJECT_DIR`을 그 폴더의 절대 경로로 바꾸고, 여러 논문 모드라면 `PAPER_PROJECTS_DIR` 아래 slug 폴더로 배치한 뒤 Compose를 다시 시작합니다.
 
-`entrypoint`는 현재 `main.tex`이어야 합니다. 파일 경로에는 절대 경로나 `..`를 사용할 수 없습니다. 컴파일 API는 최대 120개 파일, 요청 12 MB, binary asset 합계 8 MB를 허용합니다. 브라우저 업로드는 파일당 2 MB로 제한됩니다.
+`entrypoint`는 기본 컴파일 문서이며 기본값은 `main.tex`입니다. 파일 경로에는 절대 경로나 `..`를 사용할 수 없습니다. 작업공간에서 어떤 `.tex` 파일을 선택해도 PDF 미리보기를 요청할 수 있습니다. 독립 문서는 그대로 컴파일하고, appendix·section 같은 fragment는 메인 문서의 preamble을 재사용한 임시 wrapper로 선택 부분만 컴파일합니다. `preview_entrypoints`는 독립 문서를 명시적으로 기록하는 선택적 메타데이터이며, fragment 미리보기에는 필요하지 않습니다. 자동 컴파일은 마지막 입력 후 1초에 실행되며, 동일 입력 결과는 10분간 재사용됩니다. 컴파일 API는 최대 120개 파일, 요청 48 MB, binary asset 합계 32 MB를 허용합니다. 브라우저 업로드는 파일당 8 MB로 제한됩니다.
+
+```json
+{
+  "entrypoint": "main.tex",
+  "preview_entrypoints": ["main.tex", "supplement.tex"],
+  "page_limit": 7
+}
+```
+
+보조 문서를 선택한 뒤 PDF 새로고침을 누르면 해당 문서를 `preview.pdf`로 컴파일합니다. 현재 렌더링 대상 파일명은 PDF 패널 상태에 표시되며, 컴파일 결과의 SyncTeX도 선택한 문서 기준으로 원본 위치를 찾습니다.
 
 서버의 프로젝트 파일은 시작 seed입니다. 브라우저에 수정본이 있으면 자동 백업 초안이 만들어질 수 있습니다. 완전히 새 프로젝트로 시작하려면 브라우저 사이트 데이터에서 `paper-workspace` 저장 항목을 지우거나 새 브라우저 프로필을 사용하세요.
 
@@ -74,22 +86,38 @@ https://paper.example.com/p/forecasting    다른 논문 작업공간
 - 입력 후 자동 저장과 PDF 갱신
 - `Cmd/Ctrl+S`, `Cmd/Ctrl+Z`, `Cmd/Ctrl+Shift+Z`
 - PDF 본문 클릭으로 SyncTeX 원본 줄 이동
+- LaTeX 편집기에서 `Cmd/Ctrl+클릭`으로 대응하는 PDF 위치 이동
+- 편집기 또는 PDF 위에서 `Cmd/Ctrl+휠`로 해당 패널만 확대·축소
 - 선택 영역의 댓글 또는 Codex 수정 요청
 - 파일·폴더 drag-and-drop, PDF 다운로드
 - `Figures/` 같은 그림 파일을 클릭해 편집기 자리에서 미리보기·확대/축소·다운로드
 - 사이드바·도우미 접기, 각 패널과 편집기/PDF 확대·축소
 
+## 제출 준비 도구
+
+도우미의 **검사** 탭은 현재 브라우저 초안을 기준으로 citation key, label/reference, 익명성 후보, TODO/FIXME, 누락된 그림, PDF 페이지 수와 글꼴 포함 여부를 검사합니다. 결과를 누르면 가능한 경우 해당 소스 줄로 이동합니다. Figure·Table 자산과 BibTeX 항목도 사용·미사용·중복·누락 상태로 모아 봅니다. 자동 검사는 학회 공식 submission checker를 대체하지 않으므로 마지막 제출 때는 공식 검사도 실행하세요.
+
+**Source ZIP 만들기**는 먼저 격리된 컴파일러에서 현재 소스가 정상 컴파일되는지 확인합니다. 성공한 경우에만 소스와 필요한 자산을 ZIP으로 묶고 `SHA256SUMS`를 포함합니다. 서버가 제공하는 큰 원격 자산도 패키지에 포함되며, shell escape와 외부 네트워크를 사용하지 않습니다.
+
+도우미의 **작업** 탭에서는 현재 커서가 있는 파일·줄에 할 일을 연결하고 완료 상태를 관리합니다. 작업 목록은 자동 저장과 서버 snapshot에 포함됩니다. Codex 수정안은 LaTeX 미리보기뿐 아니라 적용 전 원문/수정문 diff를 보여 주며, 요청 이후 원문이 바뀌면 자동 적용하지 않습니다.
+
 ## 10분 단위 서버 백업
 
 브라우저의 즉시 자동 저장과 별도로, 내용이 바뀐 프로젝트는 10분마다 서버에 snapshot을 저장합니다. snapshot에는 프로젝트 파일, 댓글, 제목 등 복원에 필요한 편집 상태가 들어가며 PDF와 SyncTeX처럼 다시 생성할 수 있는 출력물은 넣지 않습니다. 기본적으로 프로젝트별 최근 50개를 보관합니다.
 
-백업은 Docker named volume `backup_data`의 `/data/backups.sqlite3`에 저장됩니다. 보관 개수는 `.env`에서 조절할 수 있습니다.
+백업 DB와 업로드 자산은 기본적으로 Docker named volume `backup_data`에 저장됩니다. 각 snapshot의 압축 JSON 사본은 별도 `backup_exports` volume에도 기록됩니다. 운영 환경에서는 두 source를 서로 다른 디스크나 NFS 경로로 지정하세요.
 
 ```dotenv
 BACKUP_RETENTION=50
+BACKUP_DATA_SOURCE=/mnt/paper-primary
+BACKUP_EXPORT_SOURCE=/mnt/offhost-paper-backups
+BACKUP_MAX_ASSET_BYTES=16777216
+BACKUP_MAX_PROJECT_ASSET_BYTES=134217728
 ```
 
-백업 기록에서 원하는 시점을 복원할 수 있으며, 복원하기 전 현재 상태도 보존합니다. 다만 이 기능은 계정 시스템이나 실시간 공동 편집 이력이 아닙니다. 동일한 프로젝트 식별자를 아는 방문자를 구분하지 못하므로 외부 공개 시 반드시 사이트 전체에 인증과 프로젝트 권한 검사를 추가하세요. `docker compose down -v`는 named volume과 모든 snapshot을 삭제하므로 일반 종료에는 `down`만 사용하고, 서버 자체도 정기적으로 별도 백업하세요.
+`BACKUP_DATA_SOURCE`에는 SQLite DB와 공동 자산이, `BACKUP_EXPORT_SOURCE`에는 프로젝트별 `*.json.zlib` snapshot이 저장됩니다. 외부 경로는 컨테이너 UID 10001이 쓸 수 있어야 합니다. 동일 내용의 자동 백업은 snapshot을 중복 생성하지 않지만 `checked_at`을 갱신해 마지막 정상 확인 시각을 별도로 제공합니다.
+
+백업 기록에서 원하는 시점을 현재 원고와 파일 단위로 비교하거나 복원할 수 있으며, 복원하기 전 현재 상태도 보존합니다. 중요한 시점은 `submission-v1` 같은 이름 있는 체크포인트로 저장할 수 있습니다. 다만 이 기능은 계정 시스템이나 실시간 공동 편집 이력이 아닙니다. 동일한 프로젝트 식별자를 아는 방문자를 구분하지 못하므로 외부 공개 시 반드시 사이트 전체에 인증과 프로젝트 권한 검사를 추가하세요. `docker compose down -v`는 named volume과 모든 snapshot을 삭제하므로 일반 종료에는 `down`만 사용하고, 서버 자체도 정기적으로 별도 백업하세요.
 
 ## Codex 연결
 
@@ -198,8 +226,9 @@ MIT 라이선스는 export된 플랫폼 코드에만 적용됩니다. 연구 mon
 ```bash
 pytest -q tests/paper_platform
 node --check apps/paper_workspace/static/app.js
-python -m py_compile apps/paper_workspace/compiler/server.py apps/paper_workspace/backup/server.py apps/paper_workspace/collaboration/server.py
+python -m py_compile apps/paper_workspace/compiler/server.py apps/paper_workspace/backup/server.py
+node --check apps/paper_workspace/collaboration/client.js
 docker compose -f infra/paper-workspace/compose.yaml config --quiet
 ```
 
-기능 주장은 코드와 테스트로 확인 가능한 범위만 문서화합니다. 향후 과제는 인증/ACL, CRDT/OT 텍스트 동기화, 사용자별 감사 이력, 외부 object storage 복제, compiler job queue와 quota입니다.
+기능 주장은 코드와 테스트로 확인 가능한 범위만 문서화합니다. 향후 과제는 프로젝트별 인증/ACL, 사용자별 감사 이력, 외부 object storage 복제와 정교한 compiler job priority입니다.
