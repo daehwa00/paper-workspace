@@ -64,8 +64,17 @@ def test_public_readme_includes_safe_example_demo_assets() -> None:
     assert "examples/paper-workspace-project" in readme
     assert "실제 연구 원고" in readme
     assert (demo / "workspace-overview.png").is_file()
+    assert (demo / "collaboration-review.png").is_file()
     assert (demo / "edit-and-render-flow.gif").is_file()
-    assert (demo / "workspace-overview.svg").is_file()
+    assert not (demo / "workspace-overview.svg").exists()
+
+    capture = (
+        ROOT / "apps/paper_workspace/collaboration/capture-demo.mjs"
+    ).read_text(encoding="utf-8")
+    assert "PAPER_DEMO_URL" in capture
+    assert "PAPER_DEMO_PASSWORD" in capture
+    assert "paper.glowme.kr" not in capture
+    assert "210628" not in capture
 
 
 def test_public_export_is_allowlist_based() -> None:

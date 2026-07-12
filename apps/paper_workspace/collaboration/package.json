@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build:client": "esbuild client.js --bundle --format=iife --global-name=PaperCollab --minify --outfile=../static/vendor/paper-collab.js && esbuild editor.js --bundle --format=iife --global-name=PaperEditor --minify --outfile=../static/vendor/paper-editor.js",
+    "capture:demo": "node capture-demo.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ci": "CI=1 playwright test --reporter=line",
     "start": "HOST=0.0.0.0 PORT=8765 node node_modules/y-websocket/bin/server.cjs"
