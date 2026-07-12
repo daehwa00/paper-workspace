@@ -155,7 +155,9 @@ const searchableProjectText = project => [
 function applyHubLanguage() {
   i18n.apply(document)
   languagePicker.value = i18n.getLanguage()
-  languageCode.textContent = i18n.getLanguage().toUpperCase()
+  const currentLanguage = i18n.getLanguage()
+  languageCode.textContent = currentLanguage === 'ko' ? '한국어' : 'English'
+  languageCode.dataset.short = currentLanguage.toUpperCase()
   document.title = i18n.t('hub.pageTitle')
   document.querySelector('meta[name="description"]')?.setAttribute('content', i18n.t('hub.pageDescription'))
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', i18n.t('hub.pageTitle'))

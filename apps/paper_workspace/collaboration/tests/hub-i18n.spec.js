@@ -8,10 +8,13 @@ test('hub falls back to English and persists a language-picker choice', async ({
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Paper Workspace' })).toBeVisible()
   await expect(page.locator('#project-search')).toHaveAttribute('placeholder', 'Search papers')
+  await expect(page.locator('#hub-language-code')).toHaveText('English')
+  await expect(page.locator('#hub-language')).toHaveCSS('opacity', '0')
 
   await page.locator('#hub-language').selectOption('ko')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
   await expect(page.getByRole('heading', { name: '논문 작업공간' })).toBeVisible()
+  await expect(page.locator('#hub-language-code')).toHaveText('한국어')
   await expect(page).toHaveURL(/lang=ko/)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe('ko')
   await context.close()
