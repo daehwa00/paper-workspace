@@ -22,6 +22,7 @@ function profileScript(profile) {
     localStorage.setItem('collab-name-user-set', '1')
     localStorage.setItem('collab-color', color)
     localStorage.setItem('paper-workspace-theme', 'light')
+    localStorage.setItem('paper-workspace-language', 'en')
     localStorage.removeItem('paper-workspace-layout')
   }
 }
@@ -43,10 +44,10 @@ async function openWorkspace(browser, profile) {
   await context.addInitScript(profileScript(profile), profile)
   await authenticate(context)
   const page = await context.newPage()
-  await page.goto(projectUrl, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${projectUrl}?lang=en`, { waitUntil: 'domcontentloaded' })
   await page.waitForFunction(() => document.querySelector('#editor')?.value?.includes('\\documentclass'), null, { timeout: 30_000 })
   await page.waitForFunction(() => document.querySelector('#paper-preview canvas'), null, { timeout: 60_000 })
-  await page.waitForFunction(() => /최신|캐시/.test(document.querySelector('#render-state')?.textContent || ''), null, { timeout: 60_000 })
+  await page.waitForFunction(() => /latest|cache|최신|캐시/i.test(document.querySelector('#render-state')?.textContent || ''), null, { timeout: 60_000 })
   return { context, page }
 }
 
@@ -80,18 +81,19 @@ try {
 
   await selectAbstractSentence(author.page)
   await author.page.keyboard.press('Control+Alt+c')
-  await author.page.locator('#selection-comment-prompt').fill('이 주장에 근거가 되는 실험 결과를 연결해 주세요.')
+  await author.page.locator('#selection-comment-prompt').fill('Please link the experiment that supports this claim.')
+  await author.page.locator('#selection-comment-prompt').press('Home')
   await capture(author.page, join(output, 'collaboration-review.png'))
   await capture(author.page, join(frames, '02-comment.png'))
   await author.page.keyboard.press('Escape')
 
   await selectAbstractSentence(author.page)
   await author.page.locator('#selection-codex').click()
-  await author.page.locator('#selection-codex-prompt').fill('주장 범위는 유지하면서 더 간결한 학술 문장으로 다듬어줘')
+  await author.page.locator('#selection-codex-prompt').fill('Keep the claim scope and make this sentence more concise.')
   await capture(author.page, join(frames, '03-codex.png'))
   await author.page.keyboard.press('Escape')
 
-  await author.page.getByRole('tab', { name: '검사' }).click()
+  await author.page.getByRole('tab', { name: /Checks|검사/ }).click()
   await author.page.locator('#run-submission-checks').click()
   await capture(author.page, join(frames, '04-checks.png'))
 

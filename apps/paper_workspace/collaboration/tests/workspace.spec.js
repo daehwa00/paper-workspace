@@ -1,5 +1,33 @@
 import { expect, test } from '@playwright/test'
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-language', 'ko'))
+})
+
+test('unsupported browser languages fall back to English', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'fr-FR' })
+  const page = await context.newPage()
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(page.getByRole('tab', { name: 'Revise' })).toBeVisible()
+  await expect(page.locator('#workspace-language')).toHaveValue('en')
+  await context.close()
+})
+
+test('an explicit language choice persists across reloads', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/?lang=ko')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect(page.getByRole('tab', { name: '수정' })).toBeVisible()
+  await page.locator('#workspace-language').selectOption('en')
+  await expect(page.getByRole('tab', { name: 'Revise' })).toBeVisible()
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+  await expect(page.getByRole('tab', { name: 'Revise' })).toBeVisible()
+})
+
 test('server manuscript paints before collaboration bootstrap finishes', async ({ page }) => {
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')

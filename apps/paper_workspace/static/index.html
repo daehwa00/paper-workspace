@@ -1,13 +1,15 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101828" />
-    <script>try{const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.theme=t;document.documentElement.dataset.colorScheme=d?'dark':'light'}catch(_){}</script>
+    <script>try{const q=new URLSearchParams(location.search).get('lang'),s=localStorage.getItem('paper-workspace-language'),n=(navigator.languages||[navigator.language]).map(v=>String(v||'').toLowerCase().split('-')[0]).find(v=>v==='en'||v==='ko'),l=(q==='en'||q==='ko')?q:(s==='en'||s==='ko')?s:n||'en';document.documentElement.lang=l;document.documentElement.dataset.language=l;const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.theme=t;document.documentElement.dataset.colorScheme=d?'dark':'light'}catch(_){document.documentElement.lang='en'}</script>
     <title>Paper Workspace</title>
     <meta name="description" content="공동 논문 편집과 PDF 렌더링을 위한 Paper Workspace" />
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ko_KR" />
     <meta property="og:title" content="Paper Workspace" />
     <meta property="og:description" content="공동 논문 편집과 PDF 렌더링을 위한 연구실 작업공간입니다." />
     <meta property="og:image" content="https://paper.glowme.kr/assets/share-preview-v2.png" />
@@ -27,7 +29,7 @@
     <div class="shell">
       <header class="topbar">
         <a class="hub-home" href="/" title="논문 허브로 돌아가기" aria-label="논문 허브로 돌아가기"><img src="/assets/desk-doodle.png?v=3" alt="논문 허브" /></a><input id="project-title" class="project-title" aria-label="논문 제목" value="Untitled Paper" spellcheck="false" />
-        <div class="project-name"><button id="status-center-toggle" class="status-center-toggle" type="button" aria-expanded="false" aria-controls="status-center" title="작업공간 상태 보기"><span id="collab-status" class="status-dot connecting" aria-hidden="true"></span><span id="collab-label" class="collab-label">연결 중</span><span class="status-chevron" aria-hidden="true">›</span></button><button class="theme-trigger" type="button" title="화면 모드 설정" aria-label="화면 모드 설정" aria-haspopup="dialog"><svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg><svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"/></svg></button><span class="presence"><button id="collab-name" class="avatar" title="표시 이름 변경">나</button><span id="collaborator-avatars" class="collaborator-avatars" aria-label="접속 중인 공동 편집자"></span></span></div>
+        <div class="project-name"><label class="language-control"><select id="workspace-language" aria-label="Language"><option value="en">EN</option><option value="ko">한국어</option></select></label><button id="status-center-toggle" class="status-center-toggle" type="button" aria-expanded="false" aria-controls="status-center" title="작업공간 상태 보기"><span id="collab-status" class="status-dot connecting" aria-hidden="true"></span><span id="collab-label" class="collab-label">연결 중</span><span class="status-chevron" aria-hidden="true">›</span></button><button class="theme-trigger" type="button" title="화면 모드 설정" aria-label="화면 모드 설정" aria-haspopup="dialog"><svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg><svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"/></svg></button><span class="presence"><button id="collab-name" class="avatar" title="표시 이름 변경">나</button><span id="collaborator-avatars" class="collaborator-avatars" aria-label="접속 중인 공동 편집자"></span></span></div>
         <nav id="focus-modes" class="focus-modes" aria-label="작업 화면"><button class="mobile-files-focus" data-focus="files" aria-pressed="false">파일</button><button class="is-active" data-focus="source" aria-pressed="true">원고</button><button data-focus="preview" aria-pressed="false">PDF</button><button data-focus="assistant" aria-pressed="false">도우미</button></nav>
       </header>
       <aside class="sidebar">
@@ -116,6 +118,8 @@
         }catch(error){window.__paperReportError('startup watchdog failed: '+(error&&error.stack||error))}
       },5000);
     </script>
+    <script src="/i18n.js?v=__I18N_JS_HASH__"></script>
+    <script src="/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__"></script>
     <script src="/vendor/paper-collab.js?v=__PAPER_COLLAB_HASH__"></script>
     <script src="/vendor/paper-editor.js?v=__PAPER_EDITOR_HASH__"></script>
     <script src="/app.js?v=__APP_JS_HASH__"></script>

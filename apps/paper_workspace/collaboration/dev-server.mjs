@@ -22,6 +22,7 @@ const collaboration = spawn(process.execPath, ['node_modules/y-websocket/bin/ser
 const assetTokens = {
   __APP_CSS_HASH__: 'app.css', __COMPONENTS_CSS_HASH__: 'components.css', __UX_CSS_HASH__: 'ux.css',
   __THEME_CSS_HASH__: 'theme.css', __THEME_JS_HASH__: 'theme.js', __PAPER_COLLAB_HASH__: 'vendor/paper-collab.js',
+  __I18N_JS_HASH__: 'i18n.js', __WORKSPACE_I18N_JS_HASH__: 'workspace-i18n.js',
   __PAPER_EDITOR_HASH__: 'vendor/paper-editor.js', __APP_JS_HASH__: 'app.js'
 }
 let renderedIndex = readFileSync(join(staticRoot, 'index.html'), 'utf8')
@@ -71,6 +72,7 @@ server.on('upgrade', (request, socket, head) => {
     if (head.length) upstream.write(head)
     socket.pipe(upstream).pipe(socket)
   })
+  socket.on('error', () => upstream.destroy())
   upstream.on('error', () => socket.destroy())
 })
 
