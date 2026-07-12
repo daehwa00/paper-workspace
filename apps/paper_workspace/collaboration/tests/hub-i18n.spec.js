@@ -29,7 +29,8 @@ test('language query overrides storage and localized project metadata follows it
       display_name_en: 'Localized Paper',
       display_name_ko: '다국어 논문',
       description_en: 'An English description.',
-      description_ko: '한국어 설명입니다.'
+      description_ko: '한국어 설명입니다.',
+      page_count: 13
     }] })
   }))
 
@@ -37,6 +38,8 @@ test('language query overrides storage and localized project metadata follows it
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Localized Paper' })).toBeVisible()
   await expect(page.locator('.project-card-copy')).toContainText('An English description.')
+  await expect(page.locator('.project-page-count')).toHaveText('13p')
+  await expect(page.locator('.project-page-count')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe('en')
 
   await page.locator('#hub-language').selectOption('ko')
