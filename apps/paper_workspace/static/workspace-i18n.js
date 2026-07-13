@@ -70,13 +70,24 @@
   }
   i18n.register('en', en)
   i18n.register('ko', Object.fromEntries(Object.keys(en).map(key => [key, key])))
+  i18n.register('en', {
+    'workspace.compile.cached': '{file} current · cached',
+    'workspace.compile.compiling': '{file} compiling…',
+    'workspace.compile.current': '{file} current · {seconds}s',
+    'workspace.compile.error': '{file} compile error',
+    'workspace.compile.previousError': '{file} error · previous PDF',
+    'workspace.tasks.empty': 'No tasks yet.'
+  })
+  i18n.register('ko', {
+    'workspace.compile.cached': '{file} 최신 · 캐시',
+    'workspace.compile.compiling': '{file} 컴파일 중…',
+    'workspace.compile.current': '{file} 최신 · {seconds}초',
+    'workspace.compile.error': '{file} 컴파일 오류',
+    'workspace.compile.previousError': '{file} 오류 · 이전 PDF',
+    'workspace.tasks.empty': '등록된 작업이 없습니다.'
+  })
 
   const patterns = [
-    [/^(.*) 컴파일 중…$/, (_, file) => `${file} ${i18n.getLanguage() === 'ko' ? '컴파일 중…' : 'compiling…'}`],
-    [/^(.*) 최신 · 캐시$/, (_, file) => i18n.getLanguage() === 'ko' ? `${file} 최신 · 캐시` : `${file} current · cached`],
-    [/^(.*) 최신 · ([0-9.]+)초$/, (_, file, seconds) => i18n.getLanguage() === 'ko' ? `${file} 최신 · ${seconds}초` : `${file} current · ${seconds}s`],
-    [/^(.*) 컴파일 오류$/, (_, file) => i18n.getLanguage() === 'ko' ? `${file} 컴파일 오류` : `${file} compile error`],
-    [/^(.*) 오류 · 이전 PDF$/, (_, file) => i18n.getLanguage() === 'ko' ? `${file} 오류 · 이전 PDF` : `${file} error · previous PDF`],
     [/^(\d+)개 검사 · 오류 (\d+) · 확인 필요 (\d+)$/, (_, total, errors, warnings) => i18n.getLanguage() === 'ko' ? `${total}개 검사 · 오류 ${errors} · 확인 필요 ${warnings}` : `${total} checks · ${errors} errors · ${warnings} warnings`],
     [/^최근 백업 (.+)$/, (_, date) => i18n.getLanguage() === 'ko' ? `최근 백업 ${date}` : `Latest backup ${date}`],
     [/^(\d+)개 항목을 (.*)에 추가했습니다\.$/, (_, count, file) => i18n.getLanguage() === 'ko' ? `${count}개 항목을 ${file}에 추가했습니다.` : `Added ${count} entries to ${file}.`]
@@ -134,5 +145,5 @@
   const observer = new MutationObserver(records => { for (const record of records) { if (record.type === 'characterData') translateTextNode(record.target); else if (record.type === 'attributes') translateElement(record.target); else for (const node of record.addedNodes) localize(node) } })
   function start() { installLanguageControl(); localize(document.body); observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: attributes }) }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start()
-  window.WorkspaceI18n = Object.freeze({ localize, translate })
+  window.WorkspaceI18n = Object.freeze({ localize, t: i18n.t, translate })
 })()
