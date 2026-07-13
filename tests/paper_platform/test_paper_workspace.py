@@ -168,10 +168,13 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "project-page-count" in hub
     assert "page_count" in hub
     assert "paper-workspace:last-active:" in app
-    assert "align-items:stretch" in css
-    assert ".project-card{height:100%" in css
+    assert "display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch" in css
+    assert ".project-card{width:100%;min-height:0;max-width:340px;flex:0 1 340px" in css
     assert ".project-meta{margin-top:auto" in css
-    assert "grid-template-columns:repeat(auto-fill" in css
+    assert "min-height:3.6em" in css
+    assert "-webkit-line-clamp:3" in css
+    assert ".project-card h3{min-height:0;font-size:16px}" in css
+    assert ".hub-intro{align-items:center;padding:20px 24px" in css
     assert "max-width:340px" in css
 
 
