@@ -398,8 +398,9 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert "assistant-intro" in html
     assert ".assistant-intro{display:none}" in html
     assert ".codex-request-form{padding:0;border:0" in html
-    assert ".suggestion.codex-result{border:0;border-left:2px" in html
+    assert ".suggestion.codex-result{margin-top:14px;padding:0;border:1px solid #e4e7ec;border-left:1px" in html
     assert ".suggestion.codex-loading{border-left:0}" in html
+    assert ".codex-followup-row{display:grid;grid-template-columns:minmax(0,1fr)" in html
     assert "#run-submission-checks{display:inline-flex" in html
     assert "#run-submission-checks::before{content:'▶'" in html
     assert "text-only navigation" in html
