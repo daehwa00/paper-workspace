@@ -67,7 +67,9 @@ def test_dynamic_workspace_messages_use_semantic_translation_keys() -> None:
     assert "setText" in engine
     assert "workspace.compile.compiling" in workspace
     assert "workspace.tasks.empty" in workspace
-    assert "PaperI18n.setText($('render-state')" in app
+    assert "setRenderStateCompiling" in app
+    assert "setRenderStateMessage" in app
+    assert "PaperI18n.setText(target,key,variables)" in app
 
 
 def test_workspace_and_hub_use_the_character_favicon() -> None:
@@ -471,6 +473,11 @@ def test_preview_header_keeps_controls_without_redundant_title() -> None:
     assert ".preview-panel .preview-header{position:sticky;top:0" in html
     assert "left:-24px!important" in html
     assert "transform:translateZ(0)" in html
+    assert 'id="download-pdf" class="pdf-control download-pdf"' in html
+    assert 'aria-label="렌더링된 PDF 다운로드" disabled><svg' in html
+    assert '<span>다운로드</span>' not in html
+    assert ".render-state-spinner" in html
+    assert ".render-state-label{position:absolute;width:1px" in html
 
 
 def test_sticky_pdf_toolbar_tracks_current_and_total_pages() -> None:
