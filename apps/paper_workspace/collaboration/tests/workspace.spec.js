@@ -48,6 +48,19 @@ test('server manuscript paints before collaboration bootstrap finishes', async (
   await expect(page.locator('#files .file')).toHaveCount(2)
 })
 
+test('server source change notice can be dismissed without opening the preserved draft', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => {
+    document.getElementById('source-conflict').hidden = false
+  })
+  const close = page.getByRole('button', { name: '서버 원본 변경 안내 닫기' })
+  await expect(close).toBeVisible()
+  await close.click()
+  await expect(page.locator('#source-conflict')).toBeHidden()
+  await expect(page.locator('#active-file')).toHaveText('paper/main.tex')
+})
+
 test('malformed browser state cannot block the server manuscript', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('paper-workspace:default', JSON.stringify({
@@ -64,6 +77,44 @@ test('malformed browser state cannot block the server manuscript', async ({ page
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
   await expect(page.locator('#files .file')).toHaveCount(2)
   await expect(page.locator('#project-title')).not.toHaveValue('Untitled Paper')
+})
+
+test('quota fallback fingerprints server snapshots and retains only recent local drafts', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(() => {
+    const source = '\\documentclass{article}\\begin{document}draft\\end{document}'
+    const files = { 'paper/main.tex': source }
+    for (let index = 0; index < 7; index += 1) files[`paper/drafts/browser-${index}.tex`] = `${source}% ${'x'.repeat(120_000)}${index}`
+    localStorage.setItem('paper-workspace:default', JSON.stringify({
+      fileTreeVersion: 1,
+      files,
+      folders: ['paper', 'paper/drafts'],
+      current: 'paper/main.tex',
+      projectVersion: 'older-version',
+      serverMainSnapshot: source,
+      serverSourceSnapshots: { 'paper/references.bib': '@article{large,' + 'x'.repeat(120_000) + '}' }
+    }))
+    const originalSetItem = Storage.prototype.setItem
+    let rejectedProjectWrite = false
+    Storage.prototype.setItem = function (key, value) {
+      if (!rejectedProjectWrite && String(key).startsWith('paper-workspace:')) {
+        rejectedProjectWrite = true
+        window.__quotaFallbackTriggered = true
+        throw new DOMException('Simulated quota exhaustion', 'QuotaExceededError')
+      }
+      return originalSetItem.call(this, key, value)
+    }
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => {
+    const stored = JSON.parse(localStorage.getItem('paper-workspace:default') || '{}')
+    return window.__quotaFallbackTriggered && stored.serverMainSnapshot?.startsWith('fp1:')
+  })
+  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('paper-workspace:default')))
+  expect(persisted.serverMainSnapshot).toMatch(/^fp1:/)
+  expect(persisted.serverSourceSnapshots['paper/references.bib']).toMatch(/^fp1:/)
+  expect(Object.keys(persisted.files).filter(path => path.startsWith('paper/drafts/')).length).toBeLessThanOrEqual(3)
+  expect(persisted.files['paper/main.tex']).toContain('\\documentclass')
 })
 
 test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {

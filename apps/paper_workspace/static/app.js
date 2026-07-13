@@ -194,8 +194,12 @@ window.addEventListener('storage',event=>{if(event.key==='collab-name'||event.ke
 window.addEventListener('focus',syncLocalProfile);
 $('collab-name').onclick=()=>{$('name-input').value=actor.name;const selected=document.querySelector(`input[name="profile-color"][value="${actor.color}"]`);if(selected)selected.checked=true;$('name-dialog').showModal();};$('name-dialog').addEventListener('close',()=>{if($('name-dialog').returnValue!=='confirm')return;const name=$('name-input').value.trim();const color=document.querySelector('input[name="profile-color"]:checked')?.value;if(!name)return;actor.name=name.slice(0,32);if(collaboratorPalette.includes(color))actor.color=color;localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-name-user-set','1');localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=collaboratorInitial(actor.name);$('collab-name').style.background=actor.color;$('name-toast').hidden=true;collabSession.updateActor(actor);});
 $('open-name-settings').onclick=()=>{$('name-toast').hidden=true;$('collab-name').click();};
-function persistedState(){return {...state,assets:{}};}
-const save = () => { syncCurrentFileToShared();try{localStorage.setItem(projectStorageKey, JSON.stringify(persistedState()));$('save-state').textContent=collabReady?'저장됨 · 공동 편집 동기화':'로컬 저장됨 · 동기화 대기';return true;}catch{try{localStorage.setItem(projectStorageKey,JSON.stringify({...state,assets:{}}));$('save-state').textContent='로컬 저장됨 · 큰 자료 제외';return true;}catch{$('save-state').textContent='저장 공간 부족';return false;}} };
+function sourceFingerprint(value){let first=2166136261,second=2246822507;const source=String(value??'');for(let index=0;index<source.length;index+=1){const code=source.charCodeAt(index);first=Math.imul(first^code,16777619);second=Math.imul(second^code,3266489917)}return `fp1:${source.length}:${(first>>>0).toString(16)}:${(second>>>0).toString(16)}`}
+function compactSourceSnapshot(value){if(typeof value!=='string'||!value)return'';return value.startsWith('fp1:')?value:sourceFingerprint(value)}
+function sourceSnapshotMatches(snapshot,source){return snapshot===source||snapshot===sourceFingerprint(source)}
+function persistedFiles({compactDrafts=false}={}){if(!compactDrafts)return {...state.files};const entries=Object.entries(state.files),drafts=entries.filter(([path])=>path.startsWith('paper/drafts/'));const retainedDrafts=new Set(drafts.slice(-3).map(([path])=>path));if(state.current?.startsWith('paper/drafts/'))retainedDrafts.add(state.current);return Object.fromEntries(entries.filter(([path])=>!path.startsWith('paper/drafts/')||retainedDrafts.has(path)))}
+function persistedState(options={}){return {...state,files:persistedFiles(options),assets:{},serverMainSnapshot:compactSourceSnapshot(state.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(state.serverSourceSnapshots||{}).map(([path,snapshot])=>[path,compactSourceSnapshot(snapshot)]))};}
+const save = () => { syncCurrentFileToShared();try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState()));$('save-state').textContent=collabReady?'저장됨 · 공동 편집 동기화':'로컬 저장됨 · 동기화 대기';return true}catch{try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState({compactDrafts:true})));$('save-state').textContent='로컬 저장됨 · 오래된 초안 제외';return true}catch{$('save-state').textContent='저장 공간 부족';return false}} };
 const backupIntervalMs=10*60*1000;
 let backupInitialized=false;
 let backupBusy=false;
@@ -605,7 +609,7 @@ async function loadProject(){
   const sharedMainValue=collabSession.textFor('paper/main.tex').toString();
   const localMain=sharedMainValue||state.files['paper/main.tex'];
   const projectVersionChanged=state.projectVersion!==projectManifest.version;
-  const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&localMain!==state.serverMainSnapshot)||(!state.serverMainSnapshot&&projectVersionChanged)));
+  const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,localMain))||(!state.serverMainSnapshot&&projectVersionChanged)));
   const serverManagedProjectFiles=new Set(projectManifest.files.filter(item=>item.managed).map(item=>`paper/${item.path}`));
 
   let preservedDraftPath='';
@@ -625,8 +629,8 @@ async function loadProject(){
       if(typeof localMain==='string'&&localMain.trim()&&!looksLikeHtml(localMain)){ensureFolder('paper/drafts');state.files['paper/drafts/pre-analysis-main.tex']||=localMain;}
       state.files['paper/main.tex']=remoteMain;
       state.current='paper/main.tex';
-    }else if(state.serverMainSnapshot&&state.serverMainSnapshot!==remoteMain){
-      if(localMain!==state.serverMainSnapshot){ensureFolder('paper/drafts');preservedDraftPath=`paper/drafts/browser-before-server-sync-${Date.now()}.tex`;state.files[preservedDraftPath]=localMain;}
+    }else if(state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,remoteMain)){
+      if(!sourceSnapshotMatches(state.serverMainSnapshot,localMain)){ensureFolder('paper/drafts');preservedDraftPath=`paper/drafts/browser-before-server-sync-${Date.now()}.tex`;state.files[preservedDraftPath]=localMain;}
       state.files['paper/main.tex']=remoteMain;
       state.current='paper/main.tex';
     }else if(projectVersionChanged&&localMain!==remoteMain){
@@ -637,7 +641,7 @@ async function loadProject(){
       state.current='paper/main.tex';
     }
     state.projectVersion=projectManifest.version;
-    state.serverMainSnapshot=remoteMain;
+    state.serverMainSnapshot=sourceFingerprint(remoteMain);
   }
 
   for(const [name,value] of Object.entries(remoteSources)){
@@ -645,12 +649,12 @@ async function loadProject(){
     if(name==='paper/references.bib'){
       state.files[name]=mergeBibliography(state.files[name],value);
       if(projectVersionChanged&&serverManagedProjectFiles.has(name))replaceSharedText(collabSession.textFor(name),state.files[name]);
-      if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=value;
+      if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=sourceFingerprint(value);
       continue;
     }
     const localValue=state.files[name];
     const previousSnapshot=state.serverSourceSnapshots[name];
-    const serverChanged=typeof previousSnapshot==='string'&&previousSnapshot!==value;
+    const serverChanged=typeof previousSnapshot==='string'&&!sourceSnapshotMatches(previousSnapshot,value);
     const replaceManaged=serverManagedProjectFiles.has(name)&&(projectVersionChanged||serverChanged);
     if(!isProjectSource(name,localValue)||replaceManaged){
       if(isProjectSource(name,localValue)&&localValue!==value){
@@ -661,11 +665,12 @@ async function loadProject(){
       state.files[name]=value;
       if(replaceManaged)replaceSharedText(collabSession.textFor(name),state.files[name]);
     }
-    if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=value;
+    if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=sourceFingerprint(value);
   }
   for(const [path,text] of collabSession.files){if(projectVersionChanged&&serverManagedProjectFiles.has(path))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
   initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);render();listFiles();save();initializeServerBackups();
-  if(preservedDraftPath){const banner=$('source-conflict');banner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();banner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
+  const sourceConflictBanner=$('source-conflict');$('close-source-conflict').onclick=()=>{sourceConflictBanner.hidden=true};
+  if(preservedDraftPath){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
   if(isLatexDocument(state.files['paper/main.tex'])){
     const preview=await previewPromise;
     if(preview&&!localMainDraft&&selectedEntrypoint()===projectManifest.entrypoint){setRenderedPdf(preview.binary);await renderPdfPreviewLazy(preview.binary,preview.synctex);$('render-state').textContent='PDF 미리보기 로드됨';}
