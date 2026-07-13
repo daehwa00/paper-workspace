@@ -408,7 +408,7 @@ async function renderPdfPreviewLazy(binary,synctex){
   schedulePdfPageIndicatorUpdate();
 }
 function pdfFileName(){const title=titleOf(state.files['paper/main.tex']||'').replace(/\\[a-zA-Z]+|[{}]/g,' ').replace(/[^\p{L}\p{N}._ -]+/gu,'').trim().replace(/\s+/g,'-').slice(0,80);return `${title||'paper'}.pdf`}
-function pdfWaitMarkup(title='PDF 준비 중',detail='원고를 렌더링하고 있습니다'){return `<div class="pdf-wait" role="status" aria-live="polite"><span class="pdf-spinner" aria-hidden="true"></span><strong>${title}</strong><span>${detail}</span></div>`}
+function pdfWaitMarkup(title='PDF 준비 중',detail='원고를 렌더링하고 있습니다'){return `<div class="pdf-wait" role="status" aria-live="polite"><span class="pdf-spinner" aria-hidden="true"></span><strong>${title}</strong><span class="pdf-wait-detail">${detail}</span></div>`}
 function pdfErrorMarkup(detail='검사 탭에서 오류 위치를 확인하세요'){return `<div class="pdf-error-state" role="alert"><span class="pdf-error-icon" aria-hidden="true">!</span><strong>PDF를 만들지 못했습니다</strong><span>${esc(detail)}</span><button type="button" onclick="document.querySelector('[data-tab=checks]')?.click()">컴파일 오류 확인</button></div>`}
 function render(){resetPdfPageIndicator();$('paper-preview').innerHTML=pdfWaitMarkup('PDF 준비 중','PDF 렌더링을 실행하면 여기에 표시됩니다');$('render-state').textContent='PDF 대기';$('download-pdf').disabled=!renderedPdfUrl;}
 const parentPath=path=>path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';

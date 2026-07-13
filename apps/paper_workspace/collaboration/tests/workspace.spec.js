@@ -98,6 +98,18 @@ test('initial compile failure replaces the waiting spinner with an actionable er
   await expect(page.locator('#render-state')).not.toContainText('이전 PDF')
 })
 
+test('PDF loading uses a minimal status indicator', async ({ page }) => {
+  await page.route('**/api/compile', () => new Promise(() => {}))
+  await page.goto('/')
+  const spinner = page.locator('#paper-preview .pdf-spinner')
+  await expect(spinner).toBeVisible()
+  await expect(spinner).toHaveCSS('width', '22px')
+  await expect(spinner).toHaveCSS('height', '22px')
+  await expect(spinner).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('#paper-preview .pdf-wait strong')).toHaveText('PDF 준비 중')
+  await expect(page.locator('#paper-preview .pdf-wait-detail')).toHaveCSS('width', '1px')
+})
+
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
