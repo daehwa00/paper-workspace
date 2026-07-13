@@ -56,3 +56,23 @@ test('a supported browser locale is used when no explicit preference exists', as
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe(null)
   await context.close()
 })
+
+test('project cards share a row height despite different title and description lengths', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 })
+  await page.route('**/projects/index.json', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ projects: [
+      { slug: 'short', display_name: 'Short Paper', description: 'Short description.', page_count: 1 },
+      { slug: 'long-title', display_name: 'A Much Longer Research Paper Title That Wraps Across Several Lines', description: 'Short description.', page_count: 12 },
+      { slug: 'long-copy', display_name: 'Medium Paper', description: 'A longer project description that occupies both available lines in the compact gallery card.', page_count: 28 }
+    ] })
+  }))
+
+  await page.goto('/hub.html?lang=en')
+  await expect(page.locator('.project-card')).toHaveCount(3)
+  const boxes = await page.locator('.project-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect()))
+  const metaBoxes = await page.locator('.project-meta').evaluateAll(items => items.map(item => item.getBoundingClientRect()))
+  expect(new Set(boxes.map(box => Math.round(box.height))).size).toBe(1)
+  expect(new Set(boxes.map(box => Math.round(box.bottom))).size).toBe(1)
+  expect(new Set(metaBoxes.map(box => Math.round(box.bottom))).size).toBe(1)
+})

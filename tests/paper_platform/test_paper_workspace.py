@@ -168,6 +168,9 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "project-page-count" in hub
     assert "page_count" in hub
     assert "paper-workspace:last-active:" in app
+    assert "align-items:stretch" in css
+    assert ".project-card{height:100%" in css
+    assert ".project-meta{margin-top:auto" in css
     assert "grid-template-columns:repeat(auto-fill" in css
     assert "max-width:340px" in css
 
