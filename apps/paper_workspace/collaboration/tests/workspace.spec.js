@@ -537,6 +537,7 @@ test('project tree starts archival drafts collapsed and filters by full path', a
   await page.locator('#file-search').fill('older-version')
   await expect(drafts).toHaveAttribute('aria-expanded', 'true')
   await expect(page.locator('[data-file-path="paper/drafts/older-version.tex"]')).toBeVisible()
+  await expect(page.locator('[data-file-path="paper/main.tex"]')).toBeHidden()
   await page.locator('#clear-file-search').click()
   await expect(drafts).toHaveAttribute('aria-expanded', 'false')
 })
