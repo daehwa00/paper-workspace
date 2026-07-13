@@ -99,6 +99,24 @@ if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true;
 function collaboratorPosition(person){return Array.isArray(person.selection)?Math.max(0,Number(person.selection[1]??person.selection[0])||0):0}
 function goToCollaborator(person){const file=person.active_file;if(!file||state.files[file]===undefined)return;state.files[state.current]=editorValue();state.current=file;setEditor();listFiles();const position=Math.min(collaboratorPosition(person),editorValue().length);focusEditor();setEditorSelection(position,position,{scroll:true});sendCursor();renderRemoteCursors()}
 function remoteCaretCoordinates(position){const coordinates=richEditor?.coordsAt(position),panel=$('editor-panel').getBoundingClientRect();if(!coordinates)return {left:0,top:-100,lineHeight:23};return {left:coordinates.left-panel.left,top:coordinates.top-panel.top-48,lineHeight:coordinates.bottom-coordinates.top||23}}
+function syncHighlightCoordinates(position){
+  const panel=$('editor-panel').getBoundingClientRect();
+  const activeLine=richEditor?.dom?.querySelector('.cm-activeLine');
+  if(activeLine){
+    const line=activeLine.getBoundingClientRect();
+    if(line.height>0)return {top:line.top-panel.top,height:line.height};
+  }
+  const coordinates=remoteCaretCoordinates(position),editor=$('editor');
+  return {top:editor.offsetTop+coordinates.top,height:coordinates.lineHeight};
+}
+function showSourceSyncHighlight(position){
+  const marker=$('sync-highlight'),coordinates=syncHighlightCoordinates(position);
+  marker.style.top=`${coordinates.top}px`;
+  marker.style.setProperty('--sync-highlight-height',`${coordinates.height}px`);
+  marker.hidden=false;
+  clearTimeout(window.syncHighlightTimer);
+  window.syncHighlightTimer=setTimeout(()=>{marker.hidden=true},650);
+}
 function renderRemoteCursors(){const container=$('remote-cursors');container.replaceChildren();const height=$('editor-view').clientHeight;for(const person of collaborators.values()){if(person.id===actor.id||person.active_file!==state.current||!Array.isArray(person.selection))continue;const coordinates=remoteCaretCoordinates(Math.min(collaboratorPosition(person),$('editor').value.length));if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;const caret=document.createElement('span');caret.className='remote-caret';caret.style.left=`${coordinates.left}px`;caret.style.top=`${coordinates.top}px`;caret.style.height=`${coordinates.lineHeight}px`;caret.style.setProperty('--cursor-color',person.color||collaboratorColor(person.id));const label=document.createElement('span');label.className='remote-cursor-label';label.textContent=person.name;caret.append(label);container.append(caret)}}
 function updatePresence(){const container=$('collaborator-avatars');container.replaceChildren();const people=[...collaborators.values()].filter(person=>person.id!==actor.id);for(const person of people.slice(0,4)){const avatar=document.createElement('button');const location=person.active_file?`${person.active_file}${person.line?`:${person.line}`:''}`:'접속 중';avatar.type='button';avatar.className='collaborator-avatar';avatar.textContent=collaboratorInitial(person.name);avatar.style.setProperty('--avatar-color',person.color||collaboratorColor(person.id));avatar.dataset.tooltip=`${person.name} · ${location}`;avatar.setAttribute('aria-label',`${person.name}, ${location}${person.active_file?' — 클릭하여 이동':''}`);avatar.disabled=!person.active_file;avatar.onclick=()=>goToCollaborator(person);container.append(avatar)}if(people.length>4){const overflow=document.createElement('button');overflow.type='button';overflow.className='collaborator-avatar collaborator-overflow';overflow.textContent=`+${people.length-4}`;overflow.dataset.tooltip=people.slice(4).map(person=>person.name).join(' · ');overflow.setAttribute('aria-label',`추가 공동 편집자 ${people.length-4}명: ${people.slice(4).map(person=>person.name).join(', ')}`);container.append(overflow)}renderRemoteCursors()}
 const collaborationRoom=`paper-workspace:${location.host}:${projectSlug}`;
@@ -321,14 +339,7 @@ async function syncPdfToSource(page,x,y){
     const initialCoordinates=remoteCaretCoordinates(start);
     const targetTop=Math.max(70,editor.clientHeight*.32);
     editor.scrollTop=constrain(editor.scrollTop+initialCoordinates.top-targetTop,0,Math.max(0,editor.scrollHeight-editor.clientHeight));
-    requestAnimationFrame(()=>{
-      const coordinates=remoteCaretCoordinates(start),marker=$('sync-highlight');
-      marker.style.top=`${editor.offsetTop+coordinates.top}px`;
-      marker.style.height=`${coordinates.lineHeight}px`;
-      marker.hidden=false;
-      clearTimeout(window.syncHighlightTimer);
-      window.syncHighlightTimer=setTimeout(()=>{marker.hidden=true},650);
-    });
+    requestAnimationFrame(()=>showSourceSyncHighlight(start));
     sendCursor();
   }catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>PDF 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
 }

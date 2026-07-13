@@ -186,6 +186,25 @@ test('CodeMirror provides a professional LaTeX editing surface', async ({ page }
   await expect.poll(() => page.evaluate(() => document.getElementById('editor').value)).toContain('% codemirror-e2e')
 })
 
+test('PDF source highlight matches the full height of a wrapped source line', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => {
+    const wrapped = 'A deliberately long source line that wraps across several visual rows so the SyncTeX source marker must use the rendered logical line height rather than a fixed caret height. '.repeat(5)
+    window.setEditorValue(wrapped)
+    window.setEditorSelection(0, wrapped.length, { scroll: true })
+  })
+  await page.waitForTimeout(50)
+  await page.evaluate(() => window.showSourceSyncHighlight(0))
+
+  const activeLine = await page.locator('#editor-view .cm-activeLine').boundingBox()
+  const marker = await page.locator('#sync-highlight').boundingBox()
+  expect(activeLine?.height).toBeGreaterThan(40)
+  expect(Math.abs((activeLine?.y || 0) - (marker?.y || 0))).toBeLessThan(1.5)
+  expect(Math.abs((activeLine?.height || 0) - (marker?.height || 0))).toBeLessThan(1.5)
+})
+
 test('workspace health center exposes collaboration, save, PDF, and backup state', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))

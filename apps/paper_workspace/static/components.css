@@ -60,3 +60,6 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 /* CodeMirror is the visible LaTeX surface. The hidden textarea remains a
    compatibility bridge for persistence and authoring commands. */
 .editor-panel>#editor{display:none!important}.editor-view{display:block;flex:1;min-height:0;overflow:hidden;--editor-font-size:14px}.editor-view .cm-editor{font-size:var(--editor-font-size)}.editor-view .cm-tooltip{z-index:90}.editor-panel.asset-mode .editor-view{display:none}.editor-panel.legacy-editor>#editor{display:block!important;flex:1}.editor-panel.legacy-editor>.editor-view{display:none}
+
+/* SyncTeX can target a logical source line that wraps over several visual rows. */
+.sync-highlight{height:var(--sync-highlight-height,23px)!important}

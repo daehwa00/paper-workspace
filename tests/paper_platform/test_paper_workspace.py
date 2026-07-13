@@ -91,9 +91,10 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "syncPdfToSource" in app
     assert 'id="sync-highlight"' in html
     assert "initialCoordinates=remoteCaretCoordinates(start)" in app
-    assert "coordinates=remoteCaretCoordinates(start)" in app
+    assert "syncHighlightCoordinates" in app
+    assert "activeLine.getBoundingClientRect()" in app
     assert "editor.scrollHeight-editor.clientHeight" in app
-    assert "marker.style.height=`${coordinates.lineHeight}px`" in app
+    assert "--sync-highlight-height" in app
     assert ".pdf-page canvas:hover,.pdf-page canvas:focus{outline:none!important}" in html
     assert "sync-soft-focus" in html
 
@@ -247,8 +248,13 @@ def test_initial_compile_failure_replaces_pdf_spinner_with_error_state() -> None
 
 def test_synctex_supports_source_to_pdf_navigation() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     assert "syncSourceToPdf" in app
+    assert "syncHighlightCoordinates" in app
+    assert "activeLine.getBoundingClientRect()" in app
+    assert "requestAnimationFrame(()=>showSourceSyncHighlight(start))" in app
+    assert "height:var(--sync-highlight-height,23px)!important" in components
     assert "'/api/synctex-view'" in app
     assert "event.metaKey||event.ctrlKey" in app
     assert 'self.path == "/synctex-view"' in compiler
