@@ -108,3 +108,21 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 .codex-followup-status{margin-top:8px}
 .codex-result-actions{padding:10px 12px;border-top:1px solid #eaecf0;background:#fcfcfd}
 .codex-result-actions #apply-codex{min-height:38px;border-radius:7px}
+
+/* Active Codex conversations keep prior turns visible without chat-app chrome. */
+.codex-request-summary{margin-bottom:10px;padding-bottom:10px}
+.codex-request-text[hidden]{display:none}
+.codex-sent-badge::before{content:'✦';background:#eff4ff;color:#2457d6}
+.codex-new-request{min-height:28px;padding:5px 8px;border:1px solid #dbe7ff;border-radius:6px;background:#f8faff;color:#1d4ed8}
+.codex-new-request:hover{border-color:#b2ccff;background:#eff4ff}
+.codex-thread{display:grid;gap:10px;margin:0 0 10px}
+.codex-thread[hidden]{display:none}
+.codex-thread-turn{min-width:0;color:#344054;font-size:11px;line-height:1.5}
+.codex-thread-turn-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.codex-thread-turn-head strong{color:#344054;font-size:10px}
+.codex-thread-turn-head small{overflow:hidden;color:#98a2b3;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.codex-thread-turn-user{margin-left:24px;padding:9px 10px;border-radius:8px;background:#f2f4f7}
+.codex-thread-turn-assistant{padding:2px 0 10px;border-bottom:1px solid #eaecf0}
+.codex-thread-request,.codex-thread-summary{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.codex-thread-proposal{margin:0;padding:0;color:#1d2939}
+.codex-thread-summary{margin-top:7px;color:#667085}

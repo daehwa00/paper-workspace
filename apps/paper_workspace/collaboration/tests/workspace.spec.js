@@ -541,8 +541,12 @@ test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a
   await expect(page.locator('.suggestion.codex-loading')).toBeVisible()
   await expect(page.locator('.suggestion.codex-loading')).toHaveCSS('border-left-style', 'none')
   await expect(page.locator('#codex-request-summary')).toBeVisible()
-  await expect(page.locator('#codex-request-text')).toHaveText('첫 번째 요청\n추가 조건')
+  await expect(page.locator('.codex-thread-turn-user')).toContainText('첫 번째 요청\n추가 조건')
   await page.locator('#codex-new-request').click()
+  await expect(page.locator('#codex-request-form')).toBeVisible()
+  await expect(page.locator('#codex-thread')).toBeHidden()
+  await page.waitForTimeout(550)
+  await expect(page.locator('.codex-result')).toHaveCount(0)
   const placeholderWrapping = await prompt.evaluate(element => {
     const style = getComputedStyle(element, '::placeholder')
     return {
@@ -586,6 +590,48 @@ test('Codex result separates review content from follow-up actions without a blu
   const buttonBox = await page.locator('#codex-followup-send').boundingBox()
   expect(buttonBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height + 7)
   await expect.poll(() => result.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+})
+
+test('Codex conversation keeps prior turns and starts a clean conversation without reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  const requests = []
+  await page.route('**/api/codex', async route => {
+    const payload = route.request().postDataJSON()
+    requests.push(payload)
+    const number = requests.length
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        replacement: `Revision ${number}`,
+        summary: `Summary ${number}`
+      })
+    })
+  })
+  await page.goto('/?lang=en')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
+  await page.locator('#instruction').fill('Initial request')
+  await page.locator('#instruction').press('Enter')
+  await expect(page.locator('.codex-result')).toContainText('Revision 1')
+  await page.locator('#codex-followup-input').fill('Follow-up request')
+  await page.locator('#codex-followup-send').click()
+  await expect(page.locator('.codex-result')).toContainText('Revision 2')
+  await expect(page.locator('.codex-thread-turn')).toHaveCount(3)
+  await expect(page.locator('#codex-thread')).toContainText('Initial request')
+  await expect(page.locator('#codex-thread')).toContainText('Revision 1')
+  await expect(page.locator('#codex-thread')).toContainText('Follow-up request')
+  expect(requests[1].history).toHaveLength(2)
+  await expect(page.locator('#codex-new-request')).toHaveText('New conversation')
+  await page.locator('#codex-new-request').click()
+  await expect(page.locator('#codex-request-form')).toBeVisible()
+  await expect(page.locator('#codex-thread')).toBeHidden()
+  await expect(page.locator('#suggestion')).toBeEmpty()
+  await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
+  await page.locator('#instruction').fill('Fresh conversation')
+  await page.locator('#instruction').press('Enter')
+  await expect(page.locator('.codex-result')).toContainText('Revision 3')
+  expect(requests[2].history).toHaveLength(0)
 })
 
 test('Yjs merges text and awareness between two browsers', async ({ browser }) => {

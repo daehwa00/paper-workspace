@@ -422,6 +422,10 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert "installCodexProfileSettings" in app
     assert "profile:codexProfile" in app
     assert "codexConversation" in app
+    assert "codexVisibleTurns" in app
+    assert "codexConversationEpoch" in app
+    assert "renderCodexThread" in app
+    assert "ensureCodexThread" in app
     assert "renderCodexResult" in app
     assert "sendCodexFollowup" in app
     assert 'id=\"codex-followup-input\"' in app
@@ -430,6 +434,7 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
         assert f'id="{identifier}"' in html
     assert "showSentCodexRequest" in app
     assert "startNewCodexRequest" in app
+    assert "epoch!==codexConversationEpoch" in app
     assert "codex-change-details" in html
     assert "codex-result-actions" in html
     assert "원문을 바꾸기 전 검토하세요" in app
