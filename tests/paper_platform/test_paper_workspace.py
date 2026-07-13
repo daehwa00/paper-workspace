@@ -407,6 +407,16 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert "$('selection-comment').onclick=prepareInlineComment" in app
 
 
+def test_codex_prompt_wraps_and_enter_submits() -> None:
+    html = workspace_markup()
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    assert 'id="instruction" wrap="soft"' in html
+    assert "event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229" in app
+    assert "if(!$('ask').disabled)$('ask').click()" in app
+    assert "#instruction{overflow-x:hidden" in css
+
+
 def test_preview_header_keeps_controls_without_redundant_title() -> None:
     html = workspace_markup()
     assert '<div class="panel-header preview-header"><span class="render-controls">' in html

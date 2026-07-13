@@ -325,6 +325,30 @@ test('keyboard selection can open inline comment composer', async ({ page }) => 
   await expect(page.locator('#selection-comment-prompt')).toBeFocused()
 })
 
+test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a line', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.route('**/api/codex', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ replacement: 'Revised sentence.', summary: 'Revised for clarity.' })
+  }))
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
+  const prompt = page.locator('#instruction')
+  await prompt.fill('첫 번째 요청')
+  await prompt.press('Shift+Enter')
+  await prompt.type('추가 조건')
+  await expect(prompt).toHaveValue('첫 번째 요청\n추가 조건')
+  await prompt.press('Enter')
+  await expect(page.locator('#codex-request-summary')).toBeVisible()
+  await expect(page.locator('#codex-request-text')).toHaveText('첫 번째 요청\n추가 조건')
+  await page.locator('#codex-new-request').click()
+  await prompt.fill('unbroken-'.repeat(80))
+  await expect(prompt).toHaveCSS('overflow-x', 'hidden')
+  await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+})
+
 test('Yjs merges text and awareness between two browsers', async ({ browser }) => {
   const first = await browser.newPage()
   const second = await browser.newPage()

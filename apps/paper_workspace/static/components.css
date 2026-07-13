@@ -63,3 +63,6 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 
 /* SyncTeX can target a logical source line that wraps over several visual rows. */
 .sync-highlight{height:var(--sync-highlight-height,23px)!important}
+
+/* Codex requests wrap within the assistant pane; vertical space is the only useful overflow. */
+#instruction{overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
