@@ -16,6 +16,7 @@ RUN set -eu; \
     replace_hash index.html __THEME_JS_HASH__ theme.js; \
     replace_hash index.html __I18N_JS_HASH__ i18n.js; \
     replace_hash index.html __WORKSPACE_I18N_JS_HASH__ workspace-i18n.js; \
+    replace_hash index.html __WORKSPACE_CORE_JS_HASH__ workspace-core.js; \
     replace_hash index.html __PAPER_COLLAB_HASH__ vendor/paper-collab.js; \
     replace_hash index.html __PAPER_EDITOR_HASH__ vendor/paper-editor.js; \
     replace_hash index.html __APP_JS_HASH__ app.js; \

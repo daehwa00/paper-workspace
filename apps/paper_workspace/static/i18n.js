@@ -47,9 +47,21 @@
     return interpolate(value, variables)
   }
 
+  function variablesFor(element) {
+    try { return JSON.parse(element.dataset.i18nVariables || '{}') } catch (_) { return {} }
+  }
+
+  function setText(element, key, variables = {}) {
+    if (!element) return
+    element.dataset.i18n = key
+    if (Object.keys(variables).length) element.dataset.i18nVariables = JSON.stringify(variables)
+    else delete element.dataset.i18nVariables
+    element.textContent = t(key, variables)
+  }
+
   function apply(root = document) {
     root.querySelectorAll?.('[data-i18n]').forEach(element => {
-      element.textContent = t(element.dataset.i18n)
+      element.textContent = t(element.dataset.i18n, variablesFor(element))
     })
     root.querySelectorAll?.('[data-i18n-placeholder]').forEach(element => {
       element.setAttribute('placeholder', t(element.dataset.i18nPlaceholder))
@@ -98,6 +110,6 @@
   document.documentElement.dataset.language = language
   window.PaperI18n = Object.freeze({
     apply, formatDate, getLanguage: () => language, normalize, onChange, register,
-    setLanguage, storageKey, supported: [...supported], t
+    setLanguage, setText, storageKey, supported: [...supported], t
   })
 })()

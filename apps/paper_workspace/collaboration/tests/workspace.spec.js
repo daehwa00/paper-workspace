@@ -28,6 +28,20 @@ test('an explicit language choice persists across reloads', async ({ page }) => 
   await expect(page.getByRole('tab', { name: 'Revise' })).toBeVisible()
 })
 
+test('dynamic workspace status and empty states follow the selected language', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/?lang=en')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.waitForFunction(() => /compile error/.test(document.getElementById('render-state')?.textContent || ''))
+  await expect(page.locator('#render-state')).toContainText('compile error')
+  await page.getByRole('tab', { name: 'Tasks' }).click()
+  await expect(page.locator('#task-board')).toHaveText('No tasks yet.')
+
+  await page.locator('#workspace-language').selectOption('ko')
+  await expect(page.getByRole('tab', { name: '작업' })).toBeVisible()
+  await expect(page.locator('#task-board')).toHaveText('등록된 작업이 없습니다.')
+})
+
 test('server manuscript paints before collaboration bootstrap finishes', async ({ page }) => {
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
@@ -50,6 +64,37 @@ test('malformed browser state cannot block the server manuscript', async ({ page
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
   await expect(page.locator('#files .file')).toHaveCount(2)
   await expect(page.locator('#project-title')).not.toHaveValue('Untitled Paper')
+})
+
+test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {
+  await page.goto('/')
+  const normalized = await page.evaluate(() => {
+    const core = window.PaperWorkspaceCore
+    const state = core.normalizeState({
+      files: { 'main.tex': 'legacy source' },
+      assets: [],
+      comments: {},
+      tasks: [null, { id: 'task-1' }],
+      folders: null,
+      current: 'main.tex'
+    })
+    return {
+      current: state.current,
+      files: state.files,
+      folders: state.folders,
+      taskCount: state.tasks.length,
+      extension: core.extensionOf('paper/FIGURE.PDF'),
+      parent: core.parentPath('paper/sections/intro.tex')
+    }
+  })
+  expect(normalized).toEqual({
+    current: 'paper/main.tex',
+    files: { 'paper/main.tex': 'legacy source' },
+    folders: ['paper'],
+    taskCount: 1,
+    extension: 'pdf',
+    parent: 'paper/sections'
+  })
 })
 
 test('cached pre-mapFor collaboration bundle remains compatible', async ({ page }) => {

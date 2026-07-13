@@ -35,6 +35,7 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert 'value="en"' in html and 'value="ko"' in html
     assert "/i18n.js?v=__I18N_JS_HASH__" in html
     assert "/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__" in html
+    assert "/workspace-core.js?v=__WORKSPACE_CORE_JS_HASH__" in html
     assert "?lang=en|ko" not in engine
     assert "queryLanguage() || storedLanguage() || browserLanguage() || 'en'" in engine
     assert "paper-workspace-language" in engine
@@ -42,6 +43,29 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert "Submission readiness" in workspace
     assert "__I18N_JS_HASH__" in dockerfile
     assert "__WORKSPACE_I18N_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_CORE_JS_HASH__" in dockerfile
+
+
+def test_workspace_state_and_path_helpers_have_a_testable_module_boundary() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
+
+    assert "window.PaperWorkspaceCore" in core
+    assert "normalizeState" in core
+    assert "const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson}" in app
+    assert "function storedJson" not in app
+    assert "const parentPath=" not in app
+
+
+def test_dynamic_workspace_messages_use_semantic_translation_keys() -> None:
+    engine = (ROOT / "apps/paper_workspace/static/i18n.js").read_text(encoding="utf-8")
+    workspace = (ROOT / "apps/paper_workspace/static/workspace-i18n.js").read_text(encoding="utf-8")
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    assert "setText" in engine
+    assert "workspace.compile.compiling" in workspace
+    assert "workspace.tasks.empty" in workspace
+    assert "PaperI18n.setText($('render-state')" in app
 
 
 def test_workspace_and_hub_use_the_character_favicon() -> None:
