@@ -323,7 +323,7 @@ def test_collaborative_ux_exposes_source_pdf_and_compact_layout_states() -> None
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
 
-    for identifier in ("collab-label", "focus-modes", "source-conflict", "pdf-freshness", "app-toasts", "action-dialog"):
+    for identifier in ("collab-label", "focus-modes", "source-conflict", "close-source-conflict", "pdf-freshness", "app-toasts", "action-dialog"):
         assert f'id="{identifier}"' in html
     assert "PaperCollab.createSession" in app
     assert "syncCurrentFileToShared" in app
@@ -736,6 +736,8 @@ def test_server_paper_sources_are_live_mounted_and_versioned() -> None:
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     assert "../../paper/" not in compose
     assert "serverMainSnapshot" in app
+    assert "sourceFingerprint" in app
+    assert "persistedState({compactDrafts:true})" in app
     assert "browser-before-server-sync" in app
 
 
