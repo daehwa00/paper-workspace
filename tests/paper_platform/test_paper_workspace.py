@@ -478,6 +478,8 @@ def test_preview_header_keeps_controls_without_redundant_title() -> None:
     assert '<span>다운로드</span>' not in html
     assert ".render-state-spinner" in html
     assert ".render-state-label{position:absolute;width:1px" in html
+    assert ".pdf-control{width:27px;height:27px;padding:5px;display:grid;place-items:center;border:1px solid transparent" in html
+    assert ".zoom-controls{display:inline-flex;align-items:center;height:27px;border:0" in html
 
 
 def test_sticky_pdf_toolbar_tracks_current_and_total_pages() -> None:

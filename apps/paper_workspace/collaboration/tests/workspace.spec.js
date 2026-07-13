@@ -240,6 +240,12 @@ test('PDF loading and compiling use minimal status indicators', async ({ page })
   await expect(download).toHaveAttribute('aria-label', '렌더링된 PDF 다운로드')
   await expect(download).toHaveText('')
   await expect(download).toHaveCSS('width', '36px')
+  await expect(download).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(download).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('#refresh-pdf')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.preview-header .zoom-controls')).toHaveCSS('border-top-width', '0px')
+  await expect(page.locator('.preview-header .zoom-controls')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('#pdf-zoom-in')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 })
 
 test('PDF viewport restoration keeps the visible page and position after rerender', async ({ page }) => {
