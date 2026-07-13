@@ -565,7 +565,7 @@ test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a
   await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 })
 
-test('Codex result separates review content from follow-up actions without a blue rail', async ({ page }) => {
+test('Codex result stays flat while controls retain clear boundaries', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.route('**/api/codex', route => route.fulfill({
     status: 200,
@@ -582,9 +582,13 @@ test('Codex result separates review content from follow-up actions without a blu
   await page.locator('#instruction').press('Enter')
   const result = page.locator('.suggestion.codex-result')
   await expect(result).toBeVisible()
-  await expect(result).toHaveCSS('border-left-color', 'rgb(228, 231, 236)')
-  await expect(result).toHaveCSS('border-left-width', '1px')
-  await expect(result).toHaveCSS('border-radius', '10px')
+  await expect(result).toHaveCSS('border-left-width', '0px')
+  await expect(result).toHaveCSS('border-radius', '0px')
+  await expect(result).toHaveCSS('box-shadow', 'none')
+  await expect(result).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.codex-change-details')).toHaveCSS('border-radius', '0px')
+  await expect(page.locator('.codex-result .codex-summary')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.codex-followup')).toHaveCSS('border-left-width', '0px')
   await expect(page.locator('.codex-followup-row')).toHaveCSS('display', 'grid')
   const inputBox = await page.locator('#codex-followup-input').boundingBox()
   const buttonBox = await page.locator('#codex-followup-send').boundingBox()
