@@ -75,6 +75,24 @@ test('server manuscript paints before collaboration bootstrap finishes', async (
   await expect(page.locator('#files .file')).toHaveCount(2)
 })
 
+test('local manuscript edits record the current collaborator as project activity', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(() => {
+    localStorage.setItem('collab-name', 'KDH')
+    localStorage.setItem('collab-name-user-set', '1')
+  })
+  let activity = null
+  await page.route('**/api/backups/projects/*/activity', async route => {
+    activity = route.request().postDataJSON()
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ activity: { ...activity, modified_at: new Date().toISOString() } }) })
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.locator('.cm-content').click()
+  await page.keyboard.type('% activity')
+  await expect.poll(() => activity, { timeout: 4000 }).toMatchObject({ actor: 'KDH', reason: 'edit' })
+})
+
 test('server source change notice can be dismissed without opening the preserved draft', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))

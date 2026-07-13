@@ -33,18 +33,51 @@ test('language query overrides storage and localized project metadata follows it
       page_count: 13
     }] })
   }))
+  await page.route('**/api/backups/activity', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ projects: [{
+      project_id: 'localized-paper',
+      actor: 'KDH',
+      modified_at: '2026-07-13T04:25:00.000Z'
+    }] })
+  }))
 
   await page.goto('/hub.html?lang=en')
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
   await expect(page.getByRole('heading', { name: 'Localized Paper' })).toBeVisible()
   await expect(page.locator('.project-card-copy')).toContainText('An English description.')
   await expect(page.locator('.project-page-count')).toHaveText('13p')
+  await expect(page.locator('.project-activity')).toContainText('Last edited by KDH')
   await expect(page.locator('.project-page-count')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe('en')
 
   await page.locator('#hub-language').selectOption('ko')
   await expect(page.getByRole('heading', { name: '다국어 논문' })).toBeVisible()
   await expect(page.locator('.project-card-copy')).toContainText('한국어 설명입니다.')
+  await expect(page.locator('.project-activity')).toContainText('KDH 수정')
+})
+
+test('recent activity uses server timestamps and shows the latest editor', async ({ page }) => {
+  await page.route('**/projects/index.json', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ projects: [
+      { slug: 'first', display_name: 'Catalog First', description: 'First.' },
+      { slug: 'second', display_name: 'Catalog Second', description: 'Second.' },
+      { slug: 'third', display_name: 'Catalog Third', description: 'Third.' }
+    ] })
+  }))
+  await page.route('**/api/backups/activity', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ projects: [
+      { project_id: 'first', actor: 'Dae', modified_at: '2026-07-11T01:00:00.000Z' },
+      { project_id: 'second', actor: 'KDH', modified_at: '2026-07-13T01:00:00.000Z' },
+      { project_id: 'third', actor: 'Me', modified_at: '2026-07-12T01:00:00.000Z' }
+    ] })
+  }))
+
+  await page.goto('/hub.html?lang=ko')
+  await expect(page.locator('.project-card h3')).toHaveText(['Catalog Second', 'Catalog Third', 'Catalog First'])
+  await expect(page.locator('.project-activity').first()).toContainText('KDH 수정')
 })
 
 test('a supported browser locale is used when no explicit preference exists', async ({ browser }) => {

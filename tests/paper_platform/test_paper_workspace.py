@@ -167,10 +167,16 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "편집 기록 있음" not in hub
     assert "project-page-count" in hub
     assert "page_count" in hub
+    assert "/api/backups/activity" in hub
+    assert "hub.lastEdited" in hub
+    assert "modifiedAt" in hub
+    assert ".project-activity" in css
     assert "paper-workspace:last-active:" in app
+    assert "markProjectActivity('edit')" in app
+    assert "setEditorValueWithoutActivity(value)" in app
     assert "display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch" in css
     assert ".project-card{width:100%;min-height:0;max-width:340px;flex:0 1 340px" in css
-    assert ".project-meta{margin-top:auto" in css
+    assert ".project-activity{display:flex" in css
     assert "min-height:3.6em" in css
     assert "-webkit-line-clamp:3" in css
     assert ".project-card h3{min-height:0;font-size:16px}" in css

@@ -23,6 +23,8 @@ DEFAULT_RETENTION = 50
 PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/?$")
 ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/([1-9][0-9]*)/?$")
+ACTIVITY_COLLECTION_PATTERN = re.compile(r"^/activity/?$")
+ACTIVITY_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/activity/?$")
 ASSET_COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/assets/?$")
 ASSET_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/assets/(.+)$")
 DEFAULT_MAX_ASSET_BYTES = 16 * 1024 * 1024
@@ -149,6 +151,16 @@ class BackupStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS snapshots_project_order ON snapshots(project_id, id DESC)"
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS project_activity (
+                    project_id TEXT PRIMARY KEY,
+                    modified_at TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    reason TEXT
+                )
+                """
+            )
 
     @staticmethod
     def _metadata(row: sqlite3.Row) -> dict[str, Any]:
@@ -254,6 +266,50 @@ class BackupStore:
             raw_payload = raw_payload.decode("utf-8")
         return {**self._metadata(row), "payload": json.loads(raw_payload)}
 
+    def record_activity(self, project_id: object, actor: object, reason: object = None) -> dict[str, Any]:
+        project = validate_project_id(project_id)
+        author = validate_optional_text(actor, "actor", 120)
+        if author is None or not author.strip():
+            raise ValidationError("actor is required")
+        activity_reason = validate_optional_text(reason, "reason", 80)
+        modified_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO project_activity(project_id, modified_at, actor, reason)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    modified_at = excluded.modified_at,
+                    actor = excluded.actor,
+                    reason = excluded.reason
+                """,
+                (project, modified_at, author.strip(), activity_reason),
+            )
+        return {"project_id": project, "modified_at": modified_at, "actor": author.strip(), "reason": activity_reason}
+
+    def list_activity(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT project_id, modified_at, actor, reason FROM project_activity
+                UNION ALL
+                SELECT snapshots.project_id, snapshots.created_at, snapshots.actor, snapshots.reason
+                FROM snapshots
+                WHERE snapshots.id = (
+                    SELECT MAX(latest.id) FROM snapshots AS latest
+                    WHERE latest.project_id = snapshots.project_id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM project_activity WHERE project_activity.project_id = snapshots.project_id
+                )
+                ORDER BY modified_at DESC
+                """
+            ).fetchall()
+        return [
+            {"project_id": row["project_id"], "modified_at": row["modified_at"], "actor": row["actor"], "reason": row["reason"]}
+            for row in rows
+        ]
+
     def healthcheck(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1").fetchone()
@@ -322,6 +378,9 @@ class BackupHandler(BaseHTTPRequestHandler):
                 self.store.healthcheck()
                 self._json(HTTPStatus.OK, {"status": "ok"})
                 return
+            if ACTIVITY_COLLECTION_PATTERN.fullmatch(path):
+                self._json(HTTPStatus.OK, {"projects": self.store.list_activity()})
+                return
             if match := ASSET_COLLECTION_PATTERN.fullmatch(path):
                 self._json(HTTPStatus.OK, {"assets": self.assets.list(match.group(1))})
                 return
@@ -344,6 +403,14 @@ class BackupHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if activity_match := ACTIVITY_ITEM_PATTERN.fullmatch(path):
+            try:
+                payload = self._request_json()
+                activity = self.store.record_activity(activity_match.group(1), payload.get("actor"), payload.get("reason"))
+                self._json(HTTPStatus.OK, {"activity": activity})
+            except ValidationError as error:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            return
         match = COLLECTION_PATTERN.fullmatch(path)
         if match is None:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
