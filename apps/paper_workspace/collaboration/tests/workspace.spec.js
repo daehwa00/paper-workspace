@@ -291,7 +291,7 @@ test('dark mode keeps application controls off white surfaces', async ({ page })
   await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgb(24, 34, 53)')
   await expect(page.locator('.assistant-header-actions .beta')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
   await page.getByRole('tab', { name: '검사' }).click()
-  await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(53, 107, 217)')
   await expect(page.locator('.diagnostic-item').first()).toHaveCSS('background-color', 'rgb(58, 32, 37)')
   await page.locator('#files .folder-row').first().click({ button: 'right' })
   await expect(page.locator('#tree-menu button').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -324,6 +324,20 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
       mask: [page.locator('#save-state'), page.locator('#render-state'), page.locator('#collab-status'), page.locator('#collab-label'), page.locator('#collab-name'), page.locator('#app-toasts')]
     })
   }
+})
+
+test('submission checks use a distinct primary action with summary spacing', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.getByRole('tab', { name: '검사' }).click()
+  const action = page.locator('#run-submission-checks')
+  const summary = page.locator('#submission-check-summary')
+  await expect(action).toHaveCSS('display', 'inline-flex')
+  await expect(action).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(action).toHaveCSS('color', 'rgb(255, 255, 255)')
+  await expect(action).toHaveCSS('margin-bottom', '10px')
+  const [actionBox, summaryBox] = await Promise.all([action.boundingBox(), summary.boundingBox()])
+  expect(summaryBox.y - (actionBox.y + actionBox.height)).toBeGreaterThanOrEqual(9)
 })
 
 test('compact workspace switches focused surfaces with keyboard-accessible controls', async ({ page }) => {

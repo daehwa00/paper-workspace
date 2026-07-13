@@ -400,6 +400,8 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert ".codex-request-form{padding:0;border:0" in html
     assert ".suggestion.codex-result{border:0;border-left:2px" in html
     assert ".suggestion.codex-loading{border-left:0}" in html
+    assert "#run-submission-checks{display:inline-flex" in html
+    assert "#run-submission-checks::before{content:'▶'" in html
     assert "text-only navigation" in html
     assert ".assistant-tabs .tab::before{display:none!important}" in html
     assert "border-bottom:2px solid transparent" in html
