@@ -33,17 +33,17 @@ html[data-color-scheme="dark"]{
 .theme-trigger{
   display:grid;
   flex:0 0 auto;
-  width:32px;
-  height:32px;
+  width:36px;
+  height:36px;
   padding:0;
   place-items:center;
-  border:1px solid #ffffff1f;
-  border-radius:50%;
-  background:#ffffff0a;
+  border:1px solid transparent;
+  border-radius:6px;
+  background:transparent;
   color:#dce6f6;
   transition:background-color 140ms ease,border-color 140ms ease,transform 140ms ease;
 }
-.theme-trigger:hover,.theme-trigger:focus-visible{border-color:#ffffff4a;background:#ffffff16;outline:0}
+.theme-trigger:hover,.theme-trigger:focus-visible{border-color:transparent;background:#ffffff0d;outline:2px solid #84adff;outline-offset:1px}
 .theme-trigger:active{transform:scale(.94)}
 .theme-icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .theme-icon-moon{display:none}
@@ -257,6 +257,14 @@ html[data-color-scheme="dark"] .codex-thread-turn-head small,
 html[data-color-scheme="dark"] .codex-thread-summary{color:var(--theme-text-muted)}
 html[data-color-scheme="dark"] .codex-thread-turn-user{background:var(--theme-surface-raised)}
 html[data-color-scheme="dark"] .codex-thread-turn-assistant{border-color:var(--theme-border-soft)}
+html[data-color-scheme="dark"] .sidebar .side-heading .tree-action{border-color:transparent!important;background:transparent!important;color:var(--theme-text-muted)!important;box-shadow:none!important}
+html[data-color-scheme="dark"] .sidebar .side-heading .tree-action:hover,
+html[data-color-scheme="dark"] .sidebar .side-heading .tree-action:focus-visible{border-color:transparent!important;background:var(--theme-accent-soft)!important;color:#8ab4ff!important}
+html[data-color-scheme="dark"] .sidebar .folder-row.selected{background:transparent;color:#8ab4ff}
+html[data-color-scheme="dark"] .assistant-content .primary.full,
+html[data-color-scheme="dark"] #create-checkpoint,
+html[data-color-scheme="dark"] #run-submission-checks,
+html[data-color-scheme="dark"] .codex-result-actions #apply-codex{border-color:#5b8cff;background:#356bd9;color:#fff;box-shadow:none}
 html[data-color-scheme="dark"] .backup-card>.tool-row .backup-restore:hover:not(:disabled){background:#172b52;color:#c5d9ff}
 html[data-color-scheme="dark"] .tree-menu button{background:transparent;color:var(--theme-text)}
 html[data-color-scheme="dark"] .tree-menu button:hover,

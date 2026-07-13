@@ -219,6 +219,8 @@ test('initial compile failure replaces the waiting spinner with an actionable er
   await expect(page.locator('#paper-preview .pdf-wait')).toHaveCount(0)
   await expect(page.locator('#paper-preview')).toContainText('PDF를 만들지 못했습니다')
   await expect(page.locator('#render-state')).not.toContainText('이전 PDF')
+  await expect(page.locator('#suggestion')).not.toContainText('PDF 컴파일 오류')
+  await expect(page.locator('#app-toasts')).not.toContainText('PDF 컴파일 오류')
 })
 
 test('PDF loading and compiling use minimal status indicators', async ({ page }) => {
@@ -303,7 +305,8 @@ test('dark mode keeps application controls off white surfaces', async ({ page })
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
-  await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+  await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.tree-action').first()).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('.assistant-header-actions .beta')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
   await page.getByRole('tab', { name: '검사' }).click()
   await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(53, 107, 217)')
@@ -323,6 +326,14 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   await expect(page.locator('.preview-panel')).toBeVisible()
   await expect(page.locator('#assistant-panel')).toBeVisible()
   await expect(page.locator('#focus-modes')).toBeHidden()
+  await expect(page.locator('#new-folder')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('#new-folder')).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.language-control select')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.theme-trigger')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('#ask')).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('#ask')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(page.locator('#save-state')).toHaveAttribute('data-health', 'ok')
+  await expect(page.locator('#save-state')).toHaveCSS('width', '8px')
   const precisionControls = ['#status-center-toggle', '#collab-name', '#toggle-sidebar', '#new-folder', '#new-file', '#editor-zoom-out', '#editor-zoom-in', '#pdf-zoom-out', '#pdf-zoom-in', '#download-pdf', '#refresh-pdf', '#reset-layout', '#toggle-assistant']
   for (const selector of precisionControls) {
     const box = await page.locator(selector).boundingBox()
@@ -427,6 +438,12 @@ test('workspace health center exposes collaboration, save, PDF, and backup state
   await page.keyboard.press('Escape')
   await expect(page.locator('#status-center-toggle')).toBeFocused()
   await expect(page.locator('#status-center')).toBeHidden()
+  await page.evaluate(() => {
+    document.querySelectorAll('.status-center-list>div').forEach(row => { row.dataset.health = 'ok' })
+    window.refreshOverallStatus()
+  })
+  await expect(page.locator('#status-center-toggle')).toHaveAttribute('data-health', 'healthy')
+  await expect(page.locator('#collab-label')).toBeHidden()
 })
 
 test('mobile workspace uses focused bottom navigation', async ({ page }) => {

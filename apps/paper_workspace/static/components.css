@@ -127,3 +127,18 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 .codex-thread-request,.codex-thread-summary{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .codex-thread-proposal{margin:0;padding:0;color:#1d2939}
 .codex-thread-summary{margin-top:7px;color:#667085}
+
+/* Workspace utilities stay quiet at rest and primary actions stay solid. */
+.side-heading .tree-action{border-color:transparent;background:transparent;box-shadow:none;color:#667085}
+.side-heading .tree-action:hover,.side-heading .tree-action:focus-visible{border-color:transparent;background:#eff4ff;color:#1d4ed8;outline:0}
+.folder-row.selected{background:transparent;color:#1d4ed8;box-shadow:none}
+.folder-row.selected:hover{background:#f8fafc}
+.language-control select{height:36px;border-color:transparent;border-radius:6px;background:transparent;color:#d0d5dd}
+.language-control select:hover,.language-control select:focus-visible{border-color:transparent;background:#ffffff0d;color:#fff}
+.status-center-toggle[data-health="healthy"]{width:36px;justify-content:center;padding:0}
+.status-center-toggle[data-health="healthy"] .collab-label,.status-center-toggle[data-health="healthy"] .status-chevron{display:none}
+#save-state[data-health="ok"]{display:inline-flex;width:8px;min-width:8px;height:8px;align-items:center;overflow:hidden;color:transparent;font-size:0;white-space:nowrap}
+#save-state[data-health="ok"]::before{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#20c997}
+.assistant-content .primary.full,#create-checkpoint,#run-submission-checks,.codex-result-actions #apply-codex{background:#2457d6;border-color:#2457d6;box-shadow:none;transform:none}
+.assistant-content .primary.full:hover,#create-checkpoint:hover:not(:disabled),#run-submission-checks:hover:not(:disabled),.codex-result-actions #apply-codex:hover{background:#1745bb;border-color:#1745bb;box-shadow:none;transform:none}
+#create-backup{box-shadow:none}

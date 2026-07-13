@@ -251,7 +251,8 @@ def test_compile_errors_are_navigable_and_last_successful_pdf_is_preserved() -> 
     assert "parseLatexDiagnostics" in app
     assert "renderCompileDiagnostics" in app
     assert "goToSourceLocation" in app
-    assert "마지막 정상 PDF는 그대로 유지됩니다" in app
+    assert "if(hasPreviousPdf)notify('마지막 정상 PDF를 유지했습니다." in app
+    assert "$('suggestion').innerHTML=`<div class=\"suggestion\"><strong>PDF 컴파일 오류" not in app
 
 
 def test_project_version_upgrade_keeps_server_managed_sources_authoritative() -> None:
@@ -622,6 +623,7 @@ def test_dark_theme_reserves_white_for_rendered_paper() -> None:
     assert '.suggestion:not(.codex-result):not(.codex-loading)' in css
     assert '.paper:has(.pdf-error-state)' in css
     assert '.diagnostic-item{background:#3a2025' in css
+    assert 'border-color:transparent!important;background:transparent!important' in css
 
 
 def test_comment_cards_navigate_to_source_and_can_be_resolved() -> None:
