@@ -478,6 +478,19 @@ test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a
   await expect(page.locator('#codex-request-summary')).toBeVisible()
   await expect(page.locator('#codex-request-text')).toHaveText('첫 번째 요청\n추가 조건')
   await page.locator('#codex-new-request').click()
+  const placeholderWrapping = await prompt.evaluate(element => {
+    const style = getComputedStyle(element, '::placeholder')
+    return {
+      whiteSpace: style.whiteSpace,
+      overflowWrap: style.overflowWrap,
+      wordBreak: style.wordBreak
+    }
+  })
+  expect(placeholderWrapping).toEqual({
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word'
+  })
   await prompt.fill('unbroken-'.repeat(80))
   await expect(prompt).toHaveCSS('overflow-x', 'hidden')
   await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
