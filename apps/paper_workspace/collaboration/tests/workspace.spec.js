@@ -110,6 +110,18 @@ test('PDF loading uses a minimal status indicator', async ({ page }) => {
   await expect(page.locator('#paper-preview .pdf-wait-detail')).toHaveCSS('width', '1px')
 })
 
+test('dark project tree keeps resting rows flat', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const inactive = page.locator('#files .file').filter({ hasText: 'references.bib' })
+  await expect(inactive).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(inactive).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
+  await expect(inactive).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('.tree-action').first()).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  await expect(page.locator('#files .file.active')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+})
+
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
