@@ -448,6 +448,7 @@ def test_comment_prompt_has_no_horizontal_drag_track() -> None:
     css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
     assert "#comment-body{overflow-x:hidden" in css
     assert "#comment-body::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}" in css
+    assert "#add-comment{margin-top:8px}" in css
 
 
 def test_preview_header_keeps_controls_without_redundant_title() -> None:
@@ -785,6 +786,7 @@ def test_project_version_replaces_stale_collaboration_main() -> None:
 def test_project_backups_are_verified_on_open_and_every_ten_minutes() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
 
     assert 'id="backup-status"' in html
     assert 'id="create-backup"' in html
@@ -797,6 +799,9 @@ def test_project_backups_are_verified_on_open_and_every_ten_minutes() -> None:
     backup_payload = app[app.index("function backupPayload"):app.index("function setBackupStatus")]
     assert "state.assets" not in backup_payload
     assert ".replace(/[^A-Za-z0-9_-]+/g,'-')" in app
+    assert "#create-checkpoint{border-color:#2457d6;background:#2457d6;color:#fff" in css
+    assert ".backup-card>.tool-row{gap:0;padding:1px;border:1px solid #dbe7ff" in css
+    assert ".backup-card>.tool-row .backup-restore+.backup-restore{border-left:1px solid #dbe7ff!important" in css
 
 
 def test_workspace_status_names_the_problem_and_offers_actions() -> None:
