@@ -561,6 +561,33 @@ test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a
   await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 })
 
+test('Codex result separates review content from follow-up actions without a blue rail', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.route('**/api/codex', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      replacement: '\\title{A clearer paper title}',
+      summary: 'Clarified the title while preserving the original scope.'
+    })
+  }))
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
+  await page.locator('#instruction').fill('제목을 더 명확하게 다듬어줘')
+  await page.locator('#instruction').press('Enter')
+  const result = page.locator('.suggestion.codex-result')
+  await expect(result).toBeVisible()
+  await expect(result).toHaveCSS('border-left-color', 'rgb(228, 231, 236)')
+  await expect(result).toHaveCSS('border-left-width', '1px')
+  await expect(result).toHaveCSS('border-radius', '10px')
+  await expect(page.locator('.codex-followup-row')).toHaveCSS('display', 'grid')
+  const inputBox = await page.locator('#codex-followup-input').boundingBox()
+  const buttonBox = await page.locator('#codex-followup-send').boundingBox()
+  expect(buttonBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height + 7)
+  await expect.poll(() => result.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+})
+
 test('Yjs merges text and awareness between two browsers', async ({ browser }) => {
   const first = await browser.newPage()
   const second = await browser.newPage()

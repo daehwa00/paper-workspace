@@ -90,3 +90,21 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 #run-submission-checks:hover:not(:disabled){border-color:#1745bb;background:#1745bb;box-shadow:0 4px 10px #2457d633;transform:translateY(-1px)}
 #run-submission-checks:active:not(:disabled){box-shadow:0 1px 3px #2457d624;transform:none}
 #run-submission-checks:focus-visible{outline:3px solid #84adff;outline-offset:2px}
+
+/* Keep Codex results readable as one card with distinct review and action zones. */
+.suggestion.codex-result{margin-top:14px;padding:0;border:1px solid #e4e7ec;border-left:1px solid #e4e7ec;border-radius:10px;background:#fff;box-shadow:0 4px 14px #1018280a;overflow:hidden}
+.codex-result-head{padding:11px 12px;border-bottom:1px solid #eaecf0;background:#f8fafc}
+.codex-result-icon{display:grid;width:24px;height:24px;flex:0 0 24px;place-items:center;border-radius:7px;background:#eff4ff;color:#2457d6;font-size:12px}
+.codex-proposal{margin:0;padding:14px 12px 15px}
+.codex-change-details{margin:0 12px 12px;border:1px solid #eaecf0;border-radius:7px;background:#fcfcfd;overflow:hidden}
+.codex-change-details summary{padding:9px 10px}
+.codex-change-details .codex-diff{padding:0 9px 9px}
+.codex-result .codex-summary{margin:0 12px 12px;padding:10px 11px;border:0;border-radius:7px;background:#f8fafc;color:#667085}
+.codex-followup{margin:0 12px 12px;padding:12px;border:1px solid #eaecf0;border-radius:8px;background:#fff}
+.codex-followup-head{margin-bottom:9px}
+.codex-followup-row{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:stretch}
+.codex-followup textarea{width:100%;min-height:60px;height:60px;resize:none}
+.codex-followup button{justify-self:end;min-height:34px;height:34px;margin:0;padding:6px 11px}
+.codex-followup-status{margin-top:8px}
+.codex-result-actions{padding:10px 12px;border-top:1px solid #eaecf0;background:#fcfcfd}
+.codex-result-actions #apply-codex{min-height:38px;border-radius:7px}
