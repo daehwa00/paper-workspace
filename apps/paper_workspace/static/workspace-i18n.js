@@ -27,7 +27,7 @@
     'Codex 수정 요청': 'Codex revision request', '모델 설정': 'Model settings', '모델 설정 ·': 'Model settings ·', '단문·문법·표현만 빠르게 수정할 때 적합합니다.': 'Best for quick sentence-level grammar and expression edits.',
     '논문 문단 전체를 자연스럽고 일관되게 다듬을 때 적합합니다.': 'Best for polishing a full paragraph naturally and consistently.',
     '논리 구조와 주장 강도까지 함께 검토할 때 적합합니다.': 'Best for reviewing logic and claim strength together.',
-    'Codex에게 요청 보내기': 'Send request to Codex', '보낸 요청': 'Sent request', '새 요청': 'New request',
+    'Codex에게 요청 보내기': 'Send request to Codex', '보낸 요청': 'Sent request', '새 요청': 'New request', 'Codex 대화': 'Codex conversation', '새 대화': 'New conversation', '내 요청': 'My request', 'Codex 제안': 'Codex suggestion',
     '문장에 대화를 연결하세요': 'Start a discussion on a sentence', '본문을 선택하고 남긴 댓글은 해당 문장과 revision에 연결됩니다.': 'Comments on a selection remain linked to that sentence and revision.',
     '@공동저자에게 질문 또는 검토 요청': '@Ask a coauthor a question or request review', '선택 영역에 댓글 남기기': 'Comment on selection', '아직 댓글이 없습니다.': 'No comments yet.',
     '원고 근거를 한곳에 모으세요': 'Keep manuscript evidence together', '업로드한 데이터, 그림, 메모와 참고문헌을 함께 관리합니다.': 'Manage uploaded data, figures, notes, and references together.',
