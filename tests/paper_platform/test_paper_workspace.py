@@ -36,6 +36,7 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert "/i18n.js?v=__I18N_JS_HASH__" in html
     assert "/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__" in html
     assert "/workspace-core.js?v=__WORKSPACE_CORE_JS_HASH__" in html
+    assert "/pdf-viewport.js?v=__PDF_VIEWPORT_JS_HASH__" in html
     assert "?lang=en|ko" not in engine
     assert "queryLanguage() || storedLanguage() || browserLanguage() || 'en'" in engine
     assert "paper-workspace-language" in engine
@@ -44,6 +45,7 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert "__I18N_JS_HASH__" in dockerfile
     assert "__WORKSPACE_I18N_JS_HASH__" in dockerfile
     assert "__WORKSPACE_CORE_JS_HASH__" in dockerfile
+    assert "__PDF_VIEWPORT_JS_HASH__" in dockerfile
 
 
 def test_workspace_state_and_path_helpers_have_a_testable_module_boundary() -> None:
@@ -454,6 +456,7 @@ def test_preview_header_keeps_controls_without_redundant_title() -> None:
 def test_sticky_pdf_toolbar_tracks_current_and_total_pages() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    viewport = (ROOT / "apps/paper_workspace/static/pdf-viewport.js").read_text(encoding="utf-8")
     assert 'id="pdf-page-indicator"' in html
     assert 'aria-label="현재 PDF 페이지"' in html
     assert ".pdf-page-indicator" in html
@@ -461,7 +464,8 @@ def test_sticky_pdf_toolbar_tracks_current_and_total_pages() -> None:
     assert "updatePdfPageIndicator" in app
     assert "schedulePdfPageIndicatorUpdate" in app
     assert "installPdfPageIndicator" in app
-    assert "page.getBoundingClientRect()" in app
+    assert "page.getBoundingClientRect()" in viewport
+    assert "PaperPdfViewport.currentPage" in app
     assert "현재 PDF ${pageNumber}페이지, 전체 ${pages.length}페이지" in app
 
 
