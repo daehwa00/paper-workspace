@@ -170,6 +170,7 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "/api/backups/activity" in hub
     assert "hub.lastEdited" in hub
     assert "modifiedAt" in hub
+    assert "project.activity_id" in hub
     assert ".project-activity" in css
     assert "paper-workspace:last-active:" in app
     assert "markProjectActivity('edit')" in app

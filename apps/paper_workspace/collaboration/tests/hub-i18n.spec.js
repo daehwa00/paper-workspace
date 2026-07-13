@@ -61,7 +61,7 @@ test('recent activity uses server timestamps and shows the latest editor', async
   await page.route('**/projects/index.json', route => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ projects: [
-      { slug: 'first', display_name: 'Catalog First', description: 'First.' },
+      { slug: 'first', activity_id: 'internal-first', display_name: 'Catalog First', description: 'First.' },
       { slug: 'second', display_name: 'Catalog Second', description: 'Second.' },
       { slug: 'third', display_name: 'Catalog Third', description: 'Third.' }
     ] })
@@ -69,7 +69,7 @@ test('recent activity uses server timestamps and shows the latest editor', async
   await page.route('**/api/backups/activity', route => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ projects: [
-      { project_id: 'first', actor: 'Dae', modified_at: '2026-07-11T01:00:00.000Z' },
+      { project_id: 'internal-first', actor: 'Dae', modified_at: '2026-07-11T01:00:00.000Z' },
       { project_id: 'second', actor: 'KDH', modified_at: '2026-07-13T01:00:00.000Z' },
       { project_id: 'third', actor: 'Me', modified_at: '2026-07-12T01:00:00.000Z' }
     ] })
