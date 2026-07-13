@@ -441,6 +441,7 @@ def test_codex_prompt_wraps_and_enter_submits() -> None:
     assert "event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229" in app
     assert "if(!$('ask').disabled)$('ask').click()" in app
     assert "#instruction{overflow-x:hidden" in css
+    assert "#instruction::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}" in css
 
 
 def test_preview_header_keeps_controls_without_redundant_title() -> None:
