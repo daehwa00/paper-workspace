@@ -263,7 +263,7 @@ const pdfPreRenderZoom=2,pdfMaxDevicePixelRatio=2,pdfMaxCanvasPixels=16_000_000;
 let pdfPageIndicatorFrame=0;
 function disposePdfPreview(){activePdfObserver?.disconnect();activePdfObserver=null;for(const task of activePdfRenderTasks)task.cancel?.();activePdfRenderTasks.clear();activePdfDocument?.destroy?.();activePdfDocument=null}
 function resetPdfPageIndicator(){const indicator=$('pdf-page-indicator');indicator.hidden=true;indicator.textContent=''}
-function updatePdfPageIndicator(){pdfPageIndicatorFrame=0;const indicator=$('pdf-page-indicator');const panel=document.querySelector('.preview-panel');const pages=Array.from(document.querySelectorAll('.pdf-page'));if(!panel||!pages.length){resetPdfPageIndicator();return}const panelRect=panel.getBoundingClientRect();const headerRect=panel.querySelector('.preview-header')?.getBoundingClientRect();const viewportTop=Math.max(panelRect.top,headerRect?.bottom||panelRect.top);const viewportBottom=Math.min(panelRect.bottom,innerHeight);const viewportCenter=(viewportTop+viewportBottom)/2;let current=pages[0],bestVisible=-1,bestDistance=Infinity;for(const page of pages){const rect=page.getBoundingClientRect();const visible=Math.max(0,Math.min(rect.bottom,viewportBottom)-Math.max(rect.top,viewportTop));const distance=Math.abs((rect.top+rect.bottom)/2-viewportCenter);if(visible>bestVisible||(visible===bestVisible&&distance<bestDistance)){current=page;bestVisible=visible;bestDistance=distance}}const pageNumber=Number(current.dataset.page)||1;indicator.textContent=`${pageNumber} / ${pages.length}`;indicator.setAttribute('aria-label',`현재 PDF ${pageNumber}페이지, 전체 ${pages.length}페이지`);indicator.hidden=false}
+function updatePdfPageIndicator(){pdfPageIndicatorFrame=0;const indicator=$('pdf-page-indicator');const panel=document.querySelector('.preview-panel');const pages=Array.from(document.querySelectorAll('.pdf-page'));if(!panel||!pages.length){resetPdfPageIndicator();return}const current=window.PaperPdfViewport.currentPage(panel,pages);const pageNumber=Number(current?.dataset.page)||1;indicator.textContent=`${pageNumber} / ${pages.length}`;indicator.setAttribute('aria-label',`현재 PDF ${pageNumber}페이지, 전체 ${pages.length}페이지`);indicator.hidden=false}
 function schedulePdfPageIndicatorUpdate(){if(pdfPageIndicatorFrame)return;pdfPageIndicatorFrame=requestAnimationFrame(updatePdfPageIndicator)}
 function installPdfPageIndicator(){const panel=document.querySelector('.preview-panel');panel.addEventListener('scroll',schedulePdfPageIndicatorUpdate,{passive:true});new ResizeObserver(schedulePdfPageIndicatorUpdate).observe(panel);window.addEventListener('resize',schedulePdfPageIndicatorUpdate)}
 function setRenderedPdf(binary){renderedPdfBytes=binary;if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl);renderedPdfUrl=URL.createObjectURL(new Blob([binary],{type:'application/pdf'}));$('download-pdf').disabled=false;return renderedPdfUrl}
@@ -329,10 +329,11 @@ async function syncPdfToSource(page,x,y){
   }catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>PDF 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
 }
 async function renderPdfPreviewLazy(binary,synctex){
+  const panel=document.querySelector('.preview-panel');
+  const viewportSnapshot=window.PaperPdfViewport.capture(panel);
   disposePdfPreview();
   renderedSynctex=synctex;
   const preview=$('paper-preview');
-  const panel=document.querySelector('.preview-panel');
   preview.classList.add('pdf-mode');
   resetPdfPageIndicator();
   preview.innerHTML=pdfWaitMarkup('첫 페이지 준비 중','첫 페이지를 먼저 표시합니다');
@@ -400,7 +401,9 @@ async function renderPdfPreviewLazy(binary,synctex){
   const observer=new IntersectionObserver(observed=>{for(const item of observed){const entry=entryByWrapper.get(item.target);if(!entry)continue;if(item.isIntersecting)renderPage(entry).catch(()=>{});else if(entry.rendered||entry.task)releasePage(entry)}},{root:panel,rootMargin:'1200px 0px'});
   activePdfObserver=observer;
   entries.forEach(entry=>observer.observe(entry.wrapper));
-  await renderPage(entries[0]);
+  const restoredPage=window.PaperPdfViewport.restore(panel,entries.map(entry=>entry.wrapper),viewportSnapshot);
+  const restoredEntry=entryByWrapper.get(restoredPage)||entries[0];
+  await renderPage(restoredEntry);
   schedulePdfPageIndicatorUpdate();
 }
 function pdfFileName(){const title=titleOf(state.files['paper/main.tex']||'').replace(/\\[a-zA-Z]+|[{}]/g,' ').replace(/[^\p{L}\p{N}._ -]+/gu,'').trim().replace(/\s+/g,'-').slice(0,80);return `${title||'paper'}.pdf`}

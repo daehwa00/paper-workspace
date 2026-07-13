@@ -155,6 +155,44 @@ test('PDF loading uses a minimal status indicator', async ({ page }) => {
   await expect(page.locator('#paper-preview .pdf-wait-detail')).toHaveCSS('width', '1px')
 })
 
+test('PDF viewport restoration keeps the visible page and position after rerender', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+
+  const restored = await page.evaluate(() => {
+    const panel = document.querySelector('.preview-panel')
+    const preview = document.getElementById('paper-preview')
+    const buildPages = count => {
+      const viewer = document.createElement('div')
+      viewer.className = 'pdf-canvas-viewer'
+      const pages = Array.from({ length: count }, (_, index) => {
+        const wrapper = document.createElement('div')
+        wrapper.className = 'pdf-page'
+        wrapper.dataset.page = String(index + 1)
+        wrapper.style.height = '900px'
+        wrapper.style.minHeight = '900px'
+        viewer.append(wrapper)
+        return wrapper
+      })
+      preview.replaceChildren(viewer)
+      return pages
+    }
+
+    const originalPages = buildPages(4)
+    panel.scrollTop = originalPages[2].offsetTop + 240
+    const before = window.PaperPdfViewport.capture(panel, originalPages)
+    const replacementPages = buildPages(4)
+    window.PaperPdfViewport.restore(panel, replacementPages, before)
+    const after = window.PaperPdfViewport.capture(panel, replacementPages)
+    return { before, after }
+  })
+
+  expect(restored.before.pageNumber).toBe(3)
+  expect(restored.after.pageNumber).toBe(3)
+  expect(Math.abs(restored.after.pageProgress - restored.before.pageProgress)).toBeLessThan(0.02)
+})
+
 test('dark project tree keeps resting rows flat', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
   await page.goto('/')
