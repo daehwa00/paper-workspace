@@ -42,6 +42,16 @@ test('dynamic workspace status and empty states follow the selected language', a
   await expect(page.locator('#task-board')).toHaveText('등록된 작업이 없습니다.')
 })
 
+test('comment prompt wraps without a horizontal drag track', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.getByRole('tab', { name: '댓글' }).click()
+  const prompt = page.locator('#comment-body')
+  await expect(prompt).toHaveCSS('overflow-x', 'hidden')
+  await prompt.fill('긴댓글요청'.repeat(80))
+  await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+})
+
 test('server manuscript paints before collaboration bootstrap finishes', async ({ page }) => {
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
