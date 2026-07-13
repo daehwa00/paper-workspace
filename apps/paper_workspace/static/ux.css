@@ -91,7 +91,7 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .preview-header{padding:6px 8px!important}
   .render-controls{width:100%;min-width:0;display:flex;justify-content:flex-end;gap:5px;flex-wrap:nowrap}
   .render-controls #render-state{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .download-pdf{width:44px;padding:0!important}.download-pdf span{display:none}
+  .download-pdf{width:44px;padding:0!important}
   .zoom-controls{flex:0 0 auto}.zoom-controls span{min-width:38px;font-size:10px}
   .selection-toolbar{bottom:calc(72px + env(safe-area-inset-bottom))!important}
   .comment-marker{min-width:44px;min-height:44px;margin-left:-11px;padding:11px}
@@ -120,7 +120,7 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .side-heading .sidebar-toggle,.side-heading .tree-action{width:36px;height:36px}
   .folder-row,.file{min-height:36px}
   .zoom-controls{height:38px}.zoom-controls button{width:36px;height:36px}.zoom-controls>span{font-size:11px}
-  .pdf-control{min-height:36px}.refresh-pdf{width:36px}.download-pdf{height:36px}
+  .pdf-control{min-height:36px}.refresh-pdf,.download-pdf{width:36px;height:36px}
   .comment-anchor-marker{min-width:36px;height:36px;padding-inline:9px;border-radius:18px;font-size:11px}
   .comment-anchor-marker::after{top:42px;font-size:11px}
   .assistant-header-actions .layout-reset,.assistant-header-actions .assistant-toggle{width:36px;height:36px}

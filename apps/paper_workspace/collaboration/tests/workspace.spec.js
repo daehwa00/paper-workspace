@@ -221,7 +221,7 @@ test('initial compile failure replaces the waiting spinner with an actionable er
   await expect(page.locator('#render-state')).not.toContainText('이전 PDF')
 })
 
-test('PDF loading uses a minimal status indicator', async ({ page }) => {
+test('PDF loading and compiling use minimal status indicators', async ({ page }) => {
   await page.route('**/api/compile', () => new Promise(() => {}))
   await page.goto('/')
   const spinner = page.locator('#paper-preview .pdf-spinner')
@@ -231,6 +231,15 @@ test('PDF loading uses a minimal status indicator', async ({ page }) => {
   await expect(spinner).toHaveCSS('box-shadow', 'none')
   await expect(page.locator('#paper-preview .pdf-wait strong')).toHaveText('PDF 준비 중')
   await expect(page.locator('#paper-preview .pdf-wait-detail')).toHaveCSS('width', '1px')
+  const compileSpinner = page.locator('#render-state.compiling .render-state-spinner')
+  await expect(compileSpinner).toBeVisible()
+  await expect(compileSpinner).toHaveCSS('width', '12px')
+  await expect(compileSpinner).toHaveCSS('height', '12px')
+  await expect(page.locator('.render-state-label')).toHaveCSS('width', '1px')
+  const download = page.locator('#download-pdf')
+  await expect(download).toHaveAttribute('aria-label', '렌더링된 PDF 다운로드')
+  await expect(download).toHaveText('')
+  await expect(download).toHaveCSS('width', '36px')
 })
 
 test('PDF viewport restoration keeps the visible page and position after rerender', async ({ page }) => {
