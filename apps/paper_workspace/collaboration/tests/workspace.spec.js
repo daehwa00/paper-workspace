@@ -498,6 +498,63 @@ test('mobile workspace uses focused bottom navigation', async ({ page }) => {
   expect(titleBox?.height).toBeGreaterThanOrEqual(44)
 })
 
+test('responsive editor remeasures after shrinking from desktop to mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.querySelector('.cm-content'))
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect.poll(() => page.locator('.cm-content').evaluate(element => Math.round(element.getBoundingClientRect().left))).toBeLessThan(80)
+  await expect.poll(() => page.evaluate(() => document.body.scrollWidth)).toBe(390)
+})
+
+test('mobile top bar groups secondary utilities without hiding the collaborator', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const menu = page.locator('#mobile-utilities')
+  await expect(menu.locator('summary')).toBeVisible()
+  await expect(page.locator('#collab-name')).toBeVisible()
+  await expect(page.locator('#workspace-language')).toBeHidden()
+  await menu.locator('summary').click()
+  await expect(page.locator('#workspace-language')).toBeVisible()
+  await expect(page.locator('.mobile-utility-items .theme-trigger')).toBeVisible()
+})
+
+test('project tree starts archival drafts collapsed and filters by full path', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(() => localStorage.setItem('paper-workspace:default', JSON.stringify({
+    fileTreeVersion: 1,
+    files: {
+      'paper/main.tex': '\\documentclass{article}\\begin{document}main\\end{document}',
+      'paper/drafts/older-version.tex': 'archived draft'
+    },
+    folders: ['paper', 'paper/drafts'],
+    collapsedFolders: [],
+    current: 'paper/main.tex'
+  })))
+  await page.goto('/')
+  const drafts = page.locator('.folder-row[data-folder="paper/drafts"]')
+  await expect(drafts).toHaveAttribute('aria-expanded', 'false')
+  await page.locator('#file-search').fill('older-version')
+  await expect(drafts).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('[data-file-path="paper/drafts/older-version.tex"]')).toBeVisible()
+  await page.locator('#clear-file-search').click()
+  await expect(drafts).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('compile failure presents a normalized cause and direct source jump', async ({ page }) => {
+  await page.route('**/api/compile', route => route.fulfill({
+    status: 422,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! Package pdftex.def Error\nl.5 \\includegraphics{missing-figure.pdf}" })
+  }))
+  await page.goto('/')
+  const error = page.locator('.pdf-error-state')
+  await expect(error).toContainText('필요한 파일이 프로젝트에 없습니다: missing-figure.pdf')
+  await expect(page.locator('#pdf-error-action')).toHaveText('paper/main.tex:5로 이동')
+  await page.locator('#pdf-error-action').click()
+  await expect(page.locator('#active-file')).toHaveText('paper/main.tex')
+})
+
 test('first compact desktop visit prioritizes source and PDF', async ({ page }) => {
   await page.setViewportSize({ width: 1512, height: 900 })
   await page.addInitScript(() => localStorage.removeItem('paper-workspace-layout'))
