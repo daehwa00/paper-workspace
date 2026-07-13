@@ -91,9 +91,10 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "syncPdfToSource" in app
     assert 'id="sync-highlight"' in html
     assert "initialCoordinates=remoteCaretCoordinates(start)" in app
-    assert "coordinates=remoteCaretCoordinates(start)" in app
+    assert "syncHighlightCoordinates" in app
+    assert "activeLine.getBoundingClientRect()" in app
     assert "editor.scrollHeight-editor.clientHeight" in app
-    assert "marker.style.height=`${coordinates.lineHeight}px`" in app
+    assert "--sync-highlight-height" in app
     assert ".pdf-page canvas:hover,.pdf-page canvas:focus{outline:none!important}" in html
     assert "sync-soft-focus" in html
 
@@ -135,7 +136,9 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "paper-workspace:project-sort" in hub
     assert "Recently active" in html
     assert "최근 작업순" in hub
-    assert "편집 기록 있음" in hub
+    assert "편집 기록 있음" not in hub
+    assert "project-page-count" in hub
+    assert "page_count" in hub
     assert "paper-workspace:last-active:" in app
     assert "grid-template-columns:repeat(auto-fill" in css
     assert "max-width:340px" in css
@@ -245,8 +248,13 @@ def test_initial_compile_failure_replaces_pdf_spinner_with_error_state() -> None
 
 def test_synctex_supports_source_to_pdf_navigation() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     assert "syncSourceToPdf" in app
+    assert "syncHighlightCoordinates" in app
+    assert "activeLine.getBoundingClientRect()" in app
+    assert "requestAnimationFrame(()=>showSourceSyncHighlight(start))" in app
+    assert "height:var(--sync-highlight-height,23px)!important" in components
     assert "'/api/synctex-view'" in app
     assert "event.metaKey||event.ctrlKey" in app
     assert 'self.path == "/synctex-view"' in compiler
@@ -399,6 +407,16 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert "$('selection-comment').onclick=prepareInlineComment" in app
 
 
+def test_codex_prompt_wraps_and_enter_submits() -> None:
+    html = workspace_markup()
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    assert 'id="instruction" wrap="soft"' in html
+    assert "event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229" in app
+    assert "if(!$('ask').disabled)$('ask').click()" in app
+    assert "#instruction{overflow-x:hidden" in css
+
+
 def test_preview_header_keeps_controls_without_redundant_title() -> None:
     html = workspace_markup()
     assert '<div class="panel-header preview-header"><span class="render-controls">' in html
@@ -538,6 +556,15 @@ def test_dark_theme_covers_secondary_workspace_copy() -> None:
     assert 'html[data-color-scheme="dark"] .task-meta' in css
     assert 'html[data-color-scheme="dark"] .backup-card-meta' in css
     assert 'html[data-color-scheme="dark"] .model-caption' in css
+
+
+def test_dark_theme_reserves_white_for_rendered_paper() -> None:
+    css = (ROOT / "apps/paper_workspace/static/theme.css").read_text(encoding="utf-8")
+    assert '.sidebar .side-heading .tree-action' in css
+    assert 'background:var(--theme-surface-raised)!important' in css
+    assert '.suggestion:not(.codex-result):not(.codex-loading)' in css
+    assert '.paper:has(.pdf-error-state)' in css
+    assert '.diagnostic-item{background:#3a2025' in css
 
 
 def test_comment_cards_navigate_to_source_and_can_be_resolved() -> None:

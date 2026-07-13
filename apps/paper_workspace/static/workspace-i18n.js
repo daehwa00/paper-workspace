@@ -18,7 +18,7 @@
     '편집기와 PDF 미리보기 사이 폭 조절': 'Resize source and PDF panels', '렌더링 대기': 'Waiting to render', '현재 PDF 페이지': 'Current PDF page',
     'PDF 확대·축소': 'PDF zoom', 'PDF 축소': 'Zoom PDF out', 'PDF 확대': 'Zoom PDF in', '렌더링된 PDF 다운로드': 'Download rendered PDF', 'PDF 새로고침': 'Refresh PDF',
     '현재 PDF는 마지막 정상 빌드이며 최신 원고와 다릅니다.': 'This is the last successful PDF and does not match the latest source.',
-    '논문 미리보기': 'Paper preview', 'PDF 준비 중': 'Preparing PDF', 'PDF 렌더링을 시작하면 여기에 표시됩니다': 'The rendered PDF will appear here.',
+    '논문 미리보기': 'Paper preview', 'PDF 준비 중': 'Preparing PDF', '원고를 렌더링하고 있습니다': 'Rendering the manuscript', '첫 페이지 준비 중': 'Preparing first page', '첫 페이지를 먼저 표시합니다': 'Rendering the first page first', 'PDF 렌더링을 실행하면 여기에 표시됩니다': 'The rendered PDF will appear here.', 'PDF 렌더링을 시작하면 여기에 표시됩니다': 'The rendered PDF will appear here.',
     'PDF 미리보기와 논문 도우미 사이 폭 조절': 'Resize PDF and assistant panels', '논문 도우미': 'Paper assistant',
     '논문 도우미 접기': 'Collapse paper assistant', '논문 도우미 펼치기': 'Expand paper assistant', '패널 폭 초기화': 'Reset panel widths', '논문 도우미 도구': 'Paper assistant tools',
     '수정': 'Revise', '댓글': 'Comments', '자료': 'Sources', '검사': 'Checks', '작업': 'Tasks',

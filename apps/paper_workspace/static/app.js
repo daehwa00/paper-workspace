@@ -99,6 +99,24 @@ if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true;
 function collaboratorPosition(person){return Array.isArray(person.selection)?Math.max(0,Number(person.selection[1]??person.selection[0])||0):0}
 function goToCollaborator(person){const file=person.active_file;if(!file||state.files[file]===undefined)return;state.files[state.current]=editorValue();state.current=file;setEditor();listFiles();const position=Math.min(collaboratorPosition(person),editorValue().length);focusEditor();setEditorSelection(position,position,{scroll:true});sendCursor();renderRemoteCursors()}
 function remoteCaretCoordinates(position){const coordinates=richEditor?.coordsAt(position),panel=$('editor-panel').getBoundingClientRect();if(!coordinates)return {left:0,top:-100,lineHeight:23};return {left:coordinates.left-panel.left,top:coordinates.top-panel.top-48,lineHeight:coordinates.bottom-coordinates.top||23}}
+function syncHighlightCoordinates(position){
+  const panel=$('editor-panel').getBoundingClientRect();
+  const activeLine=richEditor?.dom?.querySelector('.cm-activeLine');
+  if(activeLine){
+    const line=activeLine.getBoundingClientRect();
+    if(line.height>0)return {top:line.top-panel.top,height:line.height};
+  }
+  const coordinates=remoteCaretCoordinates(position),editor=$('editor');
+  return {top:editor.offsetTop+coordinates.top,height:coordinates.lineHeight};
+}
+function showSourceSyncHighlight(position){
+  const marker=$('sync-highlight'),coordinates=syncHighlightCoordinates(position);
+  marker.style.top=`${coordinates.top}px`;
+  marker.style.setProperty('--sync-highlight-height',`${coordinates.height}px`);
+  marker.hidden=false;
+  clearTimeout(window.syncHighlightTimer);
+  window.syncHighlightTimer=setTimeout(()=>{marker.hidden=true},650);
+}
 function renderRemoteCursors(){const container=$('remote-cursors');container.replaceChildren();const height=$('editor-view').clientHeight;for(const person of collaborators.values()){if(person.id===actor.id||person.active_file!==state.current||!Array.isArray(person.selection))continue;const coordinates=remoteCaretCoordinates(Math.min(collaboratorPosition(person),$('editor').value.length));if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;const caret=document.createElement('span');caret.className='remote-caret';caret.style.left=`${coordinates.left}px`;caret.style.top=`${coordinates.top}px`;caret.style.height=`${coordinates.lineHeight}px`;caret.style.setProperty('--cursor-color',person.color||collaboratorColor(person.id));const label=document.createElement('span');label.className='remote-cursor-label';label.textContent=person.name;caret.append(label);container.append(caret)}}
 function updatePresence(){const container=$('collaborator-avatars');container.replaceChildren();const people=[...collaborators.values()].filter(person=>person.id!==actor.id);for(const person of people.slice(0,4)){const avatar=document.createElement('button');const location=person.active_file?`${person.active_file}${person.line?`:${person.line}`:''}`:'접속 중';avatar.type='button';avatar.className='collaborator-avatar';avatar.textContent=collaboratorInitial(person.name);avatar.style.setProperty('--avatar-color',person.color||collaboratorColor(person.id));avatar.dataset.tooltip=`${person.name} · ${location}`;avatar.setAttribute('aria-label',`${person.name}, ${location}${person.active_file?' — 클릭하여 이동':''}`);avatar.disabled=!person.active_file;avatar.onclick=()=>goToCollaborator(person);container.append(avatar)}if(people.length>4){const overflow=document.createElement('button');overflow.type='button';overflow.className='collaborator-avatar collaborator-overflow';overflow.textContent=`+${people.length-4}`;overflow.dataset.tooltip=people.slice(4).map(person=>person.name).join(' · ');overflow.setAttribute('aria-label',`추가 공동 편집자 ${people.length-4}명: ${people.slice(4).map(person=>person.name).join(', ')}`);container.append(overflow)}renderRemoteCursors()}
 const collaborationRoom=`paper-workspace:${location.host}:${projectSlug}`;
@@ -321,14 +339,7 @@ async function syncPdfToSource(page,x,y){
     const initialCoordinates=remoteCaretCoordinates(start);
     const targetTop=Math.max(70,editor.clientHeight*.32);
     editor.scrollTop=constrain(editor.scrollTop+initialCoordinates.top-targetTop,0,Math.max(0,editor.scrollHeight-editor.clientHeight));
-    requestAnimationFrame(()=>{
-      const coordinates=remoteCaretCoordinates(start),marker=$('sync-highlight');
-      marker.style.top=`${editor.offsetTop+coordinates.top}px`;
-      marker.style.height=`${coordinates.lineHeight}px`;
-      marker.hidden=false;
-      clearTimeout(window.syncHighlightTimer);
-      window.syncHighlightTimer=setTimeout(()=>{marker.hidden=true},650);
-    });
+    requestAnimationFrame(()=>showSourceSyncHighlight(start));
     sendCursor();
   }catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>PDF 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
 }
@@ -408,7 +419,7 @@ async function renderPdfPreviewLazy(binary,synctex){
   schedulePdfPageIndicatorUpdate();
 }
 function pdfFileName(){const title=titleOf(state.files['paper/main.tex']||'').replace(/\\[a-zA-Z]+|[{}]/g,' ').replace(/[^\p{L}\p{N}._ -]+/gu,'').trim().replace(/\s+/g,'-').slice(0,80);return `${title||'paper'}.pdf`}
-function pdfWaitMarkup(title='PDF 준비 중',detail='원고를 렌더링하고 있습니다'){return `<div class="pdf-wait" role="status" aria-live="polite"><span class="pdf-spinner" aria-hidden="true"></span><strong>${title}</strong><span>${detail}</span></div>`}
+function pdfWaitMarkup(title='PDF 준비 중',detail='원고를 렌더링하고 있습니다'){return `<div class="pdf-wait" role="status" aria-live="polite"><span class="pdf-spinner" aria-hidden="true"></span><strong>${title}</strong><span class="pdf-wait-detail">${detail}</span></div>`}
 function pdfErrorMarkup(detail='검사 탭에서 오류 위치를 확인하세요'){return `<div class="pdf-error-state" role="alert"><span class="pdf-error-icon" aria-hidden="true">!</span><strong>PDF를 만들지 못했습니다</strong><span>${esc(detail)}</span><button type="button" onclick="document.querySelector('[data-tab=checks]')?.click()">컴파일 오류 확인</button></div>`}
 function render(){resetPdfPageIndicator();$('paper-preview').innerHTML=pdfWaitMarkup('PDF 준비 중','PDF 렌더링을 실행하면 여기에 표시됩니다');$('render-state').textContent='PDF 대기';$('download-pdf').disabled=!renderedPdfUrl;}
 const parentPath=path=>path.includes('/')?path.slice(0,path.lastIndexOf('/')):'';
@@ -487,7 +498,7 @@ const codexProfiles={"luna-medium":{label:'Luna medium',model:'gpt-5.6-luna',rea
 let codexProfile=codexProfiles[localStorage.getItem('paper-codex-profile')]?localStorage.getItem('paper-codex-profile'):'luna-medium';
 function selectedCodexProfile(){return codexProfiles[codexProfile]||codexProfiles['luna-medium']}
 function setCodexProfile(profile){if(!codexProfiles[profile])return;codexProfile=profile;localStorage.setItem('paper-codex-profile',profile);$('selected-model-label').textContent=selectedCodexProfile().label;for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.checked=input.value===profile}
-function installCodexProfileSettings(){setCodexProfile(codexProfile);$('instruction').placeholder=['어떻게 다듬을까요?','예: 주장 범위는 유지하고 학술 문체로 간결하게 수정해줘'].join('\n');for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.onchange=()=>{if(input.checked)setCodexProfile(input.value)}}
+function installCodexProfileSettings(){const instruction=$('instruction');setCodexProfile(codexProfile);instruction.placeholder=['어떻게 다듬을까요?','예: 주장 범위는 유지하고 학술 문체로 간결하게 수정해줘'].join('\n');instruction.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229)return;event.preventDefault();if(!$('ask').disabled)$('ask').click()});for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.onchange=()=>{if(input.checked)setCodexProfile(input.value)}}
 function showSentCodexRequest(instruction){$('codex-request-form').hidden=true;$('codex-request-summary').hidden=false;$('codex-request-text').textContent=instruction;$('codex-request-model').textContent=selectedCodexProfile().label}
 let codexConversation=[];
 function startNewCodexRequest(){codexConversation=[];$('codex-request-summary').hidden=true;$('codex-request-form').hidden=false;$('instruction').value='';$('suggestion').replaceChildren();requestAnimationFrame(()=>$('instruction').focus())}

@@ -98,6 +98,46 @@ test('initial compile failure replaces the waiting spinner with an actionable er
   await expect(page.locator('#render-state')).not.toContainText('이전 PDF')
 })
 
+test('PDF loading uses a minimal status indicator', async ({ page }) => {
+  await page.route('**/api/compile', () => new Promise(() => {}))
+  await page.goto('/')
+  const spinner = page.locator('#paper-preview .pdf-spinner')
+  await expect(spinner).toBeVisible()
+  await expect(spinner).toHaveCSS('width', '22px')
+  await expect(spinner).toHaveCSS('height', '22px')
+  await expect(spinner).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('#paper-preview .pdf-wait strong')).toHaveText('PDF 준비 중')
+  await expect(page.locator('#paper-preview .pdf-wait-detail')).toHaveCSS('width', '1px')
+})
+
+test('dark project tree keeps resting rows flat', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const inactive = page.locator('#files .file').filter({ hasText: 'references.bib' })
+  await expect(inactive).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(inactive).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
+  await expect(inactive).toHaveCSS('box-shadow', 'none')
+  await expect(page.locator('.tree-action').first()).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  await expect(page.locator('#files .file.active')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+})
+
+test('dark mode keeps application controls off white surfaces', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+  await expect(page.locator('.assistant-header-actions .beta')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await page.getByRole('tab', { name: '검사' }).click()
+  await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await expect(page.locator('.diagnostic-item').first()).toHaveCSS('background-color', 'rgb(58, 32, 37)')
+  await page.locator('#files .folder-row').first().click({ button: 'right' })
+  await expect(page.locator('#tree-menu button').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await page.locator('#collab-name').click()
+  await expect(page.locator('.name-dialog .quiet-dialog')).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+})
+
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
@@ -160,6 +200,25 @@ test('CodeMirror provides a professional LaTeX editing surface', async ({ page }
   await page.keyboard.press('Control+End')
   await page.keyboard.type('\n% codemirror-e2e')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor').value)).toContain('% codemirror-e2e')
+})
+
+test('PDF source highlight matches the full height of a wrapped source line', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => {
+    const wrapped = 'A deliberately long source line that wraps across several visual rows so the SyncTeX source marker must use the rendered logical line height rather than a fixed caret height. '.repeat(5)
+    window.setEditorValue(wrapped)
+    window.setEditorSelection(0, wrapped.length, { scroll: true })
+  })
+  await page.waitForTimeout(50)
+  await page.evaluate(() => window.showSourceSyncHighlight(0))
+
+  const activeLine = await page.locator('#editor-view .cm-activeLine').boundingBox()
+  const marker = await page.locator('#sync-highlight').boundingBox()
+  expect(activeLine?.height).toBeGreaterThan(40)
+  expect(Math.abs((activeLine?.y || 0) - (marker?.y || 0))).toBeLessThan(1.5)
+  expect(Math.abs((activeLine?.height || 0) - (marker?.height || 0))).toBeLessThan(1.5)
 })
 
 test('workspace health center exposes collaboration, save, PDF, and backup state', async ({ page }) => {
@@ -264,6 +323,30 @@ test('keyboard selection can open inline comment composer', async ({ page }) => 
   await page.keyboard.press('Control+Alt+c')
   await expect(page.locator('#selection-comment-composer')).toBeVisible()
   await expect(page.locator('#selection-comment-prompt')).toBeFocused()
+})
+
+test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a line', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.route('**/api/codex', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ replacement: 'Revised sentence.', summary: 'Revised for clarity.' })
+  }))
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
+  const prompt = page.locator('#instruction')
+  await prompt.fill('첫 번째 요청')
+  await prompt.press('Shift+Enter')
+  await prompt.type('추가 조건')
+  await expect(prompt).toHaveValue('첫 번째 요청\n추가 조건')
+  await prompt.press('Enter')
+  await expect(page.locator('#codex-request-summary')).toBeVisible()
+  await expect(page.locator('#codex-request-text')).toHaveText('첫 번째 요청\n추가 조건')
+  await page.locator('#codex-new-request').click()
+  await prompt.fill('unbroken-'.repeat(80))
+  await expect(prompt).toHaveCSS('overflow-x', 'hidden')
+  await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 })
 
 test('Yjs merges text and awareness between two browsers', async ({ browser }) => {

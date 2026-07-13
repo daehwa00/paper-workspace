@@ -36,7 +36,6 @@ i18n.register('en', {
   'hub.loadErrorHint': 'Check projects/index.json on the server.',
   'hub.defaultDescription': 'Paper workspace',
   'hub.thumbnailAlt': 'First-page preview of {title}',
-  'hub.edited': 'Edited in this browser',
   'hub.comment': '{count} comment',
   'hub.comments': '{count} comments',
   'hub.task': '{count} open task',
@@ -93,7 +92,6 @@ i18n.register('ko', {
   'hub.loadErrorHint': '서버의 projects/index.json을 확인하세요.',
   'hub.defaultDescription': '논문 작업공간',
   'hub.thumbnailAlt': '{title} 첫 페이지 미리보기',
-  'hub.edited': '편집 기록 있음',
   'hub.comment': '댓글 {count}',
   'hub.comments': '댓글 {count}',
   'hub.task': '할 일 {count}',
@@ -195,11 +193,10 @@ function localProjectState(slug) {
     const draft = JSON.parse(localStorage.getItem(`paper-workspace:${slug}`) || 'null')
     const comments = Array.isArray(draft?.comments) ? draft.comments.length : 0
     const tasks = Array.isArray(draft?.tasks) ? draft.tasks.filter(task => !task.done).length : 0
-    const edited = Boolean(draft?.files && Object.keys(draft.files).length)
     const lastActive = Number(localStorage.getItem(`paper-workspace:last-active:${slug}`)) || 0
-    return { comments, tasks, edited, lastActive }
+    return { comments, tasks, lastActive }
   } catch (_) {
-    return { comments: 0, tasks: 0, edited: false, lastActive: 0 }
+    return { comments: 0, tasks: 0, lastActive: 0 }
   }
 }
 
@@ -275,17 +272,20 @@ function renderProjects() {
     const title = escapeHtml(rawTitle)
     const description = escapeHtml(localizedField(project, 'description') || i18n.t('hub.defaultDescription'))
     const updated = escapeHtml(localizedField(project, 'updated_at'))
+    const pageCount = Number.isSafeInteger(project.page_count) && project.page_count > 0 && project.page_count <= 1000
+      ? `${project.page_count}p`
+      : ''
     const thumbnail = thumbnailPattern.test(project.thumbnail || '') ? project.thumbnail : ''
     const visual = thumbnail
       ? `<div class="project-thumbnail-wrap"><img class="project-thumbnail" src="${escapeHtml(thumbnail)}" alt="${escapeHtml(i18n.t('hub.thumbnailAlt', { title: rawTitle }))}" loading="lazy" /></div>`
       : '<span class="project-icon">T</span>'
-    const meta = [
+    const badges = [
       updated,
-      local.edited ? i18n.t('hub.edited') : '',
       local.comments ? i18n.t(local.comments === 1 ? 'hub.comment' : 'hub.comments', { count: local.comments }) : '',
       local.tasks ? i18n.t(local.tasks === 1 ? 'hub.task' : 'hub.tasks', { count: local.tasks }) : ''
     ].filter(Boolean)
-    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div>${meta.length ? `<div class="project-meta">${meta.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>` : ''}</a>`
+    const meta = `${updated ? `<span>${updated}</span>` : ''}${pageCount ? `<small class="project-page-count">${pageCount}</small>` : ''}${badges.slice(updated ? 1 : 0).map(item => `<span>${escapeHtml(item)}</span>`).join('')}`
+    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
   }).join('') || `<div class="empty-card">${escapeHtml(i18n.t('hub.emptyProjects'))}</div>`
 }
 
