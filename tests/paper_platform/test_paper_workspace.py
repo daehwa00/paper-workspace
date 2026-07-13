@@ -444,6 +444,12 @@ def test_codex_prompt_wraps_and_enter_submits() -> None:
     assert "#instruction::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}" in css
 
 
+def test_comment_prompt_has_no_horizontal_drag_track() -> None:
+    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    assert "#comment-body{overflow-x:hidden" in css
+    assert "#comment-body::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}" in css
+
+
 def test_preview_header_keeps_controls_without_redundant_title() -> None:
     html = workspace_markup()
     assert '<div class="panel-header preview-header"><span class="render-controls">' in html

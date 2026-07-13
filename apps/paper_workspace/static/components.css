@@ -67,3 +67,5 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 /* Codex requests wrap within the assistant pane; vertical space is the only useful overflow. */
 #instruction{overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
 #instruction::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+#comment-body{overflow-x:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+#comment-body::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
