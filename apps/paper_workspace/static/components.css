@@ -80,3 +80,13 @@ html,body{height:100%;overflow:hidden}.shell{height:100vh;overflow:hidden}.works
 .backup-card>.tool-row .backup-restore{min-width:38px;height:28px;padding:4px 7px;border:0!important;border-radius:6px;background:transparent;color:#667085;box-shadow:none}
 .backup-card>.tool-row .backup-restore+.backup-restore{border-left:1px solid #dbe7ff!important;border-radius:0 6px 6px 0;color:#1d4ed8}
 .backup-card>.tool-row .backup-restore:hover:not(:disabled){background:#eaf1ff;color:#1745bb}
+
+/* The loading card already has a spinner and progress bar; avoid a redundant rail. */
+.suggestion.codex-loading{border-left:0}
+
+/* Submission checks are the primary action in this panel. */
+#run-submission-checks{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;margin:2px 0 10px;padding:7px 12px;border:1px solid #2457d6;border-radius:7px;background:#2457d6;color:#fff;box-shadow:0 2px 6px #2457d629;font-size:11px;font-weight:750;line-height:1.2;transition:background-color .15s,border-color .15s,box-shadow .15s,transform .15s}
+#run-submission-checks::before{content:'▶';font-size:8px;line-height:1}
+#run-submission-checks:hover:not(:disabled){border-color:#1745bb;background:#1745bb;box-shadow:0 4px 10px #2457d633;transform:translateY(-1px)}
+#run-submission-checks:active:not(:disabled){box-shadow:0 1px 3px #2457d624;transform:none}
+#run-submission-checks:focus-visible{outline:3px solid #84adff;outline-offset:2px}
