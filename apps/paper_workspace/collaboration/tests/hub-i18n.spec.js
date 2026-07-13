@@ -64,15 +64,24 @@ test('project cards share a row height despite different title and description l
     body: JSON.stringify({ projects: [
       { slug: 'short', display_name: 'Short Paper', description: 'Short description.', page_count: 1 },
       { slug: 'long-title', display_name: 'A Much Longer Research Paper Title That Wraps Across Several Lines', description: 'Short description.', page_count: 12 },
-      { slug: 'long-copy', display_name: 'Medium Paper', description: 'A longer project description that occupies both available lines in the compact gallery card.', page_count: 28 }
+      { slug: 'long-copy', display_name: 'Medium Paper', description: 'A longer project description that occupies both available lines in the compact gallery card.', page_count: 28 },
+      { slug: 'fourth', display_name: 'Fourth Paper', description: 'Another short description.', page_count: 8 },
+      { slug: 'fifth', display_name: 'Fifth Paper', description: 'The final project in an incomplete row.', page_count: 16 }
     ] })
   }))
 
   await page.goto('/hub.html?lang=en')
-  await expect(page.locator('.project-card')).toHaveCount(3)
+  await expect(page.locator('.project-card')).toHaveCount(5)
   const boxes = await page.locator('.project-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect()))
   const metaBoxes = await page.locator('.project-meta').evaluateAll(items => items.map(item => item.getBoundingClientRect()))
-  expect(new Set(boxes.map(box => Math.round(box.height))).size).toBe(1)
-  expect(new Set(boxes.map(box => Math.round(box.bottom))).size).toBe(1)
-  expect(new Set(metaBoxes.map(box => Math.round(box.bottom))).size).toBe(1)
+  const copyTops = await page.locator('.project-card-copy p').evaluateAll(items => items.slice(0, 3).map(item => Math.round(item.getBoundingClientRect().top)))
+  const gridBox = await page.locator('.project-grid').evaluate(grid => grid.getBoundingClientRect())
+  expect(new Set(boxes.slice(0, 3).map(box => Math.round(box.height))).size).toBe(1)
+  expect(new Set(boxes.slice(0, 3).map(box => Math.round(box.bottom))).size).toBe(1)
+  expect(new Set(metaBoxes.slice(0, 3).map(box => Math.round(box.bottom))).size).toBe(1)
+  expect(new Set(copyTops).size).toBe(1)
+  expect(Math.abs((boxes[3].left + boxes[4].right) / 2 - (gridBox.left + gridBox.right) / 2)).toBeLessThan(2)
+  await expect(page.locator('.hub-intro')).toHaveCSS('padding-top', '20px')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.project-card h3').first()).toHaveCSS('min-height', '0px')
 })
