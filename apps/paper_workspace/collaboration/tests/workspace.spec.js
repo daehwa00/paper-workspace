@@ -507,11 +507,14 @@ test('upward mouse selection shows actions when released above the editor', asyn
 
 test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a line', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.route('**/api/codex', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ replacement: 'Revised sentence.', summary: 'Revised for clarity.' })
-  }))
+  await page.route('**/api/codex', async route => {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ replacement: 'Revised sentence.', summary: 'Revised for clarity.' })
+    })
+  })
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await page.evaluate(() => window.setEditorSelection(0, 1, { scroll: true }))
@@ -521,6 +524,8 @@ test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a
   await prompt.type('추가 조건')
   await expect(prompt).toHaveValue('첫 번째 요청\n추가 조건')
   await prompt.press('Enter')
+  await expect(page.locator('.suggestion.codex-loading')).toBeVisible()
+  await expect(page.locator('.suggestion.codex-loading')).toHaveCSS('border-left-style', 'none')
   await expect(page.locator('#codex-request-summary')).toBeVisible()
   await expect(page.locator('#codex-request-text')).toHaveText('첫 번째 요청\n추가 조건')
   await page.locator('#codex-new-request').click()
