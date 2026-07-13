@@ -48,8 +48,25 @@ test('comment prompt wraps without a horizontal drag track', async ({ page }) =>
   await page.getByRole('tab', { name: '댓글' }).click()
   const prompt = page.locator('#comment-body')
   await expect(prompt).toHaveCSS('overflow-x', 'hidden')
+  const promptBox = await prompt.boundingBox()
+  const buttonBox = await page.locator('#add-comment').boundingBox()
+  expect(buttonBox.y - (promptBox.y + promptBox.height)).toBeGreaterThanOrEqual(8)
   await prompt.fill('긴댓글요청'.repeat(80))
   await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+})
+
+test('backup actions use clear hierarchy and segmented history controls', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.getByRole('tab', { name: '자료' }).click()
+  await expect(page.locator('#create-checkpoint')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await page.locator('#backup-list').evaluate(element => {
+    element.innerHTML = '<article class="backup-card"><div class="backup-card-meta"><strong>논문 백업</strong><span>방금 전 · 자동</span></div><div class="tool-row"><button class="backup-restore">비교</button><button class="backup-restore">복원</button></div></article>'
+  })
+  const actions = page.locator('.backup-card > .tool-row')
+  await expect(actions).toHaveCSS('gap', '0px')
+  await expect(actions).toHaveCSS('border-top-style', 'solid')
+  await expect(actions.locator('.backup-restore').nth(1)).toHaveCSS('border-left-style', 'solid')
 })
 
 test('server manuscript paints before collaboration bootstrap finishes', async ({ page }) => {

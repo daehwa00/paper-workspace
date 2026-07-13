@@ -35,8 +35,12 @@ def test_example_project_library_has_a_hub_catalog_and_slug_project() -> None:
     assert catalog["projects"]
     project = catalog["projects"][0]
     assert project["slug"] == "example-paper"
-    assert (library / project["slug"] / "project.json").is_file()
-    assert (library / project["slug"] / "main.tex").is_file()
+    project_root = library / project["slug"]
+    manifest = json.loads((project_root / "project.json").read_text(encoding="utf-8"))
+    assert project["display_name"] == manifest["display_name"] == "A Reusable Paper Workspace"
+    assert "\\title{A Reusable Paper Workspace}" in (project_root / "main.tex").read_text(encoding="utf-8")
+    assert (project_root / "project.json").is_file()
+    assert (project_root / "main.tex").is_file()
     assert (library / project["slug"] / "thumbnail.png").is_file()
 
 
