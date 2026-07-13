@@ -486,6 +486,25 @@ test('keyboard selection can open inline comment composer', async ({ page }) => 
   await expect(page.locator('#selection-comment-prompt')).toBeFocused()
 })
 
+test('upward mouse selection shows actions when released above the editor', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.waitForSelector('#editor-view .cm-line')
+  const content = page.locator('#editor-view .cm-content')
+  await content.click({ position: { x: 20, y: 10 } })
+  await expect(page.locator('#selection-toolbar')).toBeHidden()
+  const contentBox = await content.boundingBox()
+  const startBox = await page.locator('#editor-view .cm-line').nth(10).boundingBox()
+  await page.mouse.move(startBox.x + Math.min(startBox.width - 4, 180), startBox.y + startBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(contentBox.x + 20, contentBox.y - 8, { steps: 10 })
+  await page.mouse.up()
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().length || 0)).toBeGreaterThan(0)
+  await expect(page.locator('#selection-toolbar')).toBeVisible()
+  await page.locator('#selection-comment').click()
+  await expect(page.locator('#selection-comment-composer')).toBeVisible()
+})
+
 test('Codex prompt wraps horizontally and Enter submits while Shift Enter adds a line', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.route('**/api/codex', route => route.fulfill({

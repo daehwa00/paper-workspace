@@ -359,14 +359,16 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert 'id="selection-codex"' in html
     assert "Codex에게 요청 보내기" in html
     assert "prepareCodexRequest" in app
+    assert "document.addEventListener('pointerup',finishSelectionDrag)" in app
+    assert "document.addEventListener('pointercancel',cancelSelectionDrag)" in app
     assert "latexPreview" in app
     assert "mathPreview" in app
     assert "\\mathbb" in app
     assert "math-frac" in html
     assert 'class="latex-preview codex-proposal"' in app
     assert ".replace(/\\s*\\n\\s*/g,' ')" in app
-    assert "let dragged=false" in app
-    assert "if(dragged&&selection.end>selection.start)" in app
+    assert "let selectionDrag=null" in app
+    assert "Math.hypot(event.clientX-selectionDrag.startX,event.clientY-selectionDrag.startY)>=3" in app
     assert "captureEditorSelection" in app
     assert "requestCodexRevision" in app
     assert "codex-thinking-spinner" in html
