@@ -122,6 +122,22 @@ test('dark project tree keeps resting rows flat', async ({ page }) => {
   await expect(page.locator('#files .file.active')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 })
 
+test('dark mode keeps application controls off white surfaces', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+  await expect(page.locator('.assistant-header-actions .beta')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await page.getByRole('tab', { name: '검사' }).click()
+  await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await expect(page.locator('.diagnostic-item').first()).toHaveCSS('background-color', 'rgb(58, 32, 37)')
+  await page.locator('#files .folder-row').first().click({ button: 'right' })
+  await expect(page.locator('#tree-menu button').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await page.locator('#collab-name').click()
+  await expect(page.locator('.name-dialog .quiet-dialog')).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+})
+
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')

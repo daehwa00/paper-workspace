@@ -548,6 +548,15 @@ def test_dark_theme_covers_secondary_workspace_copy() -> None:
     assert 'html[data-color-scheme="dark"] .model-caption' in css
 
 
+def test_dark_theme_reserves_white_for_rendered_paper() -> None:
+    css = (ROOT / "apps/paper_workspace/static/theme.css").read_text(encoding="utf-8")
+    assert '.sidebar .side-heading .tree-action' in css
+    assert 'background:var(--theme-surface-raised)!important' in css
+    assert '.suggestion:not(.codex-result):not(.codex-loading)' in css
+    assert '.paper:has(.pdf-error-state)' in css
+    assert '.diagnostic-item{background:#3a2025' in css
+
+
 def test_comment_cards_navigate_to_source_and_can_be_resolved() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
