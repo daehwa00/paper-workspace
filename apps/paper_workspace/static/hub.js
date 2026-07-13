@@ -193,13 +193,15 @@ function paintAvatar() {
   avatar.setAttribute('aria-label', i18n.t('profile.settings', { name: profile.name }))
 }
 
-function localProjectState(slug) {
+function localProjectState(project) {
   try {
+    const slug = project.slug
     const draft = JSON.parse(localStorage.getItem(`paper-workspace:${slug}`) || 'null')
     const comments = Array.isArray(draft?.comments) ? draft.comments.length : 0
     const tasks = Array.isArray(draft?.tasks) ? draft.tasks.filter(task => !task.done).length : 0
     const browserActive = Number(localStorage.getItem(`paper-workspace:last-active:${slug}`)) || 0
-    const activity = projectActivity.get(slug)
+    const activityId = slugPattern.test(project.activity_id || '') ? project.activity_id : slug
+    const activity = projectActivity.get(activityId)
     const serverActive = Date.parse(activity?.modified_at || '') || 0
     const modifiedAt = serverActive || browserActive
     const actor = activity?.actor || (browserActive ? currentProfile().name : '')
@@ -218,7 +220,7 @@ function formatActivityTime(value) {
 }
 
 function sortedProjects(items) {
-  const decorated = items.map((project, index) => ({ project, index, local: localProjectState(project.slug) }))
+  const decorated = items.map((project, index) => ({ project, index, local: localProjectState(project) }))
   if (sort.value === 'name') {
     decorated.sort((left, right) => localizedField(left.project, 'display_name').localeCompare(
       localizedField(right.project, 'display_name'), i18n.getLanguage() === 'ko' ? 'ko' : 'en'

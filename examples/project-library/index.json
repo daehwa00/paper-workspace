@@ -2,6 +2,7 @@
   "projects": [
     {
       "slug": "example-paper",
+      "activity_id": "example-paper",
       "display_name": "A Reusable Paper Workspace",
       "description": "A small, reproducible paper project used to demonstrate the workspace.",
       "updated_at": "Example",
