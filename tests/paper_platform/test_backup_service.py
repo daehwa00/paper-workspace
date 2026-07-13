@@ -94,6 +94,23 @@ def test_database_contains_canonical_json_not_pickle(tmp_path: Path) -> None:
     assert json.dumps(restored["payload"], sort_keys=True)
 
 
+def test_project_activity_tracks_latest_server_time_and_actor(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    store = backup.BackupStore(tmp_path / "backups.sqlite3")
+    store.create("paper-with-snapshot", snapshot_payload(), "Snapshot Author", "auto")
+
+    first = store.record_activity("paper-one", "Dae", "edit")
+    second = store.record_activity("paper-one", "KDH", "codex")
+    activity = {item["project_id"]: item for item in store.list_activity()}
+
+    assert second["modified_at"] >= first["modified_at"]
+    assert activity["paper-one"]["actor"] == "KDH"
+    assert activity["paper-one"]["reason"] == "codex"
+    assert activity["paper-with-snapshot"]["actor"] == "Snapshot Author"
+    with pytest.raises(backup.ValidationError, match="actor"):
+        store.record_activity("paper-one", "", "edit")
+
+
 def test_snapshot_export_is_written_for_external_copy(tmp_path: Path) -> None:
     backup = load_backup_module()
     export_dir = tmp_path / "exports"
@@ -144,6 +161,16 @@ def test_http_api_creates_lists_and_restores_snapshots(tmp_path: Path) -> None:
             assert json.load(response)["snapshots"][0]["id"] == snapshot_id
         with urllib.request.urlopen(f"{base}/projects/paper-one/snapshots/{snapshot_id}") as response:
             assert json.load(response)["snapshot"]["payload"] == snapshot_payload()
+        activity_request = urllib.request.Request(
+            f"{base}/projects/paper-one/activity",
+            data=json.dumps({"actor": "KDH", "reason": "edit"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(activity_request) as response:
+            assert json.load(response)["activity"]["actor"] == "KDH"
+        with urllib.request.urlopen(f"{base}/activity") as response:
+            assert json.load(response)["projects"][0]["project_id"] == "paper-one"
         asset_request = urllib.request.Request(
             f"{base}/projects/paper-one/assets/figures%2Fplot.png", data=b"png", method="PUT"
         )

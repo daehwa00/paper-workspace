@@ -11,6 +11,7 @@ const slugPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const thumbnailPattern = /^\/projects\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\/thumbnail\.(?:png|jpe?g|webp)$/i
 const profileColors = ['#2457d6', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
 let projects = []
+let projectActivity = new Map()
 
 i18n.register('en', {
   'language.label': 'Language',
@@ -40,6 +41,8 @@ i18n.register('en', {
   'hub.comments': '{count} comments',
   'hub.task': '{count} open task',
   'hub.tasks': '{count} open tasks',
+  'hub.lastEdited': 'Last edited by {actor} · {time}',
+  'hub.noActivity': 'No edit history yet',
   'profile.title': 'Set display name',
   'profile.description': 'This name and profile color are visible to collaborators.',
   'profile.color': 'Profile color',
@@ -96,6 +99,8 @@ i18n.register('ko', {
   'hub.comments': '댓글 {count}',
   'hub.task': '할 일 {count}',
   'hub.tasks': '할 일 {count}',
+  'hub.lastEdited': '{actor} 수정 · {time}',
+  'hub.noActivity': '아직 수정 기록 없음',
   'profile.title': '표시 이름 설정',
   'profile.description': '공동 편집자에게 보이는 이름과 프로필 색상입니다.',
   'profile.color': '프로필 색상',
@@ -193,11 +198,23 @@ function localProjectState(slug) {
     const draft = JSON.parse(localStorage.getItem(`paper-workspace:${slug}`) || 'null')
     const comments = Array.isArray(draft?.comments) ? draft.comments.length : 0
     const tasks = Array.isArray(draft?.tasks) ? draft.tasks.filter(task => !task.done).length : 0
-    const lastActive = Number(localStorage.getItem(`paper-workspace:last-active:${slug}`)) || 0
-    return { comments, tasks, lastActive }
+    const browserActive = Number(localStorage.getItem(`paper-workspace:last-active:${slug}`)) || 0
+    const activity = projectActivity.get(slug)
+    const serverActive = Date.parse(activity?.modified_at || '') || 0
+    const modifiedAt = serverActive || browserActive
+    const actor = activity?.actor || (browserActive ? currentProfile().name : '')
+    return { comments, tasks, modifiedAt, actor }
   } catch (_) {
-    return { comments: 0, tasks: 0, lastActive: 0 }
+    return { comments: 0, tasks: 0, modifiedAt: 0, actor: '' }
   }
+}
+
+function formatActivityTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const options = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric'
+  return new Intl.DateTimeFormat(i18n.getLanguage() === 'ko' ? 'ko-KR' : 'en-US', options).format(date)
 }
 
 function sortedProjects(items) {
@@ -207,9 +224,9 @@ function sortedProjects(items) {
       localizedField(right.project, 'display_name'), i18n.getLanguage() === 'ko' ? 'ko' : 'en'
     ))
   } else if (sort.value === 'comments') {
-    decorated.sort((left, right) => right.local.comments - left.local.comments || right.local.lastActive - left.local.lastActive || left.index - right.index)
+    decorated.sort((left, right) => right.local.comments - left.local.comments || right.local.modifiedAt - left.local.modifiedAt || left.index - right.index)
   } else {
-    decorated.sort((left, right) => right.local.lastActive - left.local.lastActive || left.index - right.index)
+    decorated.sort((left, right) => right.local.modifiedAt - left.local.modifiedAt || left.index - right.index)
   }
   return decorated
 }
@@ -285,15 +302,24 @@ function renderProjects() {
       local.tasks ? i18n.t(local.tasks === 1 ? 'hub.task' : 'hub.tasks', { count: local.tasks }) : ''
     ].filter(Boolean)
     const meta = `${updated ? `<span>${updated}</span>` : ''}${pageCount ? `<small class="project-page-count">${pageCount}</small>` : ''}${badges.slice(updated ? 1 : 0).map(item => `<span>${escapeHtml(item)}</span>`).join('')}`
-    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
+    const activityTime = local.modifiedAt ? formatActivityTime(local.modifiedAt) : ''
+    const activityLabel = local.actor && activityTime ? i18n.t('hub.lastEdited', { actor: local.actor, time: activityTime }) : i18n.t('hub.noActivity')
+    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div><div class="project-activity"><span class="project-activity-dot" aria-hidden="true"></span>${escapeHtml(activityLabel)}</div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
   }).join('') || `<div class="empty-card">${escapeHtml(i18n.t('hub.emptyProjects'))}</div>`
 }
 
 async function loadProjects() {
   try {
-    const response = await fetch('/projects/index.json', { cache: 'no-store' })
+    const [response, activityResponse] = await Promise.all([
+      fetch('/projects/index.json', { cache: 'no-store' }),
+      fetch('/api/backups/activity', { headers: { Accept: 'application/json' }, cache: 'no-store' }).catch(() => null)
+    ])
     if (!response.ok) throw new Error(i18n.t('hub.loadError'))
     const payload = await response.json()
+    if (activityResponse?.ok) {
+      const activityPayload = await activityResponse.json()
+      projectActivity = new Map((Array.isArray(activityPayload?.projects) ? activityPayload.projects : []).filter(item => slugPattern.test(item?.project_id || '')).map(item => [item.project_id, item]))
+    }
     projects = Array.isArray(payload) ? payload : (Array.isArray(payload.projects) ? payload.projects : [])
     renderProjects()
   } catch (error) {

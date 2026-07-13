@@ -25,7 +25,7 @@
 .project-card:active{transform:scale(.985)}
 .project-thumbnail-wrap{width:min(100%,205px)!important;max-width:205px;aspect-ratio:612/792;height:auto!important;background:#fff!important;box-shadow:0 5px 16px #1018280c;transition:transform 180ms cubic-bezier(.2,.8,.2,1),box-shadow 180ms ease}
 .project-thumbnail{width:100%;height:100%;object-fit:contain;object-position:left top}
-.project-card-copy{min-height:0}.project-card h3{display:-webkit-box;min-height:3.6em;overflow:hidden;margin:14px 0 7px;font-size:17px;line-height:1.2;-webkit-box-orient:vertical;-webkit-line-clamp:3}.project-card p{font-size:13px;line-height:1.5;-webkit-line-clamp:2}.project-meta{margin-top:auto;padding-top:11px;border-top:1px solid #eef1f5;font-size:11px;color:#667085}
+.project-card-copy{min-height:0}.project-card h3{display:-webkit-box;min-height:3.6em;overflow:hidden;margin:14px 0 7px;font-size:17px;line-height:1.2;-webkit-box-orient:vertical;-webkit-line-clamp:3}.project-card p{font-size:13px;line-height:1.5;-webkit-line-clamp:2}.project-activity{display:flex;min-height:20px;align-items:center;gap:6px;margin-top:auto;padding-top:9px;color:#667085;font-size:11px;line-height:1.3}.project-activity-dot{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:#84adff}.project-meta{margin-top:7px;padding-top:9px;border-top:1px solid #eef1f5;font-size:11px;color:#667085}
 .project-meta span{display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:999px;background:#f2f4f7;color:#475467}
 .project-page-count{display:inline-flex;min-height:22px;align-items:center;padding:0;background:transparent;color:#98a2b3;font-size:11px;font-weight:650;line-height:1}
 .search{min-height:44px}
@@ -43,6 +43,7 @@
 
 html[data-color-scheme="dark"] .project-sort-label select{border-color:var(--theme-border);background:var(--theme-surface-raised);color:var(--theme-text)}
 html[data-color-scheme="dark"] .project-meta{border-color:var(--theme-border-soft)}
+html[data-color-scheme="dark"] .project-activity{color:var(--theme-text-muted)}
 html[data-color-scheme="dark"] .project-meta span{background:var(--theme-surface-subtle);color:var(--theme-text-muted)}
 html[data-color-scheme="dark"] .project-skeleton{border-color:var(--theme-border);background:var(--theme-surface)}
 html[data-color-scheme="dark"] .project-skeleton span,html[data-color-scheme="dark"] .project-skeleton i,html[data-color-scheme="dark"] .project-skeleton b,html[data-color-scheme="dark"] .project-skeleton em{background:linear-gradient(90deg,#172235 25%,#21304a 45%,#172235 65%);background-size:220% 100%}
