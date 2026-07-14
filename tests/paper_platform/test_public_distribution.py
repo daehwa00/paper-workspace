@@ -129,6 +129,7 @@ def test_public_export_installs_a_pinned_history_secret_scan(tmp_path: Path) -> 
     workflow = (destination / ".github/workflows/security.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in workflow
     assert "gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3" in workflow
+    assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in workflow
 
 
 def test_public_export_scans_large_files_and_chunk_boundaries(tmp_path: Path) -> None:
