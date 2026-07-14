@@ -71,7 +71,8 @@ def test_public_readme_includes_safe_example_demo_assets() -> None:
     assert "examples/paper-workspace-project" in readme
     assert "no research manuscript" in readme.lower()
     for feature in (
-        "Complete feature tour",
+        "One workspace for the whole paper",
+        "View all features",
         "full path",
         "visible page and scroll position",
         "workspace health center",
@@ -81,8 +82,10 @@ def test_public_readme_includes_safe_example_demo_assets() -> None:
     ):
         assert feature in readme
     korean = (documentation_root / "README.ko.md").read_text(encoding="utf-8")
-    for feature in ("전체 기능 둘러보기", "전체 경로", "작업공간 상태 센터", "새 대화", "라이트·다크·시스템"):
+    for feature in ("논문의 전 과정을 하나의 작업공간에서", "전체 기능 보기", "전체 경로", "작업공간 상태 센터", "새 대화", "라이트·다크·시스템"):
         assert feature in korean
+    assert readme.count("<details>") == readme.count("</details>") == 1
+    assert korean.count("<details>") == korean.count("</details>") == 1
     assert readme.count("docs/demo/edit-and-render-flow.gif") == 1
     assert (demo / "edit-and-render-flow.gif").is_file()
     assert not (demo / "workspace-overview.png").exists()
