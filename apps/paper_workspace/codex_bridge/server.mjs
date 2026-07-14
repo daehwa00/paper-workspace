@@ -9,7 +9,8 @@ const RATE_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT = 10;
 const bridgeToken = process.env.CODEX_BRIDGE_TOKEN || '';
 const codexHome = process.env.CODEX_HOME || '/home/node/.codex';
-const workspace = process.env.CODEX_WORKSPACE || '/workspace';
+const workspace = process.env.CODEX_WORKSPACE || '/tmp/codex-workspace';
+const authPath = `${codexHome}/auth.json`;
 const modelProfiles = Object.freeze({
   'luna-medium': Object.freeze({ model: 'gpt-5.6-luna', reasoningEffort: 'medium' }),
   'luna-high': Object.freeze({ model: 'gpt-5.6-luna', reasoningEffort: 'high' }),
@@ -17,6 +18,51 @@ const modelProfiles = Object.freeze({
 });
 const calls = new Map();
 let running = false;
+
+function credentialStrings(value, parentKey = '') {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => {
+    if (typeof child === 'string') {
+      return /token|secret|api.?key|authorization/i.test(`${parentKey}.${key}`) && child.length >= 16 ? [child] : [];
+    }
+    return credentialStrings(child, `${parentKey}.${key}`);
+  });
+}
+
+const credentialDocument = JSON.parse(await readFile(authPath, 'utf8'));
+const sensitiveValues = [...new Set([...credentialStrings(credentialDocument), bridgeToken].filter(value => value.length >= 16))];
+const secretPatterns = [
+  /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g,
+  /(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+];
+
+function containsSecret(value) {
+  const text = String(value || '');
+  return sensitiveValues.some(secret => text.includes(secret)) || secretPatterns.some(pattern => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
+function redactSecrets(value) {
+  let text = String(value || '');
+  for (const secret of sensitiveValues) text = text.replaceAll(secret, '[redacted]');
+  for (const pattern of secretPatterns) {
+    pattern.lastIndex = 0;
+    text = text.replace(pattern, '[redacted]');
+  }
+  return text;
+}
+
+function codexEnvironment() {
+  const environment = { CODEX_HOME: codexHome, HOME: '/home/node', PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin' };
+  for (const key of ['LANG', 'LC_ALL', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {
+    if (process.env[key]) environment[key] = process.env[key];
+  }
+  return environment;
+}
 
 function json(response, status, body) {
   const encoded = JSON.stringify(body);
@@ -111,6 +157,8 @@ async function runCodex(payload) {
   const outputPath = `/tmp/codex-revision-${randomUUID()}.json`;
   const args = [
     'exec', '--ephemeral', '--sandbox', 'read-only', '--ignore-user-config',
+    '--ignore-rules', '--disable', 'shell_tool', '--disable', 'unified_exec',
+    '--disable', 'multi_agent', '--disable', 'apps',
     '--model', profile.model, '--config', `model_reasoning_effort="${profile.reasoningEffort}"`,
     '--skip-git-repo-check', '--cd', workspace, '--output-schema',
     '/app/revision-schema.json', '--output-last-message', outputPath, '-',
@@ -120,7 +168,7 @@ async function runCodex(payload) {
   try {
     child = spawn('codex', args, {
       cwd: workspace,
-      env: { ...process.env, CODEX_HOME: codexHome },
+      env: codexEnvironment(),
       stdio: ['pipe', 'ignore', 'pipe'],
       detached: true,
     });
@@ -143,6 +191,7 @@ async function runCodex(payload) {
     const result = JSON.parse(await readFile(outputPath, 'utf8'));
     const replacement = boundedString(result.replacement, 50_000, 'Codex 수정문');
     const summary = typeof result.summary === 'string' ? result.summary.slice(0, 500) : '';
+    if (containsSecret(replacement) || containsSecret(summary)) throw new Error('Codex 응답에서 보호 대상 자격증명 형식이 감지되어 차단했습니다.');
     return { replacement, summary };
   } finally {
     if (child && child.exitCode === null && child.signalCode === null) {
@@ -163,7 +212,7 @@ createServer(async (request, response) => {
   try {
     json(response, 200, await runCodex(await bodyOf(request)));
   } catch (error) {
-    json(response, 422, { error: String(error.message || error).slice(-1200) });
+    json(response, 422, { error: redactSecrets(error.message || error).slice(-1200) });
   } finally {
     running = false;
   }

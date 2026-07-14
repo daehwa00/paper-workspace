@@ -3,14 +3,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
+import math
 import os
+import threading
 import time
+from collections import OrderedDict
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode
-
 
 PASSWORD = os.environ.get("PAPER_ACCESS_PASSWORD", "")
 SESSION_SECRET = os.environ.get("PAPER_SESSION_SECRET", "")
@@ -25,6 +28,7 @@ COPY = {
         "password_label": "Access password",
         "submit": "Continue to workspace",
         "invalid_password": "The password is incorrect. Please try again.",
+        "rate_limited": "Too many sign-in attempts. Please wait before trying again.",
         "invalid_request": "The login request is invalid. Please reload the page and try again.",
         "language_label": "Language",
     },
@@ -36,6 +40,7 @@ COPY = {
         "password_label": "접속 비밀번호",
         "submit": "작업공간으로 계속",
         "invalid_password": "비밀번호가 올바르지 않습니다. 다시 시도해 주세요.",
+        "rate_limited": "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
         "invalid_request": "로그인 요청이 올바르지 않습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.",
         "language_label": "언어",
     },
@@ -44,6 +49,168 @@ try:
     SESSION_MAX_AGE = max(300, min(2_592_000, int(os.environ.get("PAPER_SESSION_MAX_AGE", "2592000"))))
 except ValueError:
     SESSION_MAX_AGE = 2_592_000
+
+
+def bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        return max(minimum, min(maximum, int(os.environ.get(name, str(default)))))
+    except ValueError:
+        return default
+
+
+def bounded_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        return max(minimum, min(maximum, float(os.environ.get(name, str(default)))))
+    except ValueError:
+        return default
+
+
+LOGIN_FREE_FAILURES = bounded_int("PAPER_LOGIN_FREE_FAILURES", 3, 0, 10)
+LOGIN_BASE_DELAY = bounded_float("PAPER_LOGIN_BASE_DELAY", 1.0, 0.25, 10.0)
+LOGIN_MAX_DELAY = bounded_float("PAPER_LOGIN_MAX_DELAY", 60.0, 1.0, 300.0)
+LOGIN_FAILURE_WINDOW = bounded_float("PAPER_LOGIN_FAILURE_WINDOW", 900.0, 60.0, 86_400.0)
+LOGIN_MAX_TRACKED_IPS = bounded_int("PAPER_LOGIN_MAX_TRACKED_IPS", 4096, 128, 65_536)
+CLIENT_IP_HEADER = "X-Paper-Client-IP"
+
+
+def parse_trusted_proxy_networks(
+    value: str,
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse explicit proxy CIDRs; invalid entries are ignored so header trust fails closed."""
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for item in value.split(","):
+        try:
+            networks.append(ipaddress.ip_network(item.strip(), strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
+
+
+TRUSTED_PROXY_NETWORKS = parse_trusted_proxy_networks(
+    os.environ.get("PAPER_TRUSTED_PROXY_CIDRS", "")
+)
+
+
+def canonical_ip(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return ipaddress.ip_address(value.strip().split("%", 1)[0]).compressed
+    except ValueError:
+        return None
+
+
+def client_ip(handler: BaseHTTPRequestHandler) -> str:
+    """Resolve a rate-limit identity without trusting client-supplied forwarding chains.
+
+    Caddy must overwrite X-Paper-Client-IP with its direct remote host, and its socket
+    address must match PAPER_TRUSTED_PROXY_CIDRS. X-Forwarded-For is never consulted.
+    """
+    peer = canonical_ip(handler.client_address[0]) or "unknown"
+    peer_address = ipaddress.ip_address(peer) if peer != "unknown" else None
+    if peer_address is None or not any(
+        peer_address in network for network in TRUSTED_PROXY_NETWORKS
+    ):
+        return peer
+    values = handler.headers.get_all(CLIENT_IP_HEADER, [])
+    if len(values) != 1 or "," in values[0]:
+        return peer
+    return canonical_ip(values[0]) or peer
+
+
+class FailureState:
+    __slots__ = ("blocked_until", "failures", "last_failure")
+
+    def __init__(self, failures: int, last_failure: float, blocked_until: float) -> None:
+        self.failures = failures
+        self.last_failure = last_failure
+        self.blocked_until = blocked_until
+
+
+class LoginAttemptLimiter:
+    """Thread-safe, bounded per-client exponential login cooldowns."""
+
+    def __init__(
+        self,
+        *,
+        free_failures: int = LOGIN_FREE_FAILURES,
+        base_delay: float = LOGIN_BASE_DELAY,
+        max_delay: float = LOGIN_MAX_DELAY,
+        failure_window: float = LOGIN_FAILURE_WINDOW,
+        max_entries: int = LOGIN_MAX_TRACKED_IPS,
+    ) -> None:
+        self.free_failures = max(0, free_failures)
+        self.base_delay = max(0.01, base_delay)
+        self.max_delay = max(self.base_delay, max_delay)
+        self.failure_window = max(self.max_delay, failure_window)
+        self.max_entries = max(1, max_entries)
+        self._states: OrderedDict[str, FailureState] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        while self._states:
+            _, state = next(iter(self._states.items()))
+            if now - state.last_failure < self.failure_window:
+                break
+            self._states.popitem(last=False)
+        while len(self._states) > self.max_entries:
+            self._states.popitem(last=False)
+
+    def retry_after(self, client: str, now: float | None = None) -> int:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            self._prune(current)
+            state = self._states.get(client)
+            if state is None or state.blocked_until <= current:
+                return 0
+            return max(1, math.ceil(state.blocked_until - current))
+
+    def record_failure(self, client: str, now: float | None = None) -> int:
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            return self._record_failure(client, current)
+
+    def _record_failure(self, client: str, now: float) -> int:
+        self._prune(now)
+        previous = self._states.get(client)
+        failures = (
+            previous.failures + 1
+            if previous is not None and now - previous.last_failure < self.failure_window
+            else 1
+        )
+        delay = 0.0
+        if failures > self.free_failures:
+            exponent = min(failures - self.free_failures - 1, 30)
+            delay = min(self.max_delay, self.base_delay * (2**exponent))
+        self._states[client] = FailureState(failures, now, now + delay)
+        self._states.move_to_end(client)
+        self._prune(now)
+        return max(1, math.ceil(delay)) if delay else 0
+
+    def evaluate_attempt(
+        self,
+        client: str,
+        password_matches: bool,
+        now: float | None = None,
+    ) -> tuple[bool, int]:
+        """Atomically accept, reject, or throttle a completed password comparison."""
+        current = time.monotonic() if now is None else now
+        with self._lock:
+            self._prune(current)
+            state = self._states.get(client)
+            if state is not None and state.blocked_until > current:
+                return False, max(1, math.ceil(state.blocked_until - current))
+            if password_matches:
+                self._states.pop(client, None)
+                return True, 0
+            return False, self._record_failure(client, current)
+
+    def record_success(self, client: str) -> None:
+        with self._lock:
+            self._states.pop(client, None)
+
+
+LOGIN_LIMITER = LoginAttemptLimiter()
 
 
 def signature(expires: int) -> str:
@@ -207,12 +374,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.headers.get("Cookie"),
                 self.headers.get("Accept-Language"),
             )
-            if not PASSWORD or not hmac.compare_digest(supplied, PASSWORD):
+            identity = client_ip(self)
+            password_matches = bool(PASSWORD) and hmac.compare_digest(supplied, PASSWORD)
+            authenticated, retry_after = LOGIN_LIMITER.evaluate_attempt(
+                identity,
+                password_matches,
+            )
+            if not authenticated:
                 self._login_form(
-                    "invalid_password",
+                    "rate_limited" if retry_after else "invalid_password",
                     redirect=redirect,
                     language=language,
                     remember_language=normalize_language(query_language) is not None,
+                    status=HTTPStatus.TOO_MANY_REQUESTS if retry_after else HTTPStatus.OK,
+                    retry_after=retry_after,
                 )
                 return
             token, _ = issue_session()
@@ -246,12 +421,16 @@ class Handler(BaseHTTPRequestHandler):
         redirect: str = "/",
         language: str = "en",
         remember_language: bool = False,
+        status: HTTPStatus = HTTPStatus.OK,
+        retry_after: int = 0,
     ) -> None:
         body = render_login_page(language, redirect, error_code)
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Language", normalize_language(language) or "en")
+        if retry_after:
+            self.send_header("Retry-After", str(retry_after))
         if remember_language:
             self.send_header("Set-Cookie", language_cookie(language))
         self.send_header("Content-Length", str(len(body)))

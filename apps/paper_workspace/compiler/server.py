@@ -22,9 +22,6 @@ ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".eps"}
 MAX_REQUEST_BYTES = 48_000_000
 MAX_PROJECT_FILES = 120
 MAX_ASSET_BYTES = 32_000_000
-PROJECT_LIBRARY_ROOT = Path(os.environ.get("PAPER_PROJECTS_ROOT", "/projects"))
-DEFAULT_PROJECT_ROOT = Path(os.environ.get("PAPER_DEFAULT_PROJECT_ROOT", "/project-default"))
-PROJECT_SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 COMPILE_CACHE_TTL = 600
 COMPILE_CACHE_ITEMS = 16
 MAX_CONCURRENT_COMPILES = max(1, int(os.environ.get("PAPER_MAX_CONCURRENT_COMPILES", "2")))
@@ -150,6 +147,17 @@ def safe_project_path(name: object, extensions: set[str]) -> Path:
     return Path(*path.parts)
 
 
+def restricted_tex_environment(texmf: Path) -> dict[str, str]:
+    """Keep TeX reads/writes within its normal search paths and request workspace."""
+    return {
+        **os.environ,
+        "TEXMFVAR": str(texmf),
+        "TEXMFCONFIG": str(texmf),
+        "openin_any": "p",
+        "openout_any": "p",
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
@@ -187,8 +195,8 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw_payload)
             files = payload["files"]
             assets = payload.get("assets", {})
-            remote_assets = payload.get("remote_assets", {})
-            project_slug = payload.get("project_slug", "")
+            if payload.get("remote_assets"):
+                raise ValueError("remote project assets are not accepted; include request-scoped assets")
             entrypoint = payload.get("entrypoint", "main.tex")
             root_entrypoint = payload.get("root_entrypoint", "main.tex")
             preview_mode = payload.get("preview_mode", "document")
@@ -200,18 +208,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("root_entrypoint must be a .tex file")
             if preview_mode not in {"document", "fragment"}:
                 raise ValueError("invalid preview mode")
-            if not isinstance(assets, dict) or not isinstance(remote_assets, dict) or len(files) + len(assets) + len(remote_assets) > MAX_PROJECT_FILES:
+            if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
                 raise ValueError("too many project files")
             source_paths = {name: safe_project_path(name, SOURCE_EXTENSIONS) for name in files}
             asset_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in assets}
-            remote_asset_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in remote_assets}
             entrypoint_path = safe_project_path(entrypoint, {".tex"})
             if entrypoint not in source_paths:
                 raise ValueError(f"entrypoint not found: {entrypoint}")
             root_entrypoint_path = safe_project_path(root_entrypoint, {".tex"})
             if root_entrypoint not in source_paths:
                 raise ValueError(f"root entrypoint not found: {root_entrypoint}")
-            if set(source_paths) & (set(asset_paths) | set(remote_asset_paths)) or set(asset_paths) & set(remote_asset_paths) or any(not isinstance(content, str) for content in files.values()):
+            if set(source_paths) & set(asset_paths) or any(not isinstance(content, str) for content in files.values()):
                 raise ValueError("invalid project file")
             decoded_assets = {}
             asset_bytes = 0
@@ -223,20 +230,6 @@ class Handler(BaseHTTPRequestHandler):
                 if asset_bytes > MAX_ASSET_BYTES:
                     raise ValueError("assets exceed 32 MB")
                 decoded_assets[name] = decoded
-            if remote_assets:
-                if not isinstance(project_slug, str) or not PROJECT_SLUG_PATTERN.fullmatch(project_slug):
-                    raise ValueError("invalid project slug")
-                project_root = DEFAULT_PROJECT_ROOT if project_slug == "default" else PROJECT_LIBRARY_ROOT / project_slug
-                for destination_name, source_name in remote_assets.items():
-                    source_path = safe_project_path(source_name, ASSET_EXTENSIONS)
-                    source = project_root / source_path
-                    if not source.is_file():
-                        raise ValueError(f"project asset not found: {source_name}")
-                    decoded = source.read_bytes()
-                    asset_bytes += len(decoded)
-                    if asset_bytes > MAX_ASSET_BYTES:
-                        raise ValueError("assets exceed 32 MB")
-                    decoded_assets[destination_name] = decoded
             if not _compile_slots.acquire(blocking=False):
                 self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "compiler is busy; retry shortly"})
                 return
@@ -251,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         destination.write_text(content, encoding="utf-8")
                     for name, content in decoded_assets.items():
-                        destination = work / (asset_paths.get(name) or remote_asset_paths[name])
+                        destination = work / asset_paths[name]
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         destination.write_bytes(content)
                     compile_input = entrypoint_path
@@ -274,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
                         result = _run_process(
                             ["pdflatex", "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-jobname=preview", str(compile_input)],
                             cwd=work, timeout=30, client_id=client_id,
-                            env={**os.environ, "TEXMFVAR": str(texmf), "TEXMFCONFIG": str(texmf)},
+                            env=restricted_tex_environment(texmf),
                         )
                         if result.returncode:
                             raise RuntimeError((result.stdout + result.stderr)[-6000:])
@@ -286,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
                     if "\\bibdata" in aux:
                         bibtex = _run_process(
                             ["bibtex", "preview"], cwd=work, timeout=30, client_id=client_id,
-                            env={**os.environ, "TEXMFVAR": str(texmf)},
+                            env=restricted_tex_environment(texmf),
                         )
                         if bibtex.returncode:
                             raise RuntimeError((bibtex.stdout + bibtex.stderr)[-6000:])
@@ -400,16 +393,15 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             files = payload.get("files", {})
             assets = payload.get("assets", {})
-            remote_assets = payload.get("remote_assets", {})
-            project_slug = payload.get("project_slug", "")
+            if payload.get("remote_assets"):
+                raise ValueError("remote project assets are not accepted; include request-scoped assets")
             if not isinstance(files, dict) or not isinstance(files.get("main.tex"), str):
                 raise ValueError("main.tex is required")
-            if not isinstance(assets, dict) or not isinstance(remote_assets, dict) or len(files) + len(assets) + len(remote_assets) > MAX_PROJECT_FILES:
+            if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
                 raise ValueError("too many project files")
             source_paths = {name: safe_project_path(name, SOURCE_EXTENSIONS) for name in files}
             asset_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in assets}
-            remote_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in remote_assets}
-            if set(source_paths) & (set(asset_paths) | set(remote_paths)) or set(asset_paths) & set(remote_paths):
+            if set(source_paths) & set(asset_paths):
                 raise ValueError("invalid project file")
             packaged: dict[str, bytes] = {}
             for name, content in files.items():
@@ -423,17 +415,6 @@ class Handler(BaseHTTPRequestHandler):
                 decoded = base64.b64decode(content, validate=True)
                 asset_bytes += len(decoded)
                 packaged[asset_paths[name].as_posix()] = decoded
-            if remote_assets:
-                if not isinstance(project_slug, str) or not PROJECT_SLUG_PATTERN.fullmatch(project_slug):
-                    raise ValueError("invalid project slug")
-                root = DEFAULT_PROJECT_ROOT if project_slug == "default" else PROJECT_LIBRARY_ROOT / project_slug
-                for destination, source_name in remote_assets.items():
-                    source = root / safe_project_path(source_name, ASSET_EXTENSIONS)
-                    if not source.is_file():
-                        raise ValueError(f"project asset not found: {source_name}")
-                    data = source.read_bytes()
-                    asset_bytes += len(data)
-                    packaged[remote_paths[destination].as_posix()] = data
             if asset_bytes > MAX_ASSET_BYTES:
                 raise ValueError("assets exceed 32 MB")
             checksums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in sorted(packaged.items()))

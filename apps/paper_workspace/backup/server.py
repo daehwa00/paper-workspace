@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import os
 import re
 import sqlite3
@@ -14,7 +13,6 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from typing import Any
-
 
 MAX_REQUEST_BYTES = 12_000_000
 MAX_SNAPSHOT_BYTES = 10_000_000
@@ -29,6 +27,15 @@ ASSET_COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/assets/?$")
 ASSET_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/assets/(.+)$")
 DEFAULT_MAX_ASSET_BYTES = 16 * 1024 * 1024
 DEFAULT_MAX_PROJECT_ASSET_BYTES = 128 * 1024 * 1024
+DEFAULT_SHARED_ACTOR = "Shared user"
+TRUSTED_ACTOR_HEADER = "X-Paper-Actor"
+ALLOWED_ASSET_MIME_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".eps": "application/postscript",
+}
 
 
 class ValidationError(ValueError):
@@ -102,6 +109,34 @@ def validate_optional_text(value: object, field: str, maximum: int) -> str | Non
     if not isinstance(value, str) or len(value) > maximum or any(ord(character) < 32 for character in value):
         raise ValidationError(f"invalid {field}")
     return value
+
+
+def validate_asset_content(name: object, content: bytes) -> str:
+    clean_name = validate_project_path(name)
+    suffix = PurePosixPath(clean_name).suffix.lower()
+    content_type = ALLOWED_ASSET_MIME_TYPES.get(suffix)
+    if content_type is None:
+        raise ValidationError("asset type is not allowed")
+    valid_signature = (
+        suffix == ".pdf" and content.startswith(b"%PDF-")
+        or suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n")
+        or suffix in {".jpg", ".jpeg"} and content.startswith(b"\xff\xd8\xff")
+        or suffix == ".eps"
+        and content.startswith(b"%!PS-Adobe-")
+        and b" EPSF-" in content.splitlines()[0]
+    )
+    if not valid_signature:
+        raise ValidationError("asset content does not match its file type")
+    return content_type
+
+
+def safe_asset_content_type(name: object, content: bytes) -> str:
+    try:
+        return validate_asset_content(name, content)
+    except ValidationError:
+        # Files created before validation was introduced remain retrievable, but
+        # never with an executable or browser-sniffable media type.
+        return "application/octet-stream"
 
 
 class BackupStore:
@@ -341,6 +376,7 @@ class AssetStore:
     def put(self, project_id: object, name: object, content: bytes) -> dict[str, Any]:
         if len(content) > self.max_file_bytes:
             raise ValidationError("asset is too large")
+        validate_asset_content(name, content)
         target = self._path(project_id, name)
         project_dir = self.root / validate_project_id(project_id)
         current_size = target.stat().st_size if target.exists() else 0
@@ -370,6 +406,8 @@ class AssetStore:
 class BackupHandler(BaseHTTPRequestHandler):
     store: BackupStore
     assets: AssetStore
+    actor_mode = "shared"
+    shared_actor = DEFAULT_SHARED_ACTOR
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -387,7 +425,12 @@ class BackupHandler(BaseHTTPRequestHandler):
             if match := ASSET_ITEM_PATTERN.fullmatch(path):
                 name = urllib.parse.unquote(match.group(2))
                 content = self.assets.get(match.group(1), name)
-                self._bytes(HTTPStatus.OK, content, mimetypes.guess_type(name)[0] or "application/octet-stream")
+                self._bytes(
+                    HTTPStatus.OK,
+                    content,
+                    safe_asset_content_type(name, content),
+                    name,
+                )
                 return
             if match := COLLECTION_PATTERN.fullmatch(path):
                 self._json(HTTPStatus.OK, {"snapshots": self.store.list(match.group(1))})
@@ -406,7 +449,9 @@ class BackupHandler(BaseHTTPRequestHandler):
         if activity_match := ACTIVITY_ITEM_PATTERN.fullmatch(path):
             try:
                 payload = self._request_json()
-                activity = self.store.record_activity(activity_match.group(1), payload.get("actor"), payload.get("reason"))
+                activity = self.store.record_activity(
+                    activity_match.group(1), self._request_actor(), payload.get("reason")
+                )
                 self._json(HTTPStatus.OK, {"activity": activity})
             except ValidationError as error:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
@@ -418,7 +463,10 @@ class BackupHandler(BaseHTTPRequestHandler):
         try:
             payload = self._request_json()
             metadata, deduplicated = self.store.create(
-                match.group(1), payload.get("snapshot"), payload.get("actor"), payload.get("reason")
+                match.group(1),
+                payload.get("snapshot"),
+                self._request_actor(),
+                payload.get("reason"),
             )
             self._json(
                 HTTPStatus.OK if deduplicated else HTTPStatus.CREATED,
@@ -435,7 +483,9 @@ class BackupHandler(BaseHTTPRequestHandler):
             return
         try:
             size = self._content_length(self.assets.max_file_bytes)
-            metadata = self.assets.put(match.group(1), urllib.parse.unquote(match.group(2)), self.rfile.read(size))
+            metadata = self.assets.put(
+                match.group(1), urllib.parse.unquote(match.group(2)), self.rfile.read(size)
+            )
             self._json(HTTPStatus.CREATED, {"asset": metadata})
         except ValidationError as error:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
@@ -479,6 +529,19 @@ class BackupHandler(BaseHTTPRequestHandler):
             raise ValidationError("request body must be an object")
         return payload
 
+    def _request_actor(self) -> str:
+        if self.actor_mode == "shared":
+            actor = validate_optional_text(self.shared_actor, "shared actor", 120)
+        elif self.actor_mode == "proxy":
+            actor = validate_optional_text(
+                self.headers.get(TRUSTED_ACTOR_HEADER), "trusted actor", 120
+            )
+        else:
+            raise ValidationError("invalid actor mode")
+        if actor is None or not actor.strip():
+            raise ValidationError("trusted actor is required")
+        return actor.strip()
+
     def _json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
@@ -488,9 +551,12 @@ class BackupHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _bytes(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
+    def _bytes(self, status: HTTPStatus, body: bytes, content_type: str, name: str) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        filename = urllib.parse.quote(PurePosixPath(name).name, safe="")
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "private, no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -512,6 +578,10 @@ def create_server() -> ThreadingHTTPServer:
         int(os.environ.get("BACKUP_MAX_ASSET_BYTES", str(DEFAULT_MAX_ASSET_BYTES))),
         int(os.environ.get("BACKUP_MAX_PROJECT_ASSET_BYTES", str(DEFAULT_MAX_PROJECT_ASSET_BYTES))),
     )
+    BackupHandler.actor_mode = os.environ.get("BACKUP_ACTOR_MODE", "shared").strip().lower()
+    if BackupHandler.actor_mode not in {"shared", "proxy"}:
+        raise ValueError("BACKUP_ACTOR_MODE must be shared or proxy")
+    BackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
     return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
 
 
