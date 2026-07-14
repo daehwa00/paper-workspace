@@ -1,27 +1,54 @@
 [English](README.md) | **한국어**
 
+<div align="center">
+
 # Paper Workspace
 
-브라우저에서 LaTeX 논문을 작성하고 PDF를 바로 확인하며, 공동 편집·인라인 리뷰·Codex 수정 제안을 함께 사용할 수 있는 self-hosted 작업공간입니다.
+### LaTeX 논문을 함께 쓰고, 검토하고, 제출하세요.
 
-- 구문 강조, 검색, 자동완성, 실행 취소/다시 실행을 지원하는 LaTeX 편집기
-- 격리된 TeX Live 컴파일과 SyncTeX 기반 PDF↔원본 이동
-- 공동 작업자 커서와 선택 영역 댓글·할 일
-- 그림 미리보기, 폴더 업로드, 제출용 ZIP과 사전 검사
-- 자동 서버 백업과 버전 복원
-- 데스크톱 다중 패널 및 모바일 파일·원고·PDF·도우미 집중 화면
+원고와 PDF, 공동 작업자, 리뷰, 선택형 Codex 수정 도우미를<br />
+하나의 집중된 화면에 모은 self-hosted 논문 작업공간입니다.
 
-기본 UI는 영어입니다. 저장된 선택이 없고 브라우저 언어가 한국어일 때만 한국어를 자동 선택하며, 우측 상단 선택값은 브라우저에 유지됩니다. `?lang=en` 또는 `?lang=ko`를 붙이면 언어가 고정된 링크를 공유할 수 있습니다.
+[빠른 시작](#빠른-시작) · [주요 기능](#논문에-필요한-모든-도구) · [아키텍처](docs/paper-platform/architecture.md) · [English](README.md)
 
-## 데모
+![License](https://img.shields.io/badge/license-MIT-2457D6?style=flat-square)
+![LaTeX](https://img.shields.io/badge/LaTeX-TeX%20Live-2457D6?style=flat-square)
+![Collaboration](https://img.shields.io/badge/collaboration-Yjs-2457D6?style=flat-square)
+![Languages](https://img.shields.io/badge/UI-English%20%7C%20한국어-2457D6?style=flat-square)
 
-아래 화면은 공개 Example Paper를 실제로 LaTeX 컴파일해 촬영했습니다. 비공개 원고·심사 자료·서버 주소·인증 정보는 포함하지 않았습니다.
+<img src="apps/paper_workspace/static/assets/share-preview-v2.png" alt="노트북으로 논문을 작성하는 Paper Workspace 캐릭터" width="100%" />
+
+<em>원고와 렌더링된 논문, 연구 대화를 언제나 같은 상태로.</em>
+
+</div>
+
+<br />
+
+<div align="center">
+  <img src="docs/demo/edit-and-render-flow.gif" alt="Paper Workspace의 LaTeX 편집과 실시간 PDF 렌더링" width="100%" />
+</div>
+
+## 논문에 필요한 모든 도구
+
+| | |
+| --- | --- |
+| **제대로 된 LaTeX 편집기**<br />구문 강조, 검색, 자동완성, 파일 탐색과 안정적인 실행 취소·다시 실행을 제공합니다. | **모든 변경을 PDF에서 확인**<br />격리된 TeX Live 컨테이너에서 컴파일하고 SyncTeX로 PDF와 원문을 오갑니다. |
+| **맥락을 잃지 않는 공동 작업**<br />공유 커서, 선택 영역 댓글, 검토 작업과 Yjs 실시간 편집이 원고에 연결됩니다. | **적용 전에 검토하는 수정 제안**<br />선택형 Codex 도우미는 검토 가능한 제안을 반환하며 승인 없이 원고를 바꾸지 않습니다. |
+| **실제 제출까지 한곳에서**<br />그림을 미리 보고 참고문헌·폰트·페이지 제한을 검사하며 체크섬이 포함된 원고 ZIP을 만듭니다. | **안심할 수 있는 복구**<br />자동 서버 스냅샷, 이름 있는 버전, 파일 비교와 복원으로 중요한 초안을 되찾습니다. |
+
+## 원문부터 제출까지 하나의 작업공간
+
+데스크톱에서는 프로젝트 트리, LaTeX 원문, 렌더링 PDF와 논문 도우미를 한 화면에서 볼 수 있습니다. 작은 화면과 모바일에서는 데스크톱을 억지로 축소하지 않고 파일·원문·PDF·도우미 집중 화면으로 전환합니다.
 
 ![Paper Workspace example project](docs/demo/workspace-overview.png)
 
+인라인 리뷰는 선택한 문장과 연결되고, 공동 작업자와 할 일은 원고를 가리지 않으면서 필요한 맥락을 유지합니다.
+
 ![Realtime collaboration and inline review](docs/demo/collaboration-review.png)
 
-![Edit, save, and render workflow](docs/demo/edit-and-render-flow.gif)
+화면은 공개 Example Paper를 실제로 LaTeX 컴파일해 촬영했습니다. 비공개 원고·심사 자료·서버 주소·인증 정보는 포함하지 않았습니다.
+
+기본 UI는 영어입니다. 저장된 선택이 없고 브라우저 언어가 한국어일 때만 한국어를 자동 선택하며, 우측 상단 선택값은 브라우저에 유지됩니다. `?lang=en` 또는 `?lang=ko`를 붙이면 언어가 고정된 링크를 공유할 수 있습니다.
 
 ## 빠른 시작
 

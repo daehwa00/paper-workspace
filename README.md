@@ -1,27 +1,54 @@
 [**English**](README.md) | [한국어](README.ko.md)
 
+<div align="center">
+
 # Paper Workspace
 
-A self-hosted workspace for writing LaTeX papers with live PDF preview, realtime collaboration, inline review, and optional Codex editing assistance.
+### Write, review, and ship LaTeX papers together.
 
-- Edit LaTeX with syntax highlighting, search, autocomplete, and undo/redo.
-- Compile in an isolated TeX Live container and navigate between PDF and source with SyncTeX.
-- See collaborators' cursors and attach comments or tasks to selected text.
-- Preview figures, upload folders, build a submission ZIP, and run pre-submission checks.
-- Recover saved versions from automatic server backups.
-- Use the full workspace on desktop or focused Files, Source, PDF, and Assistant views on mobile.
+A self-hosted workspace that keeps source, PDF, collaborators, review,<br />
+and optional Codex editing assistance in one focused place.
 
-English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
+[Quick start](#quick-start) · [Features](#everything-your-paper-needs) · [Architecture](docs/paper-platform/architecture.md) · [한국어](README.ko.md)
 
-## Demo
+![License](https://img.shields.io/badge/license-MIT-2457D6?style=flat-square)
+![LaTeX](https://img.shields.io/badge/LaTeX-TeX%20Live-2457D6?style=flat-square)
+![Collaboration](https://img.shields.io/badge/collaboration-Yjs-2457D6?style=flat-square)
+![Languages](https://img.shields.io/badge/UI-English%20%7C%20한국어-2457D6?style=flat-square)
 
-These captures use the public Example Paper and a real LaTeX build. They contain no research manuscript, review material, server address, or credential.
+<img src="apps/paper_workspace/static/assets/share-preview-v2.png" alt="Paper Workspace character writing at a laptop" width="100%" />
+
+<em>Your manuscript, rendered paper, and research conversation—kept in sync.</em>
+
+</div>
+
+<br />
+
+<div align="center">
+  <img src="docs/demo/edit-and-render-flow.gif" alt="LaTeX editing and live PDF rendering in Paper Workspace" width="100%" />
+</div>
+
+## Everything your paper needs
+
+| | |
+| --- | --- |
+| **Write with a real LaTeX editor**<br />Syntax highlighting, search, autocomplete, file discovery, and reliable undo/redo. | **See every change in the PDF**<br />Compile inside an isolated TeX Live container and move between PDF and source with SyncTeX. |
+| **Collaborate without losing context**<br />Shared cursors, selected-text comments, review tasks, and Yjs realtime editing stay attached to the manuscript. | **Review before you rewrite**<br />Optional Codex assistance returns inspectable suggestions and never edits manuscript files without approval. |
+| **Prepare the actual submission**<br />Preview figures, check references and fonts, enforce page limits, and build a source ZIP with checksums. | **Recover with confidence**<br />Automatic server snapshots, named versions, file comparison, and restore keep important drafts within reach. |
+
+## One workspace, from source to submission
+
+The desktop workspace keeps the project tree, LaTeX source, rendered PDF, and paper assistant visible together. Compact and mobile layouts switch to focused Files, Source, PDF, and Assistant views without reducing the editor to a miniature desktop.
 
 ![Paper Workspace example project](docs/demo/workspace-overview.png)
 
+Inline review stays connected to the selected passage, while collaborator presence and tasks remain visible without covering the manuscript.
+
 ![Realtime collaboration and inline review](docs/demo/collaboration-review.png)
 
-![Edit, save, and render workflow](docs/demo/edit-and-render-flow.gif)
+These captures use the public Example Paper and a real LaTeX build. They contain no research manuscript, review material, server address, or credential.
+
+English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
 
 ## Quick start
 
