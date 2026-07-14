@@ -30,15 +30,16 @@ and optional Codex editing assistance in one focused place.
 
 This demo uses the public Example Paper and a real LaTeX build. It contains no research manuscript, review material, server address, or credential.
 
-## Everything your paper needs
+## One workspace for the whole paper
 
-| | |
-| --- | --- |
-| **Write with a real LaTeX editor**<br />Syntax highlighting, search, autocomplete, file discovery, and reliable undo/redo. | **See every change in the PDF**<br />Compile inside an isolated TeX Live container and move between PDF and source with SyncTeX. |
-| **Collaborate without losing context**<br />Shared cursors, selected-text comments, review tasks, and Yjs realtime editing stay attached to the manuscript. | **Review before you rewrite**<br />Optional Codex assistance returns inspectable suggestions and never edits manuscript files without approval. |
-| **Prepare the actual submission**<br />Preview figures, check references and fonts, enforce page limits, and build a source ZIP with checksums. | **Recover with confidence**<br />Automatic server snapshots, named versions, file comparison, and restore keep important drafts within reach. |
+| **Write** | **Collaborate** | **Ship safely** |
+| --- | --- | --- |
+| Edit LaTeX beside the rendered PDF, navigate with SyncTeX, and manage every source file and figure without leaving the manuscript. | Merge changes in realtime, keep comments and tasks attached to passages, and review iterative Codex suggestions before applying them. | Check submission risks, package reproducible sources, compare versions, and recover from automatic or named backups. |
 
-## Complete feature tour
+<details>
+<summary><strong>View all features</strong> — projects, authoring, PDF, collaboration, Codex, submission, recovery, and accessibility</summary>
+
+<br />
 
 ### Projects and files
 
@@ -106,6 +107,8 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 - Use English or Korean with browser detection, explicit persisted preference, and shareable `?lang=` links.
 - Navigate assistant tabs and resizing controls by keyboard, retain visible focus, honor reduced motion, and use touch-sized mobile controls.
 - Monitor loading, offline, queued, stale-PDF, conflict, success, and error states with persistent status, inline feedback, and toasts where context matters.
+
+</details>
 
 English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
 
