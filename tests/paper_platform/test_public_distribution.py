@@ -70,10 +70,9 @@ def test_public_readme_includes_safe_example_demo_assets() -> None:
 
     assert "examples/paper-workspace-project" in readme
     assert "no research manuscript" in readme.lower()
-    assert (demo / "workspace-overview.png").is_file()
-    assert (demo / "collaboration-review.png").is_file()
     assert (demo / "edit-and-render-flow.gif").is_file()
-    assert not (demo / "workspace-overview.svg").exists()
+    assert not (demo / "workspace-overview.png").exists()
+    assert not (demo / "collaboration-review.png").exists()
 
     capture = (
         ROOT / "apps/paper_workspace/collaboration/capture-demo.mjs"
