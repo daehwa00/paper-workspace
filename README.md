@@ -28,6 +28,8 @@ and optional Codex editing assistance in one focused place.
   <img src="docs/demo/edit-and-render-flow.gif" alt="LaTeX editing and live PDF rendering in Paper Workspace" width="100%" />
 </div>
 
+This demo uses the public Example Paper and a real LaTeX build. It contains no research manuscript, review material, server address, or credential.
+
 ## Everything your paper needs
 
 | | |
@@ -35,18 +37,6 @@ and optional Codex editing assistance in one focused place.
 | **Write with a real LaTeX editor**<br />Syntax highlighting, search, autocomplete, file discovery, and reliable undo/redo. | **See every change in the PDF**<br />Compile inside an isolated TeX Live container and move between PDF and source with SyncTeX. |
 | **Collaborate without losing context**<br />Shared cursors, selected-text comments, review tasks, and Yjs realtime editing stay attached to the manuscript. | **Review before you rewrite**<br />Optional Codex assistance returns inspectable suggestions and never edits manuscript files without approval. |
 | **Prepare the actual submission**<br />Preview figures, check references and fonts, enforce page limits, and build a source ZIP with checksums. | **Recover with confidence**<br />Automatic server snapshots, named versions, file comparison, and restore keep important drafts within reach. |
-
-## One workspace, from source to submission
-
-The desktop workspace keeps the project tree, LaTeX source, rendered PDF, and paper assistant visible together. Compact and mobile layouts switch to focused Files, Source, PDF, and Assistant views without reducing the editor to a miniature desktop.
-
-![Paper Workspace example project](docs/demo/workspace-overview.png)
-
-Inline review stays connected to the selected passage, while collaborator presence and tasks remain visible without covering the manuscript.
-
-![Realtime collaboration and inline review](docs/demo/collaboration-review.png)
-
-These captures use the public Example Paper and a real LaTeX build. They contain no research manuscript, review material, server address, or credential.
 
 English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
 
