@@ -38,6 +38,75 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 | **Collaborate without losing context**<br />Shared cursors, selected-text comments, review tasks, and Yjs realtime editing stay attached to the manuscript. | **Review before you rewrite**<br />Optional Codex assistance returns inspectable suggestions and never edits manuscript files without approval. |
 | **Prepare the actual submission**<br />Preview figures, check references and fonts, enforce page limits, and build a source ZIP with checksums. | **Recover with confidence**<br />Automatic server snapshots, named versions, file comparison, and restore keep important drafts within reach. |
 
+## Complete feature tour
+
+### Projects and files
+
+- Manage multiple papers from a searchable project hub with stable URLs, recent-activity sorting, the latest editor, and server-recorded modification time.
+- Search the project tree by full path; archival `drafts` start collapsed without overriding later personal choices.
+- Create, rename, move, and delete files or folders; drag in individual files or complete directory trees.
+- Keep text files and binary assets shared with the project instead of trapping them in one browser.
+- Preview images and multi-page PDFs with zoom controls, or download assets that need an external application.
+- Open any standalone `.tex` document directly; preview fragments with the main manuscript preamble.
+
+### LaTeX authoring
+
+- Edit with CodeMirror syntax highlighting, bracket-aware editing, autocomplete, search, selection, and line numbers.
+- Use per-file undo/redo, `Cmd/Ctrl+S`, and cursor-preserving history without waiting for the server.
+- Autosave edits and start a fresh PDF build after the manuscript settles.
+- Search large projects without horizontally compressing long source lines or text prompts.
+- Keep browser drafts separate from deployed server source, detect server changes, and open preserved drafts on demand.
+- Recover safely from malformed or quota-limited local browser state instead of blocking the manuscript.
+
+### PDF preview and SyncTeX
+
+- Compile in an isolated TeX Live service with cache-aware status and actionable diagnostics.
+- Render long PDFs lazily, zoom under the pointer, and keep the current/total page indicator visible.
+- Preserve the visible page and scroll position when a new PDF replaces the previous render.
+- Click the PDF to jump to LaTeX source; `Cmd/Ctrl+click` source to locate the matching PDF position.
+- Highlight the complete wrapped source line when navigating from PDF to LaTeX.
+- Keep the last successful PDF visible after a failed build and jump from the normalized error directly to the best source line.
+- Preview standalone documents or fragments while keeping the primary manuscript entrypoint explicit.
+
+### Realtime collaboration and review
+
+- Merge concurrent text changes with Yjs and show collaborator presence, names, colors, cursors, and active-file locations.
+- Keep local edits available while collaboration reconnects, then merge queued work before claiming it is shared.
+- Attach comments to a selected passage and revision, show inline comment anchors, jump back to context, and resolve completed threads.
+- Turn selected text into shared tasks with completion state, assignee context, file location, and direct source navigation.
+- Track the latest editor and activity time at project level so “recently active” reflects server activity rather than one browser's history.
+- Inspect collaboration, save, PDF, and backup freshness together in the workspace health center.
+
+### Codex revision workflow
+
+- Send a selected passage, instruction, current-file context, and task-oriented model profile to the optional Codex bridge.
+- Submit with Enter, keep Shift+Enter for new lines, and avoid accidental submission during Korean IME composition.
+- Keep previous requests and proposals visible as one conversation; ask follow-ups that remember the current selection and earlier suggestions.
+- Start a new conversation explicitly without reloading the workspace.
+- Review the proposed LaTeX, explanation, and before/after diff before applying anything.
+- Refuse automatic application if the selected source changed while Codex was working.
+- Keep the assistant collapsible and preserve its conversation while PDF builds or compile errors happen elsewhere.
+
+### Submission checks and research assets
+
+- Check page limits, embedded fonts, missing figures, anonymity candidates, and other submission risks against the latest manuscript and PDF.
+- Inventory used and unused figures/tables and jump from an asset result to its source reference.
+- Detect missing, duplicate, used, and uncited bibliography entries across project files.
+- Import BibTeX while preventing duplicate citation keys.
+- Open compiler diagnostics at the relevant file and line.
+- Build a submission-ready source ZIP containing required text files, binary assets, and `SHA256SUMS`.
+
+### Versions, resilience, and workspace experience
+
+- Create automatic ten-minute server recovery points, named checkpoints, file comparisons, and one-action restores.
+- Separate primary data, project assets, and compressed backup exports so deployments can use independent storage.
+- Resize source, PDF, and assistant panes; collapse the assistant, reset widths, and preserve personal layout preferences.
+- Switch compact screens to focused Source, PDF, and Assistant surfaces, with Files available from mobile bottom navigation.
+- Choose light, dark, or system appearance while rendered paper pages remain publication-white.
+- Use English or Korean with browser detection, explicit persisted preference, and shareable `?lang=` links.
+- Navigate assistant tabs and resizing controls by keyboard, retain visible focus, honor reduced motion, and use touch-sized mobile controls.
+- Monitor loading, offline, queued, stale-PDF, conflict, success, and error states with persistent status, inline feedback, and toasts where context matters.
+
 English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
 
 ## Quick start
