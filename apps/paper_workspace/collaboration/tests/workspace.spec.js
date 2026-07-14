@@ -222,6 +222,32 @@ test('missing collaboration bundle falls back to local editing', async ({ page }
   await expect(page.locator('#health-collab')).toHaveText('없이 로컬 편집 중')
 })
 
+test('collaboration watchdog recovers a missed sync notification', async ({ page }) => {
+  await page.addInitScript(() => { window.__paperCollaborationWatchdogMs = 50 })
+  await page.route('**/vendor/paper-collab.js*', async route => {
+    const response = await route.fetch()
+    const body = `${await response.text()}\n;(() => { const create = PaperCollab.createSession; window.PaperCollab = { ...PaperCollab, createSession: options => create({ ...options, onStatus: status => options.onStatus(status === 'synced' ? 'connected' : status) }) } })();`
+    await route.fulfill({ response, body, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.goto('/')
+  await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
+  await expect(page.locator('#health-collab')).toHaveText('동기화됨', { timeout: 1500 })
+  await expect(page.locator('#health-collab').locator('..').locator('..')).toHaveAttribute('data-health', 'ok')
+})
+
+test('collaboration watchdog leaves pending state when synchronization never completes', async ({ page }) => {
+  await page.addInitScript(() => { window.__paperCollaborationWatchdogMs = 50 })
+  await page.route('**/vendor/paper-collab.js*', async route => {
+    const response = await route.fetch()
+    const body = `${await response.text()}\n;(() => { const create = PaperCollab.createSession; window.PaperCollab = { ...PaperCollab, createSession: options => { const session = create({ ...options, onStatus: status => options.onStatus(status === 'synced' ? 'connected' : status) }); return { ...session, provider: { synced: false, disconnect() {}, connect() {} } } } } })();`
+    await route.fulfill({ response, body, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.goto('/')
+  await expect(page.locator('#health-collab')).toHaveText('동기화 지연', { timeout: 1500 })
+  await expect(page.locator('#health-collab').locator('..').locator('..')).toHaveAttribute('data-health', 'error')
+  await expect(page.locator('#collab-label')).not.toHaveText('처리 중')
+})
+
 test('startup watchdog paints the manuscript when the app script fails', async ({ page }) => {
   await page.route('**/app.js*', route => route.abort())
   await page.goto('/')
@@ -419,6 +445,15 @@ test('CodeMirror provides a professional LaTeX editing surface', async ({ page }
   await page.keyboard.press('Control+End')
   await page.keyboard.type('\n% codemirror-e2e')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor').value)).toContain('% codemirror-e2e')
+})
+
+test('a stalled compile becomes a timeout instead of permanent processing', async ({ page }) => {
+  await page.addInitScript(() => { window.__paperCompileRequestTimeoutMs = 100 })
+  await page.route('**/api/compile', () => new Promise(() => {}))
+  await page.goto('/')
+  await expect(page.locator('#render-state')).toContainText('컴파일 시간 초과', { timeout: 2000 })
+  await expect(page.locator('#health-pdf').locator('..').locator('..')).toHaveAttribute('data-health', 'error')
+  await expect(page.locator('#collab-label')).not.toHaveText('처리 중')
 })
 
 test('PDF source highlight matches the full height of a wrapped source line', async ({ page }) => {

@@ -25,6 +25,9 @@ let projectManifest={id:'default',version:'unversioned',entrypoint:'main.tex',fi
 const remoteAssetPaths=new Set();
 const remoteAssetSources=new Map();
 const $ = id => document.getElementById(id); const esc = value => value.replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+function configuredTimeout(name,fallback){const value=Number(window[name]);return Number.isFinite(value)&&value>=50?value:fallback}
+const collaborationWatchdogMs=configuredTimeout('__paperCollaborationWatchdogMs',8000);
+const compileRequestTimeoutMs=configuredTimeout('__paperCompileRequestTimeoutMs',40000);
 let richEditor=null;
 function initializeRichEditor(){
   const textarea=$('editor');
@@ -127,8 +130,41 @@ function createCollaborationSession(options){
   try{if(!window.PaperCollab?.createSession)throw new Error('공동 편집 번들을 사용할 수 없습니다.');return window.PaperCollab.createSession(options)}
   catch(error){console.error('Collaboration unavailable; continuing in local editing mode.',error);window.__paperReportError?.(`collaboration fallback: ${error?.stack||error}`);queueMicrotask(()=>notify('공동 편집 연결 없이 원고를 열었습니다. 편집과 PDF 기능은 계속 사용할 수 있습니다.',{title:'로컬 편집 모드'}));return createOfflineCollaborationSession(options)}
 }
-let collabSession;
-collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor,onStatus:status=>{collabReady=status==='synced';$('collab-name').classList.toggle('offline',status==='disconnected');setCollaborationStatus(status==='disconnected'?'offline':status==='synced'?'':'connecting',status==='synced'?'공동 편집 동기화됨':status==='connected'?'공동 편집 문서 동기화 중':status==='connecting'?'공동 편집 서버 연결 중':'공동 편집 없이 로컬 편집 중')},onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+let collabSession,collaborationWatchdogTimer=0,collaborationReconnectAttempted=false,collaborationWatchdogFailed=false;
+function clearCollaborationWatchdog(){clearTimeout(collaborationWatchdogTimer);collaborationWatchdogTimer=0}
+function armCollaborationWatchdog(){
+  if(collaborationWatchdogTimer||collabReady||collaborationWatchdogFailed)return;
+  collaborationWatchdogTimer=setTimeout(()=>{
+    collaborationWatchdogTimer=0;
+    if(collabReady)return;
+    if(collabSession?.provider?.synced){handleCollaborationStatus('synced');return}
+    if(!collaborationReconnectAttempted&&collabSession?.provider){
+      collaborationReconnectAttempted=true;
+      setCollaborationStatus('connecting','공동 편집 다시 연결 중');
+      collabSession.provider.disconnect?.();
+      collabSession.provider.connect?.();
+      armCollaborationWatchdog();
+      return;
+    }
+    collaborationWatchdogFailed=true;
+    setCollaborationStatus('offline','공동 편집 동기화 지연');
+  },collaborationWatchdogMs)
+}
+function handleCollaborationStatus(status){
+  if(status==='synced'){
+    collabReady=true;collaborationReconnectAttempted=false;collaborationWatchdogFailed=false;clearCollaborationWatchdog();
+    $('collab-name').classList.remove('offline');setCollaborationStatus('','공동 편집 동기화됨');return
+  }
+  collabReady=false;
+  if(collaborationWatchdogFailed){$('collab-name').classList.add('offline');setCollaborationStatus('offline','공동 편집 동기화 지연');return}
+  const retrying=collaborationReconnectAttempted;
+  $('collab-name').classList.toggle('offline',status==='disconnected'&&!retrying);
+  if(status==='disconnected'&&!retrying){clearCollaborationWatchdog();setCollaborationStatus('offline','공동 편집 없이 로컬 편집 중');return}
+  setCollaborationStatus('connecting',retrying?'공동 편집 다시 연결 중':status==='connected'?'공동 편집 문서 동기화 중':'공동 편집 서버 연결 중');
+  armCollaborationWatchdog()
+}
+collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+armCollaborationWatchdog();
 const collabBootstrapReady=Promise.race([collabSession.whenReady,new Promise(resolve=>setTimeout(resolve,3000))]);
 // Older Safari sessions may retain the pre-mapFor collaboration bundle because
 // vendor assets are immutable. The Y.Doc contract is stable, so use it as a
@@ -180,7 +216,7 @@ function installStatusCenter(){
     const saveHealth=/오류|실패|오프라인|부족|error|failed|offline/i.test(healthSave.textContent)?'error':/저장 중|전송 중|불러오는 중|병합 중|saving|sending|loading|merging/i.test(healthSave.textContent)?'pending':'ok';
     healthSave.closest('div').dataset.health=saveHealth;
     $('save-state').dataset.health=saveHealth;
-    healthPdf.closest('div').dataset.health=/오류|실패|error|failed/i.test(healthPdf.textContent)?'error':/대기|중|준비|waiting|preparing|compiling/i.test(healthPdf.textContent)?'pending':'ok';
+    healthPdf.closest('div').dataset.health=/오류|실패|시간 초과|error|failed|timeout|timed out/i.test(healthPdf.textContent)?'error':/렌더링 대기|PDF 대기|컴파일 중|준비 중|불러오는 중|렌더링 중|waiting|preparing|compiling|loading|rendering/i.test(healthPdf.textContent)?'pending':'ok';
     collabAction.hidden=healthSave.closest('.status-center-list')?.querySelector('#health-collab')?.closest('div')?.dataset.health!=='error';
     pdfAction.hidden=healthPdf.closest('div').dataset.health!=='error';
     backupAction.hidden=!['warning','error'].includes(healthBackup.closest('div').dataset.health);
@@ -566,7 +602,7 @@ let compileQueue=Promise.resolve(),compileRevision=0,compileController=null;
 function compileAfterSave(){const revision=++compileRevision;compileController?.abort();compileQueue=compileQueue.finally(()=>revision===compileRevision?runUpdate():undefined);return compileQueue}
 function setRenderStateCompiling(file){const target=$('render-state'),label=window.PaperI18n.t('workspace.compile.compiling',{file});target.classList.add('compiling');target.removeAttribute('data-i18n');target.removeAttribute('data-i18n-variables');target.setAttribute('aria-label',label);target.innerHTML=`<span class="render-state-spinner" aria-hidden="true"></span><span class="render-state-label">${esc(label)}</span>`}
 function setRenderStateMessage(key,variables={}){const target=$('render-state');target.classList.remove('compiling');target.removeAttribute('aria-label');window.PaperI18n.setText(target,key,variables)}
-async function runUpdate(){compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=$('editor').value;let payload;try{payload=await compilePayload();if(controller.signal.aborted)return false;setRenderStateCompiling(payload.entrypoint);const response=await fetch('/api/compile',{method:'POST',headers:{'Content-Type':'application/json','X-Compile-Client':actor.id},body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');const binary=Uint8Array.from(atob(result.pdf_base64),char=>char.charCodeAt(0));lastPdfAudit=result.pdf_audit||null;setRenderedPdf(binary);await renderPdfPreviewLazy(binary,result.compile_id?`id:${result.compile_id}`:(result.synctex_base64||''));renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();return true}catch(error){if(error.name==='AbortError'||error.name==='RenderingCancelledException')return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const diagnostics=parseLatexDiagnostics(error.message,payload?.entrypoint);renderCompileDiagnostics(diagnostics);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf)notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'});return false}finally{if(compileController===controller)compileController=null}}
+async function runUpdate(){compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=$('editor').value;let payload,compileTimedOut=false;let timeout=0;const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{compileTimedOut=true;controller.abort();reject(new DOMException('Compile request timed out','TimeoutError'))},compileRequestTimeoutMs)});try{payload=await Promise.race([compilePayload(),deadline]);if(controller.signal.aborted)return false;setRenderStateCompiling(payload.entrypoint);const response=await fetch('/api/compile',{method:'POST',headers:{'Content-Type':'application/json','X-Compile-Client':actor.id},body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');clearTimeout(timeout);const binary=Uint8Array.from(atob(result.pdf_base64),char=>char.charCodeAt(0));lastPdfAudit=result.pdf_audit||null;setRenderedPdf(binary);await renderPdfPreviewLazy(binary,result.compile_id?`id:${result.compile_id}`:(result.synctex_base64||''));renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();return true}catch(error){if(error.name==='RenderingCancelledException'||(error.name==='AbortError'&&!compileTimedOut))return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(compileTimedOut?'workspace.compile.timeout':hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const message=compileTimedOut?'컴파일 서버가 제한 시간 안에 응답하지 않았습니다.':error.message;const diagnostics=parseLatexDiagnostics(message,payload?.entrypoint);renderCompileDiagnostics(diagnostics);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf){if(compileTimedOut)notify('컴파일 응답이 지연되어 마지막 정상 PDF를 유지했습니다.',{title:'PDF 응답 시간 초과',tone:'error'});else notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'})}return false}finally{clearTimeout(timeout);if(compileController===controller)compileController=null}}
 $('refresh-pdf').onclick=async()=>{const button=$('refresh-pdf');button.classList.add('loading');button.disabled=true;try{await runUpdate()}finally{button.classList.remove('loading');button.disabled=false}};
 $('download-pdf').onclick=()=>{if(!renderedPdfUrl)return;const link=document.createElement('a');link.href=renderedPdfUrl;link.download=pdfFileName();document.body.append(link);link.click();link.remove()};
 window.addEventListener('pagehide',()=>{disposePdfPreview();if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl)});
