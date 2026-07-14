@@ -680,15 +680,22 @@ def test_codex_bridge_uses_chatgpt_auth_without_exposing_it_to_browser() -> None
     assert "path: .env" in compose
     assert "CODEX_BRIDGE_TOKEN" in bridge
     assert "codex-auth:ro" in compose
-    assert ":/workspace/project:ro" in compose
+    assert ":/workspace/project:ro" not in compose
     assert "reverse_proxy codex-bridge:8790" in caddy
     assert 'header_up Authorization "Bearer {$CODEX_BRIDGE_TOKEN}"' in caddy
     assert "codex-bridge-token" not in (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert "timingSafeEqual" in bridge
     assert "--sandbox', 'read-only" in bridge
+    assert "'--disable', 'shell_tool'" in bridge
+    assert "'--disable', 'unified_exec'" in bridge
+    assert "'--disable', 'multi_agent'" in bridge
+    assert "containsSecret" in bridge
+    assert "redactSecrets" in bridge
+    assert "env: codexEnvironment()" in bridge
+    assert "...process.env, CODEX_HOME" not in bridge
     assert "--ephemeral" in bridge
     assert "--output-schema" in bridge
-    assert "@openai/codex@0.144.1" in dockerfile
+    assert "@openai/codex@0.144.4" in dockerfile
     assert "gpt-5.6-sol" in bridge
     assert "gpt-5.6-luna" in bridge
     assert "'luna-medium'" in bridge
@@ -737,8 +744,7 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
 
     assert "indexedDB.open('paper-workspace-assets'" in app
-    assert "remoteAssetProjectPaths" in app
-    assert "remote_assets" in app
+    assert "remoteAssetSources" in app
     assert "parallelLimit(paths,4" in app
     assert "const autoSaveDelayMs=1000" in app
     assert "trimEditorHistory" in app
@@ -751,10 +757,27 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "_cache_get" in compiler
     assert "COMPILE_CACHE_TTL" in compiler
     assert "if used_bibtex or _needs_rerun" in compiler
-    assert "PAPER_PROJECTS_ROOT" in compose
+    assert "PAPER_PROJECTS_ROOT" not in compose
+    assert ":/projects:ro" not in compose
+    assert ":/project-default:ro" not in compose
     assert "zlib.compress" in backup
     assert "IndexeddbPersistence" in collaboration
     assert 'Cache-Control "public, max-age=31536000, immutable"' in nginx
+
+
+def test_compiler_receives_only_request_scoped_files() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
+    compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
+
+    assert "remote_assets" not in app
+    assert "PROJECT_LIBRARY_ROOT" not in compiler
+    assert "DEFAULT_PROJECT_ROOT" not in compiler
+    assert '"openin_any": "p"' in compiler
+    assert '"openout_any": "p"' in compiler
+    assert "PAPER_PROJECTS_ROOT" not in compose
+    assert ":/projects:ro" not in compose
+    assert ":/project-default:ro" not in compose
 
 
 def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:

@@ -9,11 +9,13 @@
     "capture:demo": "node capture-demo.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ci": "CI=1 playwright test --reporter=line",
-    "start": "HOST=0.0.0.0 PORT=8765 node node_modules/y-websocket/bin/server.cjs"
+    "start": "HOST=0.0.0.0 PORT=8765 node server.cjs",
+    "test:server": "node --test server.test.cjs"
   },
   "dependencies": {
     "y-indexeddb": "9.0.12",
     "y-leveldb": "0.2.0",
+    "ws": "8.21.0",
     "y-websocket": "2.1.0",
     "yjs": "13.6.31"
   },

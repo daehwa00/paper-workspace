@@ -8,14 +8,13 @@ services:
       - path: .env
         required: false
     environment:
-      CODEX_WORKSPACE: /workspace/project
+      CODEX_WORKSPACE: /tmp/codex-workspace
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - ${CODEX_AUTH_FILE:-${HOME}/.codex/auth.json}:/run/secrets/codex-auth:ro
-      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/workspace/project:ro
     read_only: true
     tmpfs:
-      - /tmp:size=32m,noexec,nosuid,nodev
+      - /tmp:size=64m,noexec,nosuid,nodev,uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=0700
       - /home/node/.codex:size=32m,nosuid,nodev,uid=${HOST_UID:-1000},gid=${HOST_GID:-1000},mode=0700
     security_opt:
       - no-new-privileges:true
@@ -24,6 +23,8 @@ services:
     mem_limit: 1g
     pids_limit: 128
     cpus: 2
+    networks:
+      - edge
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
@@ -32,11 +33,29 @@ services:
       start_period: 5s
     restart: unless-stopped
   collaboration:
+    image: paper-workspace-collaboration
     build:
       context: ../..
       dockerfile: apps/paper_workspace/collaboration/Dockerfile
+    depends_on:
+      collaboration-storage-init:
+        condition: service_completed_successfully
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - collaboration_data:/data
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}/index.json:/run/project-manifests/projects.json:ro
+      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}/project.json:/run/project-manifests/default-project.json:ro
+    environment:
+      COLLAB_ALLOWED_ORIGINS: ${COLLAB_ALLOWED_ORIGINS:-https://${PAPER_DOMAIN:-localhost}}
+      COLLAB_TRUST_PROXY: "1"
+      COLLAB_MAX_PAYLOAD_BYTES: ${COLLAB_MAX_PAYLOAD_BYTES:-2097152}
+      COLLAB_MAX_CONNECTIONS: ${COLLAB_MAX_CONNECTIONS:-128}
+      COLLAB_MAX_CONNECTIONS_PER_IP: ${COLLAB_MAX_CONNECTIONS_PER_IP:-16}
+      COLLAB_MAX_CONNECTIONS_PER_ROOM: ${COLLAB_MAX_CONNECTIONS_PER_ROOM:-32}
+      COLLAB_MAX_ROOMS: ${COLLAB_MAX_ROOMS:-64}
+      COLLAB_MAX_STORAGE_BYTES: ${COLLAB_MAX_STORAGE_BYTES:-536870912}
+      COLLAB_PROJECT_CATALOG: /run/project-manifests/projects.json
+      COLLAB_DEFAULT_PROJECT_MANIFEST: /run/project-manifests/default-project.json
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -45,6 +64,8 @@ services:
     mem_limit: 128m
     pids_limit: 32
     cpus: 0.25
+    networks:
+      - collaboration_internal
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8765').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
@@ -52,6 +73,25 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+  collaboration-storage-init:
+    image: paper-workspace-collaboration
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /data
+    volumes:
+      - collaboration_data:/data
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    restart: "no"
   backup:
     build:
       context: ../..
@@ -82,6 +122,8 @@ services:
     mem_limit: 256m
     pids_limit: 64
     cpus: 0.5
+    networks:
+      - backup_internal
     restart: unless-stopped
   compiler:
     build:
@@ -89,12 +131,6 @@ services:
       dockerfile: apps/paper_workspace/compiler/Dockerfile
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     read_only: true
-    environment:
-      PAPER_PROJECTS_ROOT: /projects
-      PAPER_DEFAULT_PROJECT_ROOT: /project-default
-    volumes:
-      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/projects:ro
-      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/project-default:ro
     tmpfs:
       - /tmp:size=256m,noexec,nosuid,nodev
     security_opt:
@@ -104,6 +140,8 @@ services:
     mem_limit: 1g
     pids_limit: 128
     cpus: 2
+    networks:
+      - compiler_internal
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 30s
@@ -127,14 +165,41 @@ services:
     mem_limit: 256m
     pids_limit: 32
     cpus: 0.5
+    networks:
+      - workspace_internal
     tmpfs:
       - /tmp:size=32m,noexec,nosuid,nodev
       - /var/cache/nginx:size=16m,noexec,nosuid,nodev
       - /var/run:size=1m,noexec,nosuid,nodev
     restart: unless-stopped
+  caddy-storage-init:
+    image: caddy:2.11.4-alpine
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - chown -R 1000:1000 /data /config && chmod 0700 /data /config
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    restart: "no"
   caddy:
-    image: caddy:2.10.2-alpine
+    image: paper-workspace-caddy:2.11.4
+    build:
+      context: ../..
+      dockerfile: infra/paper-workspace/Caddy.Dockerfile
     depends_on:
+      caddy-storage-init:
+        condition: service_completed_successfully
       backup:
         condition: service_healthy
       codex-bridge:
@@ -147,6 +212,7 @@ services:
         condition: service_healthy
     environment:
       PAPER_DOMAIN: ${PAPER_DOMAIN:-localhost}
+    user: "1000:1000"
     env_file:
       - path: .env
         required: false
@@ -154,14 +220,27 @@ services:
       - "${PAPER_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${PAPER_BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     security_opt:
       - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+      - /run:size=1m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
     mem_limit: 256m
     pids_limit: 64
     cpus: 0.5
+    networks:
+      - edge
+      - backup_internal
+      - collaboration_internal
+      - compiler_internal
+      - workspace_internal
     restart: unless-stopped
 volumes:
   backup_data:
@@ -169,3 +248,18 @@ volumes:
   collaboration_data:
   caddy_data:
   caddy_config:
+networks:
+  edge:
+  backup_internal:
+    internal: true
+  collaboration_internal:
+    internal: true
+  compiler_internal:
+    internal: true
+  workspace_internal:
+    internal: true
+  auth_internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${PAPER_AUTH_NETWORK_CIDR:-172.30.6.0/24}

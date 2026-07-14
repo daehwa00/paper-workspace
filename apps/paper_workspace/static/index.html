@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101828" />
-    <script>try{const q=new URLSearchParams(location.search).get('lang'),s=localStorage.getItem('paper-workspace-language'),n=(navigator.languages||[navigator.language]).map(v=>String(v||'').toLowerCase().split('-')[0]).find(v=>v==='en'||v==='ko'),l=(q==='en'||q==='ko')?q:(s==='en'||s==='ko')?s:n||'en';document.documentElement.lang=l;document.documentElement.dataset.language=l;const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.theme=t;document.documentElement.dataset.colorScheme=d?'dark':'light'}catch(_){document.documentElement.lang='en'}</script>
+    <script src="/bootstrap.js?v=__BOOTSTRAP_JS_HASH__" data-paper-page="workspace"></script>
     <title>Paper Workspace</title>
     <meta name="description" content="공동 논문 편집과 PDF 렌더링을 위한 Paper Workspace" />
     <meta property="og:type" content="website" />
@@ -81,44 +81,6 @@
     <dialog class="theme-dialog"><form method="dialog"><span class="eyebrow">APPEARANCE</span><h2>화면 모드</h2><p>이 브라우저의 허브와 모든 논문에 함께 적용됩니다.</p><fieldset class="theme-options" aria-label="화면 모드"><label><input type="radio" name="workspace-theme" value="system"><span><strong>시스템</strong><small>기기 설정에 맞춰 자동 전환</small></span></label><label><input type="radio" name="workspace-theme" value="light"><span><strong>라이트</strong><small>밝은 작업 화면을 항상 사용</small></span></label><label><input type="radio" name="workspace-theme" value="dark"><span><strong>다크</strong><small>어두운 작업 화면을 항상 사용</small></span></label></fieldset><div class="dialog-actions"><button value="close" class="primary">완료</button></div></form></dialog>
     <dialog id="action-dialog" class="action-dialog"><form method="dialog"><h2 id="action-dialog-title"></h2><p id="action-dialog-message"></p><input id="action-dialog-input" type="text" autocomplete="off" /><div class="dialog-actions"><button value="cancel" class="quiet-dialog">취소</button><button value="confirm" class="primary" id="action-dialog-confirm">확인</button></div></form></dialog>
     <template id="file-template"><button class="file"><span class="file-icon">T</span><span class="file-label"></span></button></template>
-    <script>
-      window.__paperReportError=function(message){try{var image=new Image();image.src='/__client_error.gif?message='+encodeURIComponent(String(message).slice(0,700))+'&path='+encodeURIComponent(location.pathname)+'&t='+Date.now()}catch(_){}};
-      window.addEventListener('error',function(event){window.__paperReportError(event.error&&event.error.stack||event.message)});
-      window.addEventListener('unhandledrejection',function(event){window.__paperReportError(event.reason&&event.reason.stack||event.reason)});
-      window.__paperMarkStartupReady=function(){clearTimeout(window.__paperStartupTimer)};
-      window.__paperStartupTimer=setTimeout(async function(){
-        var editor=document.getElementById('editor');
-        if(editor&&editor.value.indexOf('\\documentclass')>=0)return;
-        try{
-          var match=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
-          var base=match?'/p/'+encodeURIComponent(match[1]):'';
-          var manifestResponse=await fetch(base+'/project/project.json',{cache:'no-store'});
-          if(!manifestResponse.ok)throw new Error('watchdog project.json '+manifestResponse.status);
-          var manifest=await manifestResponse.json();
-          var entrypoint=manifest.entrypoint||'main.tex';
-          var entry=(manifest.files||[]).find(function(item){return item&&item.path===entrypoint});
-          var source=(entry&&entry.source)||entrypoint;
-          var sourceUrl=base+'/project/'+source.split('/').map(encodeURIComponent).join('/');
-          var sourceResponse=await fetch(sourceUrl,{cache:'no-store'});
-          if(!sourceResponse.ok)throw new Error('watchdog manuscript '+sourceResponse.status);
-          var manuscript=await sourceResponse.text();
-          if(manuscript.indexOf('\\documentclass')<0)throw new Error('watchdog received invalid manuscript');
-          if(editor.value.indexOf('\\documentclass')>=0)return;
-          editor.value=manuscript;
-          editor.hidden=false;
-          document.getElementById('editor-panel').classList.add('legacy-editor');
-          var titleMatch=manuscript.match(/\\title\{([^}]*)\}/),title=(titleMatch&&titleMatch[1])||'Recovered Paper';
-          document.getElementById('project-title').value=title;
-          document.title=title+' · Paper Workspace';
-          document.getElementById('save-state').textContent='서버 원고 복구됨 · 로컬 편집 모드';
-          document.getElementById('render-state').textContent='전체 기능을 복구하려면 새로고침';
-          document.getElementById('collab-label').textContent='로컬 편집';
-          document.getElementById('collab-status').className='status-dot offline';
-          window.__paperReportError('startup watchdog recovered manuscript');
-          window.dispatchEvent(new CustomEvent('paper:startup-recovered'));
-        }catch(error){window.__paperReportError('startup watchdog failed: '+(error&&error.stack||error))}
-      },5000);
-    </script>
     <script src="/i18n.js?v=__I18N_JS_HASH__"></script>
     <script src="/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__"></script>
     <script src="/workspace-core.js?v=__WORKSPACE_CORE_JS_HASH__"></script>

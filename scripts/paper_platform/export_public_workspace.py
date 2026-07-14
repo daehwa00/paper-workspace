@@ -31,6 +31,7 @@ ROOT_FILES = {
     Path("apps/paper_workspace/LICENSE"): Path("LICENSE"),
     Path("apps/paper_workspace/THIRD_PARTY_NOTICES.md"): Path("THIRD_PARTY_NOTICES.md"),
     Path("apps/paper_workspace/SECURITY.md"): Path("SECURITY.md"),
+    Path("apps/paper_workspace/github/workflows/security.yml"): Path(".github/workflows/security.yml"),
     Path("apps/paper_workspace/public.gitignore"): Path(".gitignore"),
     Path("apps/paper_workspace/public.dockerignore"): Path(".dockerignore"),
 }
@@ -49,9 +50,16 @@ IGNORED_NAMES = {
     ".DS_Store",
 }
 SECRET_PATTERNS = (
-    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(rb"sk-[A-Za-z0-9_-]{20,255}"),
+    re.compile(rb"github_pat_[A-Za-z0-9_]{20,255}"),
+    re.compile(rb"gh[pousr]_[A-Za-z0-9]{20,255}"),
+    re.compile(rb"A[KS]IA[0-9A-Z]{16}"),
+    re.compile(rb"AIza[0-9A-Za-z_-]{35}"),
+    re.compile(rb"xox[baprs]-[A-Za-z0-9-]{10,255}"),
+    re.compile(rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
 )
+SECRET_SCAN_CHUNK_BYTES = 64 * 1024
+SECRET_SCAN_OVERLAP_BYTES = 512
 
 
 def allowed_file(path: Path) -> bool:
@@ -73,6 +81,18 @@ def copy_public_path(relative: Path, destination: Path) -> None:
         shutil.copy2(item, target)
 
 
+def contains_secret(path: Path) -> bool:
+    """Scan every exported byte without loading arbitrarily large files."""
+    overlap = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(SECRET_SCAN_CHUNK_BYTES):
+            window = overlap + chunk
+            if any(pattern.search(window) for pattern in SECRET_PATTERNS):
+                return True
+            overlap = window[-SECRET_SCAN_OVERLAP_BYTES:]
+    return False
+
+
 def verify_export(destination: Path) -> None:
     forbidden_parts = {"private", "datasets", "results", "checkpoints", ".codex"}
     for path in destination.rglob("*"):
@@ -83,10 +103,8 @@ def verify_export(destination: Path) -> None:
         relative = path.relative_to(destination)
         if forbidden_parts.intersection(relative.parts) or path.name in IGNORED_NAMES:
             raise RuntimeError(f"Export contains a private path: {relative}")
-        if path.stat().st_size <= 2_000_000:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-            if any(pattern.search(text) for pattern in SECRET_PATTERNS):
-                raise RuntimeError(f"Possible secret found in {relative}")
+        if contains_secret(path):
+            raise RuntimeError(f"Possible secret found in {relative}")
 
 
 def export(destination: Path) -> None:
@@ -98,7 +116,15 @@ def export(destination: Path) -> None:
     for source, target in ROOT_FILES.items():
         output = destination / target
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / source, output)
+        source_path = ROOT / source
+        if not source_path.is_file():
+            # A clean public clone already stores these files at their exported
+            # locations. Supporting that layout keeps the exporter reproducible
+            # without widening the public allowlist.
+            source_path = ROOT / target
+        if not source_path.is_file():
+            raise RuntimeError(f"Missing public source file: {source}")
+        shutil.copy2(source_path, output)
     verify_export(destination)
 
 

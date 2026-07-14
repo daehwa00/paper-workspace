@@ -1,5 +1,8 @@
 import json
+import importlib.util
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).parents[2]
@@ -114,6 +117,42 @@ def test_public_export_is_allowlist_based() -> None:
         assert private_name in exporter
 
 
+def test_public_export_installs_a_pinned_history_secret_scan(tmp_path: Path) -> None:
+    module_path = ROOT / "scripts/paper_platform/export_public_workspace.py"
+    spec = importlib.util.spec_from_file_location("paper_public_exporter_workflow", module_path)
+    assert spec and spec.loader
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+
+    destination = tmp_path / "public"
+    exporter.export(destination)
+    workflow = (destination / ".github/workflows/security.yml").read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in workflow
+    assert "gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3" in workflow
+
+
+def test_public_export_scans_large_files_and_chunk_boundaries(tmp_path: Path) -> None:
+    module_path = ROOT / "scripts/paper_platform/export_public_workspace.py"
+    spec = importlib.util.spec_from_file_location("paper_public_exporter", module_path)
+    assert spec and spec.loader
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+
+    safe = tmp_path / "safe.bin"
+    safe.write_bytes(b"x" * 2_100_000)
+    exporter.verify_export(tmp_path)
+
+    token = b"github_pat_" + (b"A" * 32)
+    unsafe = tmp_path / "large.bin"
+    unsafe.write_bytes(
+        b"x" * (exporter.SECRET_SCAN_CHUNK_BYTES - len(b"github_pat_") + 3)
+        + token
+        + b"x" * 2_100_000
+    )
+    with pytest.raises(RuntimeError, match="Possible secret found in large.bin"):
+        exporter.verify_export(tmp_path)
+
+
 def test_backup_service_is_persistent_and_routed_separately() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     caddy = (ROOT / "infra/paper-workspace/Caddyfile").read_text(encoding="utf-8")
@@ -138,12 +177,13 @@ def test_optional_github_oauth_override_protects_every_route() -> None:
     caddy = (ROOT / "infra/paper-workspace/Caddyfile.auth").read_text(encoding="utf-8")
     env = (ROOT / "infra/paper-workspace/.env.auth.example").read_text(encoding="utf-8")
 
-    assert "oauth2-proxy:v7.12.0" in compose
+    assert "oauth2-proxy:v7.15.2" in compose
     assert "--provider=google" in compose
     assert "allowed-emails:/etc/oauth2-proxy/allowed-emails:ro" in compose
     assert "forward_auth oauth2-proxy:4180" in caddy
     assert "copy_headers X-Auth-Request-User" in caddy
     assert "oauth2/start?rd={http.request.uri}" in caddy
+    assert "--trusted-proxy-ip=" in compose
     for route in ("/api/codex", "/api/backups/*", "/api/*", "/collab"):
         assert route in caddy
     assert "OAUTH2_PROXY_COOKIE_SECRET" in env
@@ -158,8 +198,56 @@ def test_optional_shared_password_override_is_exported_without_a_secret() -> Non
 
     assert "password-gate" in compose
     assert "forward_auth password-gate:8079" in caddy
+    assert '["caddy", "run", "--config"' in compose
     assert "PAPER_ACCESS_PASSWORD=replace-with-your-private-lab-password" in env
     assert "210628" not in env
+
+
+def test_public_edge_and_collaboration_are_hardened() -> None:
+    compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
+    caddy_files = [
+        (ROOT / "infra/paper-workspace" / name).read_text(encoding="utf-8")
+        for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password")
+    ]
+    collaboration = (ROOT / "apps/paper_workspace/collaboration/server.cjs").read_text(encoding="utf-8")
+    collaboration_image = (ROOT / "apps/paper_workspace/collaboration/Dockerfile").read_text(encoding="utf-8")
+    caddy_image = (ROOT / "infra/paper-workspace/Caddy.Dockerfile").read_text(encoding="utf-8")
+
+    assert "caddy:2.11.4-alpine" in compose
+    assert 'user: "1000:1000"' in compose
+    assert "service_completed_successfully" in compose
+    assert "net.ipv4.ip_unprivileged_port_start" in compose
+    assert "compiler_internal:" in compose and "internal: true" in compose
+    assert ":/projects:ro" not in compose
+    assert ":/project-default:ro" not in compose
+    assert "COLLAB_MAX_PAYLOAD_BYTES" in compose
+    assert "projects.json:ro" in compose
+    assert "collaboration-storage-init:" in compose
+    assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
+    for caddy in caddy_files:
+        assert "script-src 'self'" in caddy
+        assert "frame-ancestors 'none'" in caddy
+        assert "X-Frame-Options DENY" in caddy
+    assert "allowedProjectSlugs" in collaboration
+    assert "maxPayload" in collaboration
+    assert "storage quota exceeded" in collaboration
+    assert "chmod -R a+rX /app" in collaboration_image
+    assert "install -d -m 0755 /etc/paper-caddy" in caddy_image
+    assert "USER 1000:1000" in caddy_image
+
+
+def test_browser_error_reports_are_redacted_post_bodies() -> None:
+    bootstrap = (ROOT / "apps/paper_workspace/static/bootstrap.js").read_text(encoding="utf-8")
+    workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
+    nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
+
+    assert "method: 'POST'" in bootstrap
+    assert "redactError" in bootstrap
+    assert "__client_error.gif?" not in workspace
+    assert "__BOOTSTRAP_JS_HASH__" in workspace and "__BOOTSTRAP_JS_HASH__" in hub
+    assert "access_log off" in nginx
+    assert "client_max_body_size 2k" in nginx
 
 
 def test_brand_icons_are_public_before_authentication() -> None:

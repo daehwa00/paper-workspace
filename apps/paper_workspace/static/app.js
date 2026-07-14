@@ -24,7 +24,6 @@ state.serverSourceSnapshots||={};
 let projectManifest={id:'default',version:'unversioned',entrypoint:'main.tex',files:[{path:'main.tex',managed:true}]};
 const remoteAssetPaths=new Set();
 const remoteAssetSources=new Map();
-const remoteAssetProjectPaths=new Map();
 const $ = id => document.getElementById(id); const esc = value => value.replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let richEditor=null;
 function initializeRichEditor(){
@@ -451,7 +450,7 @@ async function importLocalFiles(entries,targetFolder='paper'){let imported=0;con
 function previewEntrypoints(){const configured=Array.isArray(projectManifest.preview_entrypoints)?projectManifest.preview_entrypoints:[projectManifest.entrypoint||'main.tex'];return configured.filter(path=>typeof path==='string'&&path.endsWith('.tex'))}
 function selectedEntrypoint(){const fallback=projectManifest.entrypoint||'main.tex';const current=state.current?.startsWith('paper/')?state.current.slice('paper/'.length):'';return current&&extensionOf(current)==='tex'&&state.files[`paper/${current}`]!==undefined?current:fallback}
 function selectedPreviewMode(entrypoint=selectedEntrypoint()){const root=projectManifest.entrypoint||'main.tex';const source=state.files[`paper/${entrypoint}`]||'';return entrypoint!==root&&!isLatexDocument(source)?'fragment':'document'}
-async function compilePayload(){const files={};for(const [path,content] of Object.entries(state.files)){if(!path.startsWith('paper/'))continue;const relative=path.slice('paper/'.length);if(compileTextExtensions.has(extensionOf(relative)))files[relative]=content;}files['main.tex']=state.files['paper/main.tex'];const assets={};const paths=Object.keys(state.assets).filter(path=>path.startsWith('paper/')&&!remoteAssetPaths.has(path)&&compileAssetExtensions.has(extensionOf(path)));await parallelLimit(paths,4,ensureAssetLoaded);for(const path of paths){const asset=state.assets[path];assets[path.slice('paper/'.length)]=asset.data.slice(asset.data.indexOf(',')+1)}const remote_assets={};for(const [path,source] of remoteAssetProjectPaths)if(compileAssetExtensions.has(extensionOf(path)))remote_assets[path.slice('paper/'.length)]=source;const entrypoint=selectedEntrypoint();return {files,assets,remote_assets,project_slug:projectSlug,entrypoint,root_entrypoint:projectManifest.entrypoint||'main.tex',preview_mode:selectedPreviewMode(entrypoint)}}
+async function compilePayload(){const files={};for(const [path,content] of Object.entries(state.files)){if(!path.startsWith('paper/'))continue;const relative=path.slice('paper/'.length);if(compileTextExtensions.has(extensionOf(relative)))files[relative]=content;}files['main.tex']=state.files['paper/main.tex'];const assets={};const paths=Object.keys(state.assets).filter(path=>path.startsWith('paper/')&&compileAssetExtensions.has(extensionOf(path)));await parallelLimit(paths,4,ensureAssetLoaded);for(const path of paths){const asset=state.assets[path];assets[path.slice('paper/'.length)]=asset.data.slice(asset.data.indexOf(',')+1)}const entrypoint=selectedEntrypoint();return {files,assets,entrypoint,root_entrypoint:projectManifest.entrypoint||'main.tex',preview_mode:selectedPreviewMode(entrypoint)}}
 let contextTarget={type:'root',path:''};let pendingUploadFolder='';
 function showTreeMenu(event,type,path){event.preventDefault();event.stopPropagation();contextTarget={type,path};const menu=$('tree-menu');const protectedPaper=(type==='folder'&&path==='paper')||(type==='file'&&path==='paper/main.tex');menu.querySelector('[data-action="new-folder"]').hidden=type==='file';menu.querySelector('[data-action="upload"]').hidden=type==='file';menu.querySelector('[data-action="rename"]').hidden=type==='root'||protectedPaper;menu.querySelector('[data-action="delete"]').hidden=type==='root'||protectedPaper;menu.hidden=false;const width=184,height=220,anchor=event.currentTarget?.getBoundingClientRect?.();const x=event.clientX||anchor?.left||8,y=event.clientY||anchor?.bottom||8;menu.style.left=`${Math.max(8,Math.min(x,innerWidth-width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-height-8))}px`;menu.querySelector('button:not([hidden])')?.focus();}
 function fileButton(path){const item=$('file-template').content.firstElementChild.cloneNode(true);item.dataset.filePath=path;item.classList.toggle('active',!activeAsset&&path===state.current);item.querySelector('.file-label').textContent=baseName(path);item.title=path;item.draggable=true;item.onclick=()=>{disposeAssetPdf();state.files[state.current]=editorValue();state.current=path;setEditor();listFiles();save();sendCursor();if(innerWidth<768)activateFocusMode('source');if(extensionOf(path)==='tex')compileAfterSave();};item.oncontextmenu=event=>showTreeMenu(event,'file',path);return item}
@@ -600,14 +599,12 @@ async function loadProject(){
   const remoteSources={};
   remoteAssetPaths.clear();
   remoteAssetSources.clear();
-  remoteAssetProjectPaths.clear();
   await Promise.all(projectManifest.files.map(async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
     if(item.type==='asset'){
       remoteAssetPaths.add(name);
       remoteAssetSources.set(name,`${projectBase}/project/${encodeURI(source)}`);
-      remoteAssetProjectPaths.set(name,source);
       state.assets[name]={type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||0,data:'',remote:true};
     }else{
       const value=await fetchProjectSource(name,`${projectBase}/project/${encodeURI(source)}`);

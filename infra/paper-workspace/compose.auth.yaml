@@ -1,6 +1,9 @@
 services:
+  backup:
+    environment:
+      BACKUP_ACTOR_MODE: proxy
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.12.0
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
     env_file:
       - path: .env.auth
         required: true
@@ -9,6 +12,7 @@ services:
       - --http-address=0.0.0.0:4180
       - --upstream=static://202
       - --reverse-proxy=true
+      - --trusted-proxy-ip=${PAPER_AUTH_NETWORK_CIDR:-172.30.6.0/24}
       - --set-xauthrequest=true
       - --pass-user-headers=true
       - --skip-provider-button=true
@@ -27,10 +31,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    networks:
+      - auth_internal
     restart: unless-stopped
   caddy:
     depends_on:
       oauth2-proxy:
         condition: service_started
-    volumes:
-      - ./Caddyfile.auth:/etc/caddy/Caddyfile:ro
+    command: ["caddy", "run", "--config", "/etc/paper-caddy/Caddyfile.auth", "--adapter", "caddyfile"]
+    networks:
+      - auth_internal

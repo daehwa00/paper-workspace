@@ -3,7 +3,7 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-RUN npm install --global @openai/codex@0.144.1
+RUN npm install --global @openai/codex@0.144.4
 COPY --chmod=644 apps/paper_workspace/codex_bridge/server.mjs /app/server.mjs
 COPY --chmod=644 apps/paper_workspace/codex_bridge/revision-schema.json /app/revision-schema.json
 COPY --chmod=755 apps/paper_workspace/codex_bridge/start.sh /app/start.sh

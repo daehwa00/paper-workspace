@@ -17,7 +17,8 @@ Names and colors persist in each browser. Clicking a collaborator avatar resolve
 
 - Source text, text-file tree operations, comments, tasks, and folders are synchronized. Binary assets and Codex proposals remain project/browser metadata and use the backup service.
 - Authentication and project routing are enforced by the existing Caddy/password or OAuth layer before WebSocket upgrade.
+- The collaboration edge accepts only configured project rooms and same-site origins, disables WebSocket compression, and enforces message, connection, room, and persistent-storage limits.
 - Presence remains advisory. The UI claims “동기화됨” only after the Yjs provider reports sync.
 - Server project files remain the canonical bootstrap source; divergent browser drafts are preserved visibly under `paper/drafts/`.
 
-Future work is to move binary assets to a content-addressed shared object store and add per-project membership rather than a laboratory-wide credential.
+Future work is to move binary assets to a content-addressed shared object store and add per-project membership rather than a laboratory-wide credential. The current room allowlist prevents arbitrary persistence keys but does not replace per-user project authorization.
