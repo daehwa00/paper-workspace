@@ -259,6 +259,7 @@ def test_brand_icons_are_public_before_authentication() -> None:
     for path in icon_paths:
         assert path in password_caddy
         assert path in oauth_caddy
+    assert "/bootstrap.js" in password_caddy
 
     assert password_caddy.index("/apple-touch-icon.png") < password_caddy.index("forward_auth")
     assert oauth_caddy.index("@public_brand_asset") < oauth_caddy.index("forward_auth")
