@@ -86,7 +86,16 @@ const directoryBytes = root => {
       const entryPath = path.join(current, entry.name)
       if (entry.isSymbolicLink()) continue
       if (entry.isDirectory()) pending.push(entryPath)
-      else if (entry.isFile()) total += fs.statSync(entryPath).size
+      else if (entry.isFile()) {
+        try {
+          total += fs.statSync(entryPath).size
+        } catch (error) {
+          // LevelDB atomically replaces manifests and table files during
+          // compaction. A file seen by readdir may legitimately disappear
+          // before stat without making the database unavailable.
+          if (error.code !== 'ENOENT') throw error
+        }
+      }
     }
   }
   return total
@@ -109,7 +118,7 @@ function createCollaborationServer (overrides = {}) {
     port: positiveInteger(overrides.port ?? process.env.PORT, 8765),
     allowedOrigins: overrides.allowedOrigins || configuredOrigins(process.env.COLLAB_ALLOWED_ORIGINS),
     trustProxy: overrides.trustProxy ?? process.env.COLLAB_TRUST_PROXY === '1',
-    maxPayloadBytes: positiveInteger(overrides.maxPayloadBytes ?? process.env.COLLAB_MAX_PAYLOAD_BYTES, 2 * 1024 * 1024),
+    maxPayloadBytes: positiveInteger(overrides.maxPayloadBytes ?? process.env.COLLAB_MAX_PAYLOAD_BYTES, 16 * 1024 * 1024),
     maxConnections: positiveInteger(overrides.maxConnections ?? process.env.COLLAB_MAX_CONNECTIONS, 128),
     maxConnectionsPerIp: positiveInteger(overrides.maxConnectionsPerIp ?? process.env.COLLAB_MAX_CONNECTIONS_PER_IP, 16),
     maxConnectionsPerRoom: positiveInteger(overrides.maxConnectionsPerRoom ?? process.env.COLLAB_MAX_CONNECTIONS_PER_ROOM, 32),
@@ -161,6 +170,12 @@ function createCollaborationServer (overrides = {}) {
       const nextRoom = (countsByRoom.get(room) || 1) - 1
       if (nextIp > 0) countsByIp.set(address, nextIp); else countsByIp.delete(address)
       if (nextRoom > 0) countsByRoom.set(room, nextRoom); else countsByRoom.delete(room)
+    })
+    socket.on('error', error => {
+      // ws emits protocol and payload-limit failures on the individual socket.
+      // Without a listener Node treats them as uncaught errors and restarts the
+      // entire collaboration service, disconnecting every healthy room.
+      console.warn(`collaboration socket closed (${room}): ${error.code || error.message}`)
     })
     setupWSConnection(socket, request, { docName })
   })

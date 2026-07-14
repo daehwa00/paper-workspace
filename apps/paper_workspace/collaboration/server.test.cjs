@@ -33,6 +33,17 @@ const websocketOutcome = (url, origin) => new Promise(resolve => {
   socket.once('error', () => {})
 })
 
+const oversizedWebsocketOutcome = (url, origin, bytes) => new Promise((resolve, reject) => {
+  const socket = new WebSocket(url, { origin })
+  const timeout = setTimeout(() => reject(new Error('oversized websocket was not closed')), 2000)
+  socket.once('open', () => socket.send(Buffer.alloc(bytes)))
+  socket.once('close', code => {
+    clearTimeout(timeout)
+    resolve(code)
+  })
+  socket.once('error', () => {})
+})
+
 test('room parser accepts only the workspace room namespace', () => {
   assert.equal(requestRoom({ url: '/collab/paper-workspace%3Apaper.example%3Aexample-paper' }), 'paper-workspace:paper.example:example-paper')
   assert.equal(requestRoom({ url: '/collab/arbitrary-room' }), null)
@@ -67,4 +78,41 @@ test('server fails closed when the persistence quota is exhausted', async t => {
   const port = await listen(instance)
   assert.equal(await responseStatus(`http://127.0.0.1:${port}/health`), 507)
   assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`, 'https://paper.example'), 507)
+})
+
+test('oversized messages close only the offending websocket', async t => {
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    maxPayloadBytes: 64
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const url = `ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`
+
+  assert.ok([1006, 1009].includes(await oversizedWebsocketOutcome(url, 'https://paper.example', 65)))
+  assert.equal(await responseStatus(`http://127.0.0.1:${port}/health`), 200)
+  assert.equal(await websocketOutcome(url, 'https://paper.example'), 'open')
+})
+
+test('storage accounting tolerates files removed during LevelDB compaction', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-collab-compaction-'))
+  const transient = path.join(directory, 'MANIFEST-transient')
+  fs.writeFileSync(transient, 'manifest')
+  const originalStatSync = fs.statSync
+  fs.statSync = (filename, ...args) => {
+    if (filename === transient) {
+      fs.rmSync(transient, { force: true })
+      const error = new Error('file replaced during compaction')
+      error.code = 'ENOENT'
+      throw error
+    }
+    return originalStatSync(filename, ...args)
+  }
+  try {
+    assert.equal(require('./server.cjs').directoryBytes(directory), 0)
+  } finally {
+    fs.statSync = originalStatSync
+    fs.rmSync(directory, { force: true, recursive: true })
+  }
 })
