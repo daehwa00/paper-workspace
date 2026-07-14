@@ -75,6 +75,7 @@
     'workspace.compile.compiling': '{file} compiling…',
     'workspace.compile.current': '{file} current · {seconds}s',
     'workspace.compile.error': '{file} compile error',
+    'workspace.compile.timeout': '{file} compile timeout',
     'workspace.compile.previousError': '{file} error · previous PDF',
     'workspace.tasks.empty': 'No tasks yet.'
   })
@@ -83,6 +84,7 @@
     'workspace.compile.compiling': '{file} 컴파일 중…',
     'workspace.compile.current': '{file} 최신 · {seconds}초',
     'workspace.compile.error': '{file} 컴파일 오류',
+    'workspace.compile.timeout': '{file} 컴파일 시간 초과',
     'workspace.compile.previousError': '{file} 오류 · 이전 PDF',
     'workspace.tasks.empty': '등록된 작업이 없습니다.'
   })

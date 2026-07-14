@@ -264,7 +264,8 @@ def test_compile_errors_are_navigable_and_last_successful_pdf_is_preserved() -> 
     assert "parseLatexDiagnostics" in app
     assert "renderCompileDiagnostics" in app
     assert "goToSourceLocation" in app
-    assert "if(hasPreviousPdf)notify('마지막 정상 PDF를 유지했습니다." in app
+    assert "if(hasPreviousPdf)" in app
+    assert "notify('마지막 정상 PDF를 유지했습니다." in app
     assert "$('suggestion').innerHTML=`<div class=\"suggestion\"><strong>PDF 컴파일 오류" not in app
 
 
@@ -873,6 +874,19 @@ def test_workspace_status_names_the_problem_and_offers_actions() -> None:
     assert "`${problemName} 확인`" in app
     assert "activateAssistantTab('checks'" in app
     assert "createServerBackup('manual')" in app
+
+
+def test_workspace_pending_operations_have_deadlines_and_precise_detection() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    translations = (ROOT / "apps/paper_workspace/static/workspace-i18n.js").read_text(encoding="utf-8")
+
+    assert "collaborationWatchdogMs" in app
+    assert "collabSession?.provider?.synced" in app
+    assert "collaborationWatchdogFailed=true" in app
+    assert "compileRequestTimeoutMs" in app
+    assert "compileTimedOut=true;controller.abort()" in app
+    assert "/대기|중|준비|waiting|preparing|compiling/" not in app
+    assert "workspace.compile.timeout" in translations
 
 
 def test_workspace_exposes_safari_and_manifest_icons() -> None:
