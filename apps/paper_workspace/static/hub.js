@@ -294,10 +294,11 @@ function renderProjects() {
     const pageCount = Number.isSafeInteger(project.page_count) && project.page_count > 0 && project.page_count <= 1000
       ? `${project.page_count}p`
       : ''
-    const thumbnail = thumbnailPattern.test(project.thumbnail || '') ? project.thumbnail : ''
-    const visual = thumbnail
-      ? `<div class="project-thumbnail-wrap"><img class="project-thumbnail" src="${escapeHtml(thumbnail)}" alt="${escapeHtml(i18n.t('hub.thumbnailAlt', { title: rawTitle }))}" loading="lazy" /></div>`
-      : '<span class="project-icon">T</span>'
+    const thumbnail = thumbnailPattern.test(project.thumbnail || '')
+      ? project.thumbnail
+      : `/projects/${encodeURIComponent(project.slug)}/thumbnail.png`
+    const fallback = rawTitle.trim().charAt(0).toUpperCase() || 'T'
+    const visual = `<div class="project-thumbnail-wrap"><img class="project-thumbnail" src="${escapeHtml(thumbnail)}" alt="${escapeHtml(i18n.t('hub.thumbnailAlt', { title: rawTitle }))}" loading="lazy" data-project-fallback="${escapeHtml(fallback)}" /></div>`
     const badges = [
       updated,
       local.comments ? i18n.t(local.comments === 1 ? 'hub.comment' : 'hub.comments', { count: local.comments }) : '',
@@ -308,6 +309,14 @@ function renderProjects() {
     const activityLabel = local.actor && activityTime ? i18n.t('hub.lastEdited', { actor: local.actor, time: activityTime }) : i18n.t('hub.noActivity')
     return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div><div class="project-activity"><span class="project-activity-dot" aria-hidden="true"></span>${escapeHtml(activityLabel)}</div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
   }).join('') || `<div class="empty-card">${escapeHtml(i18n.t('hub.emptyProjects'))}</div>`
+  list.querySelectorAll('img[data-project-fallback]').forEach(image => {
+    image.addEventListener('error', () => {
+      const fallback = document.createElement('span')
+      fallback.className = 'project-icon'
+      fallback.textContent = image.dataset.projectFallback || 'T'
+      image.closest('.project-thumbnail-wrap')?.replaceWith(fallback)
+    }, { once: true })
+  })
 }
 
 async function loadProjects() {
