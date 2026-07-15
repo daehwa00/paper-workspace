@@ -569,6 +569,7 @@ def test_paper_assistant_can_be_collapsed_and_restored() -> None:
 def test_project_sidebar_can_be_collapsed_and_persisted() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
     assert 'id="toggle-sidebar"' in html
     assert ".shell.sidebar-collapsed .sidebar" in html
     assert "sidebarCollapsed:false" in app
@@ -583,6 +584,8 @@ def test_project_sidebar_can_be_collapsed_and_persisted() -> None:
     assert "maxSidebarWidth=420" in app
     assert "--sidebar-width" in html
     assert "drag.sidebarWidth+event.clientX-drag.startX" in app
+    assert "#files{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto" in components
+    assert "overscroll-behavior:contain;scrollbar-gutter:stable" in components
 
 
 def test_local_files_and_folders_can_be_dropped_into_the_project_tree() -> None:
