@@ -126,6 +126,7 @@ services:
       - backup_internal
     restart: unless-stopped
   compiler:
+    image: paper-workspace-compiler
     build:
       context: ../..
       dockerfile: apps/paper_workspace/compiler/Dockerfile
@@ -149,15 +150,80 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+  project-thumbnails:
+    image: paper-workspace-compiler
+    depends_on:
+      compiler:
+        condition: service_healthy
+      project-thumbnail-storage-init:
+        condition: service_completed_successfully
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint: ["python", "/app/generate_project_thumbnails.py"]
+    command:
+      - --catalog
+      - /project-library/index.json
+      - --default-project
+      - /project
+      - --projects
+      - /project-library
+      - --output
+      - /output
+      - --watch-seconds
+      - ${PROJECT_THUMBNAIL_WATCH_SECONDS:-30}
+    volumes:
+      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/project:ro
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/project-library:ro
+      - project_thumbnails:/output
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    pids_limit: 32
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; raise SystemExit(0 if Path('/output/.ready').is_file() else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+  project-thumbnail-storage-init:
+    image: paper-workspace-compiler
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /output
+    volumes:
+      - project_thumbnails:/output
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    restart: "no"
   workspace:
     build:
       context: ../..
       dockerfile: infra/paper-workspace/Dockerfile
+    depends_on:
+      project-thumbnails:
+        condition: service_healthy
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     read_only: true
     volumes:
       - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/usr/share/nginx/html/project:ro
       - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/usr/share/nginx/html/projects:ro
+      - project_thumbnails:/usr/share/nginx/html/generated-thumbnails:ro
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -246,6 +312,7 @@ volumes:
   backup_data:
   backup_exports:
   collaboration_data:
+  project_thumbnails:
   caddy_data:
   caddy_config:
 networks:

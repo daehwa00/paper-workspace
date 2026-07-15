@@ -57,6 +57,25 @@ test('language query overrides storage and localized project metadata follows it
   await expect(page.locator('.project-activity')).toContainText('KDH 수정')
 })
 
+test('a catalog entry without a manual thumbnail uses its generated PDF preview', async ({ page }) => {
+  await page.route('**/projects/index.json', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ projects: [{
+      slug: 'automatic-paper',
+      display_name: 'Automatic Paper',
+      description: 'Generated from the first PDF page.'
+    }] })
+  }))
+  await page.route('**/projects/automatic-paper/thumbnail.png', route => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+  }))
+
+  await page.goto('/hub.html?lang=en')
+  await expect(page.locator('.project-thumbnail')).toHaveAttribute('src', '/projects/automatic-paper/thumbnail.png')
+  await expect(page.locator('.project-thumbnail')).toBeVisible()
+})
+
 test('recent activity uses server timestamps and shows the latest editor', async ({ page }) => {
   await page.route('**/projects/index.json', route => route.fulfill({
     contentType: 'application/json',

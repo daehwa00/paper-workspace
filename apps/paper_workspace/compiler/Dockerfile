@@ -5,6 +5,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY --chmod=644 apps/paper_workspace/compiler/server.py /app/server.py
+COPY --chmod=755 scripts/paper_platform/generate_project_thumbnails.py /app/generate_project_thumbnails.py
 RUN chmod 755 /app && useradd --system --uid 10001 compiler
 USER compiler
 EXPOSE 8000

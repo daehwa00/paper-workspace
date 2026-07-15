@@ -147,10 +147,19 @@ def test_project_hub_uses_safe_first_page_thumbnails() -> None:
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
     css = (ROOT / "apps/paper_workspace/static/hub.css").read_text(encoding="utf-8")
     caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
+    nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     assert "thumbnailPattern" in hub
     assert "project-thumbnail" in hub
+    assert "data-project-fallback" in hub
+    assert "`/projects/${encodeURIComponent(project.slug)}/thumbnail.png`" in hub
     assert "project-thumbnail-wrap" in css
     assert "public_thumbnail" in caddy
+    assert "project-thumbnails:" in compose
+    assert "project-thumbnail-storage-init:" in compose
+    assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
+    assert "project_thumbnails:/usr/share/nginx/html/generated-thumbnails:ro" in compose
+    assert "/generated-thumbnails/$1/thumbnail.png" in nginx
 
 
 def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
