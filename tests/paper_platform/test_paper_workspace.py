@@ -85,6 +85,13 @@ def test_workspace_and_hub_use_the_character_favicon() -> None:
     assert touch_icon.is_file() and touch_icon.stat().st_size > 500
 
 
+def test_workspace_language_chevron_uses_deterministic_geometry() -> None:
+    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    assert '.language-control::after{content:"";position:absolute;top:50%' in components
+    assert 'transform:translateY(-68%) rotate(45deg)' in components
+    assert 'content:"⌄"' not in components
+
+
 def test_shared_links_use_a_high_contrast_character_preview() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
