@@ -361,6 +361,32 @@ test('dark mode keeps application controls off white surfaces', async ({ page })
   await expect(page.locator('.name-dialog .quiet-dialog')).toHaveCSS('background-color', 'rgb(24, 34, 53)')
 })
 
+test('workspace language label and chevron share a stable vertical center', async ({ page }) => {
+  await page.goto('/p/example-paper')
+  await page.locator('#workspace-language').selectOption('ko')
+
+  const alignment = await page.locator('.language-control').evaluate(control => {
+    const controlBox = control.getBoundingClientRect()
+    const selectBox = control.querySelector('select').getBoundingClientRect()
+    const chevron = getComputedStyle(control, '::after')
+    return {
+      centerDelta: Math.abs((controlBox.top + controlBox.height / 2) - (selectBox.top + selectBox.height / 2)),
+      content: chevron.content,
+      top: chevron.top,
+      width: chevron.width,
+      height: chevron.height,
+      transform: chevron.transform
+    }
+  })
+
+  expect(alignment.centerDelta).toBeLessThan(.5)
+  expect(alignment.content).toBe('""')
+  expect(alignment.top).toBe('18px')
+  expect(alignment.width).toBe('5px')
+  expect(alignment.height).toBe('5px')
+  expect(alignment.transform).not.toBe('none')
+})
+
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
