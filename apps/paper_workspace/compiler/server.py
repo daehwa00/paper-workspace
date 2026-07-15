@@ -190,7 +190,7 @@ class Handler(BaseHTTPRequestHandler):
             if cached := _cache_get(cache_key):
                 pdf, synctex, elapsed_ms = cached
                 compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
-                self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode()})
+                self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
                 return
             payload = json.loads(raw_payload)
             files = payload["files"]
@@ -293,7 +293,7 @@ class Handler(BaseHTTPRequestHandler):
                 _compile_slots.release()
             elapsed_ms = round((time.monotonic() - started) * 1000)
             compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
-            self._json(HTTPStatus.OK, {"elapsed_ms": elapsed_ms, "cached": False, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode()})
+            self._json(HTTPStatus.OK, {"elapsed_ms": elapsed_ms, "cached": False, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
         except (KeyError, ValueError, binascii.Error, RuntimeError, subprocess.TimeoutExpired) as error:
             self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
 

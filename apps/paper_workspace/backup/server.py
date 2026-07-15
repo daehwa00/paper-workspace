@@ -113,6 +113,10 @@ def validate_optional_text(value: object, field: str, maximum: int) -> str | Non
 
 def validate_asset_content(name: object, content: bytes) -> str:
     clean_name = validate_project_path(name)
+    if clean_name.lower().endswith(".synctex.gz"):
+        if not content.startswith(b"\x1f\x8b"):
+            raise ValidationError("asset content does not match its file type")
+        return "application/gzip"
     suffix = PurePosixPath(clean_name).suffix.lower()
     content_type = ALLOWED_ASSET_MIME_TYPES.get(suffix)
     if content_type is None:
@@ -370,8 +374,11 @@ class AssetStore:
         project_dir = self.root / project
         if not project_dir.exists():
             return []
-        return [{"path": path.relative_to(project_dir).as_posix(), "size_bytes": path.stat().st_size}
-                for path in sorted(project_dir.rglob("*")) if path.is_file()]
+        return [{
+            "path": path.relative_to(project_dir).as_posix(),
+            "size_bytes": path.stat().st_size,
+            "modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        } for path in sorted(project_dir.rglob("*")) if path.is_file()]
 
     def put(self, project_id: object, name: object, content: bytes) -> dict[str, Any]:
         if len(content) > self.max_file_bytes:

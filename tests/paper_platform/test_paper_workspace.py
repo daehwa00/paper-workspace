@@ -533,6 +533,7 @@ def test_typing_does_not_replace_the_rendered_pdf_with_placeholder() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert "const autoSaveDelayMs=1000" in app
     assert "window.saveTimer=setTimeout(()=>{if(save())compileAfterSave()},autoSaveDelayMs)" in app
+    assert "function scheduleCompileAfterSave()" in app
     assert "setTimeout(()=>{save();render()},250)" not in app
 
 
@@ -771,6 +772,12 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "layoutAnimationFrame=requestAnimationFrame" in app
     assert "compileController?.abort()" in app
     assert "compile_id" in app
+    assert "compilePayloadFingerprint" in app
+    assert "fetchPersistedPdfPreview" in app
+    assert "persistPdfPreview" in app
+    assert "compileRequestGeneration" in app
+    assert "persistedPreview?.fingerprint===fingerprint" in app
+    assert "relative.startsWith('drafts/')&&relative!==entrypoint" in app
     assert "const pdfPreRenderZoom=2" in app
     assert "pdfMaxCanvasPixels=16_000_000" in app
     assert "const releasePage=entry=>" in app

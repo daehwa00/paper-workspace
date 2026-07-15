@@ -127,7 +127,10 @@ def test_asset_store_round_trip_quota_and_paths(tmp_path: Path) -> None:
     store = backup.AssetStore(tmp_path / "assets", max_file_bytes=20, max_project_bytes=24)
     assert store.put("paper-one", "figures/a.png", PNG_BYTES)["size_bytes"] == len(PNG_BYTES)
     assert store.get("paper-one", "figures/a.png") == PNG_BYTES
-    assert store.list("paper-one") == [{"path": "figures/a.png", "size_bytes": len(PNG_BYTES)}]
+    listed = store.list("paper-one")
+    assert listed[0]["path"] == "figures/a.png"
+    assert listed[0]["size_bytes"] == len(PNG_BYTES)
+    assert listed[0]["modified_at"].endswith("Z")
     with pytest.raises(backup.ValidationError, match="quota"):
         store.put("paper-one", "figures/b.png", PNG_BYTES)
     with pytest.raises(backup.ValidationError, match="path"):
@@ -145,6 +148,7 @@ def test_asset_store_round_trip_quota_and_paths(tmp_path: Path) -> None:
         ("photo.jpg", b"\xff\xd8\xff\xe0jpeg", "image/jpeg"),
         ("photo.jpeg", b"\xff\xd8\xff\xe1jpeg", "image/jpeg"),
         ("plot.eps", b"%!PS-Adobe-3.0 EPSF-3.0\n", "application/postscript"),
+        ("preview.synctex.gz", b"\x1f\x8b\x08\x00", "application/gzip"),
     ],
 )
 def test_asset_validation_allows_expected_formats(
@@ -162,6 +166,7 @@ def test_asset_validation_allows_expected_formats(
         ("payload.xml", b"<?xml version='1.0'?><x/>", "not allowed"),
         ("payload.png", b"<script>alert(1)</script>", "does not match"),
         ("payload.pdf", b"not a pdf", "does not match"),
+        ("payload.synctex.gz", b"not gzip", "does not match"),
     ],
 )
 def test_asset_validation_rejects_active_or_mismatched_content(
