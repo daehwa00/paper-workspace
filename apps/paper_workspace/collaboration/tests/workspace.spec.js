@@ -188,6 +188,69 @@ test('quota fallback fingerprints server snapshots and retains only recent local
   expect(persisted.files['paper/main.tex']).toContain('\\documentclass')
 })
 
+test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const result = await page.evaluate(async () => {
+    state.current = 'paper/main.tex'
+    collabSession.document.transact(() => {
+      for (const path of [...collabSession.files.keys()]) {
+        if (path.startsWith('paper/drafts/')) collabSession.files.delete(path)
+      }
+    }, actor.id)
+    for (const path of Object.keys(state.files)) {
+      if (path.startsWith('paper/drafts/')) delete state.files[path]
+    }
+    for (let index = 0; index < 35; index += 1) {
+      state.files[`paper/drafts/fifo-${String(index).padStart(2, '0')}.tex`] = `draft ${index}`
+    }
+    publishSharedTree()
+    const afterFirstPublish = draftQueuePaths()
+    state.files['paper/drafts/fifo-35.tex'] = 'draft 35'
+    publishSharedTree()
+    const afterSecondPublish = draftQueuePaths()
+    state.current = afterSecondPublish[0]
+    state.files['paper/drafts/fifo-36.tex'] = 'draft 36'
+    publishSharedTree()
+    const afterProtectedPublish = draftQueuePaths()
+    replaceSharedText(collabSession.textFor('paper/drafts/fifo-37.tex'), 'draft 37')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const afterSharedInsert = draftQueuePaths()
+    const payload = await compilePayload()
+    const result = {
+      afterFirstPublish,
+      afterSecondPublish,
+      afterProtectedPublish,
+      afterSharedInsert,
+      sharedDraftCount: [...collabSession.files.keys()].filter(path => path.startsWith('paper/drafts/')).length,
+      compiledDrafts: Object.keys(payload.files).filter(path => path.startsWith('drafts/')),
+    }
+    collabSession.document.transact(() => {
+      for (const path of [...collabSession.files.keys()]) {
+        if (path.startsWith('paper/drafts/')) collabSession.files.delete(path)
+      }
+    }, actor.id)
+    for (const path of Object.keys(state.files)) {
+      if (path.startsWith('paper/drafts/')) delete state.files[path]
+    }
+    return result
+  })
+  expect(result.afterFirstPublish).toHaveLength(30)
+  expect(result.afterFirstPublish).not.toContain('paper/drafts/fifo-00.tex')
+  expect(result.afterFirstPublish).toContain('paper/drafts/fifo-34.tex')
+  expect(result.afterSecondPublish).toHaveLength(30)
+  expect(result.afterSecondPublish).not.toContain('paper/drafts/fifo-05.tex')
+  expect(result.afterSecondPublish).toContain('paper/drafts/fifo-35.tex')
+  expect(result.afterProtectedPublish).toHaveLength(30)
+  expect(result.afterProtectedPublish).toContain('paper/drafts/fifo-06.tex')
+  expect(result.afterProtectedPublish).not.toContain('paper/drafts/fifo-07.tex')
+  expect(result.afterProtectedPublish).toContain('paper/drafts/fifo-36.tex')
+  expect(result.afterSharedInsert).toHaveLength(30)
+  expect(result.afterSharedInsert).toContain('paper/drafts/fifo-37.tex')
+  expect(result.sharedDraftCount).toBe(30)
+  expect(result.compiledDrafts).toHaveLength(30)
+})
+
 test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {
   await page.goto('/')
   const normalized = await page.evaluate(() => {

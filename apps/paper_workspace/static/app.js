@@ -28,6 +28,7 @@ const $ = id => document.getElementById(id); const esc = value => value.replace(
 function configuredTimeout(name,fallback){const value=Number(window[name]);return Number.isFinite(value)&&value>=50?value:fallback}
 const collaborationWatchdogMs=configuredTimeout('__paperCollaborationWatchdogMs',8000);
 const compileRequestTimeoutMs=configuredTimeout('__paperCompileRequestTimeoutMs',40000);
+const archivedDraftLimit=30;
 let richEditor=null;
 function initializeRichEditor(){
   const textarea=$('editor');
@@ -190,10 +191,18 @@ function initializeSharedMetadata(){
   sharedTasks.observe(onMetadataChange);
   sharedFolders.observe(onMetadataChange);
   sharedAssets.observe(onMetadataChange);
-  collabSession.files.observeDeep(()=>{let changed=false;for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string'&&state.files[path]!==value){state.files[path]=value;changed=true}}for(const path of Object.keys(state.files))if(path!=='paper/main.tex'&&!collabSession.files.has(path)){delete state.files[path];changed=true}if(changed){if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];if(sharedText?._paperPath!==state.current)setEditor();listFiles();save()}});
+  collabSession.files.observeDeep(()=>{
+    let changed=false;
+    for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string'&&state.files[path]!==value){state.files[path]=value;changed=true}}
+    for(const path of Object.keys(state.files))if(path!=='paper/main.tex'&&!collabSession.files.has(path)){delete state.files[path];changed=true}
+    if(draftQueuePaths().length>archivedDraftLimit)queueMicrotask(()=>{const removed=pruneDraftQueue({sync:true});if(removed.length){listFiles();save()}});
+    if(changed){if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];if(sharedText?._paperPath!==state.current)setEditor();listFiles();save()}
+  });
   syncSharedMetadataState({persist:false});
 }
-function publishSharedTree(){if(!sharedMetadataReady)return;collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
+function draftQueuePaths(){const queue=[],seen=new Set();for(const path of collabSession?.files?.keys?.()||[]){if(path.startsWith('paper/drafts/')){queue.push(path);seen.add(path)}}for(const path of Object.keys(state.files)){if(path.startsWith('paper/drafts/')&&!seen.has(path))queue.push(path)}return queue}
+function pruneDraftQueue({sync=false}={}){const queue=draftQueuePaths(),excess=queue.length-archivedDraftLimit;if(excess<=0)return[];const active=state.current?.startsWith('paper/drafts/')?state.current:'';const removed=queue.filter(path=>path!==active).slice(0,excess);for(const path of removed)delete state.files[path];if(sync&&removed.length)collabSession.document.transact(()=>{for(const path of removed)collabSession.files.delete(path)},actor.id);return removed}
+function publishSharedTree(){if(!sharedMetadataReady)return;pruneDraftQueue();collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
 function replaceSharedText(text,value){const current=text.toString();if(current===value)return;let prefix=0;while(prefix<current.length&&prefix<value.length&&current[prefix]===value[prefix])prefix+=1;let suffix=0;while(suffix<current.length-prefix&&suffix<value.length-prefix&&current[current.length-1-suffix]===value[value.length-1-suffix])suffix+=1;text.doc.transact(()=>{const removed=current.length-prefix-suffix;if(removed)text.delete(prefix,removed);const inserted=value.slice(prefix,value.length-suffix);if(inserted)text.insert(prefix,inserted)},actor.id)}
 function syncCurrentFileToShared(){if(!sharedText||activeAsset||state.current!==sharedText._paperPath)return;replaceSharedText(sharedText,editorValue())}
 function transformSharedIndex(index,delta){let oldPosition=0,newPosition=0;for(const part of delta){if(part.retain){if(index<=oldPosition+part.retain)return newPosition+(index-oldPosition);oldPosition+=part.retain;newPosition+=part.retain}else if(part.insert)newPosition+=typeof part.insert==='string'?part.insert.length:1;else if(part.delete){if(index<=oldPosition+part.delete)return newPosition;oldPosition+=part.delete}}return newPosition+(index-oldPosition)}
@@ -719,6 +728,7 @@ async function loadProject(){
     if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=sourceFingerprint(value);
   }
   for(const [path,text] of collabSession.files){if(projectVersionChanged&&serverManagedProjectFiles.has(path))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
+  pruneDraftQueue();
   initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);render();listFiles();save();initializeServerBackups();
   const sourceConflictBanner=$('source-conflict');$('close-source-conflict').onclick=()=>{sourceConflictBanner.hidden=true};
   if(preservedDraftPath){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
