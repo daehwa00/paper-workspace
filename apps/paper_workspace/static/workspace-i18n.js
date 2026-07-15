@@ -35,7 +35,7 @@
     '지금 백업': 'Back up now', '버전 저장': 'Save version', '10분 자동 백업과 이름 있는 중요 버전을 서버에 보관합니다. 복원 전 현재 상태도 자동 보존됩니다.': 'Ten-minute automatic backups and named milestones are stored on the server. The current state is preserved before a restore.',
     '제출 전 위험 요소를 확인하세요': 'Check submission risks', '원고, 참고문헌, 자산과 마지막 PDF를 함께 검사합니다.': 'Check the manuscript, references, assets, and latest PDF together.',
     '제출 준비 검사': 'Submission readiness', '현재 원고·참고문헌·자산과 마지막 PDF를 함께 검사합니다.': 'Inspect the current source, references, assets, and latest PDF.',
-    '전체 검사 실행': 'Run all checks', '아직 검사하지 않았습니다.': 'Not checked yet.', '컴파일 오류': 'Compile errors', '클릭하여 이동': 'Click to navigate',
+    '전체 검사 실행': 'Run all checks', '아직 검사하지 않았습니다.': 'Not checked yet.', '컴파일 오류': 'Compile errors', '클릭하여 이동': 'Click to navigate', 'AI로 고치기': 'Fix with AI', '컴파일 오류를 AI로 분석하고 수정안 받기': 'Analyze the compile error with AI and get a proposed fix',
     'Figure · Table 자산': 'Figure · Table assets', '새 BibTeX 항목을 붙여넣으세요. 기존 citation key는 중복 추가하지 않습니다.': 'Paste new BibTeX entries. Existing citation keys will not be duplicated.',
     'BibTeX 가져오기': 'Import BibTeX', '제출 패키지': 'Submission package', '현재 소스와 필요한 자산, 파일 해시를 하나의 ZIP으로 만듭니다.': 'Create one ZIP containing the current source, required assets, and file hashes.',
     'Source ZIP 만들기': 'Build source ZIP', '다음 작업을 놓치지 마세요': 'Keep track of next steps', '할 일과 담당자, 관련 파일 위치를 함께 관리합니다.': 'Manage tasks, owners, and related source locations together.',

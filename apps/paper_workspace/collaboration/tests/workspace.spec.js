@@ -774,17 +774,45 @@ test('project tree starts archival drafts collapsed and filters by full path', a
 })
 
 test('compile failure presents a normalized cause and direct source jump', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  let codexRequest = null
   await page.route('**/api/compile', route => route.fulfill({
     status: 422,
     contentType: 'application/json',
     body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! Package pdftex.def Error\nl.5 \\includegraphics{missing-figure.pdf}" })
   }))
+  await page.route('**/api/codex', route => {
+    codexRequest = route.request().postDataJSON()
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        replacement: `${codexRequest.selection}\n% AI-proposed compile fix`,
+        summary: 'Kept the manuscript intact and proposed a minimal local correction.'
+      })
+    })
+  })
   await page.goto('/')
   const error = page.locator('.pdf-error-state')
   await expect(error).toContainText('필요한 파일이 프로젝트에 없습니다: missing-figure.pdf')
   await expect(page.locator('#pdf-error-action')).toHaveText('paper/main.tex:5로 이동')
   await page.locator('#pdf-error-action').click()
   await expect(page.locator('#active-file')).toHaveText('paper/main.tex')
+  const sourceBeforeProposal = await page.locator('#editor').inputValue()
+  await page.getByRole('tab', { name: '검사' }).click()
+  const aiFix = page.locator('#fix-compile-error')
+  await expect(aiFix).toBeVisible()
+  await expect(aiFix).toContainText('AI로 고치기')
+  await aiFix.click()
+  await expect(page.getByRole('tab', { name: '수정' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.codex-thread-turn-user')).toContainText('paper/main.tex:5의 컴파일 오류를 AI로 고쳐줘.')
+  await expect(page.locator('.suggestion.codex-result')).toBeVisible()
+  expect(codexRequest.instruction).toContain('Package pdftex.def Error')
+  expect(codexRequest.instruction).toContain('가장 작은 수정')
+  expect(codexRequest.file).toBe('paper/main.tex')
+  await expect(page.locator('#editor')).toHaveValue(sourceBeforeProposal)
+  await page.locator('#apply-codex').click()
+  await expect(page.locator('#editor')).toHaveValue(/AI-proposed compile fix/)
 })
 
 test('first compact desktop visit prioritizes source and PDF', async ({ page }) => {
