@@ -851,6 +851,16 @@ def test_project_manifest_controls_server_managed_files() -> None:
     assert "browser-before-server-sync" in app
 
 
+def test_archived_drafts_are_bounded_by_a_shared_fifo_queue() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    assert "const archivedDraftLimit=30" in app
+    assert "function draftQueuePaths()" in app
+    assert "function pruneDraftQueue({sync=false}={})" in app
+    assert "queue.filter(path=>path!==active).slice(0,excess)" in app
+    assert "pruneDraftQueue({sync:true})" in app
+
+
 def test_project_version_replaces_stale_collaboration_main() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     reconciliation = app[app.index("let preservedDraftPath=''"):app.index("state.projectVersion=projectManifest.version")]
