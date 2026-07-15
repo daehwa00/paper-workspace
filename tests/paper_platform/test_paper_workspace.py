@@ -277,8 +277,13 @@ def test_compile_errors_are_navigable_and_last_successful_pdf_is_preserved() -> 
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert 'id="compile-diagnostics"' in html
+    assert 'id="fix-compile-error"' in html
     assert "parseLatexDiagnostics" in app
     assert "renderCompileDiagnostics" in app
+    assert "compileDiagnosticSelection" in app
+    assert "requestCompileDiagnosticFix" in app
+    assert "latestCompileErrorDetail" in app
+    assert "requestCodexRevision(selection,instruction,{handoff:true,displayInstruction})" in app
     assert "goToSourceLocation" in app
     assert "if(hasPreviousPdf)" in app
     assert "notify('마지막 정상 PDF를 유지했습니다." in app
