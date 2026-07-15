@@ -284,6 +284,8 @@ def test_compile_errors_are_navigable_and_last_successful_pdf_is_preserved() -> 
     assert "requestCompileDiagnosticFix" in app
     assert "latestCompileErrorDetail" in app
     assert "requestCodexRevision(selection,instruction,{handoff:true,displayInstruction})" in app
+    assert "const tone=errorRow?'error'" in app
+    assert ".status-dot.error{background:#f04438}" in html
     assert "goToSourceLocation" in app
     assert "if(hasPreviousPdf)" in app
     assert "notify('마지막 정상 PDF를 유지했습니다." in app
