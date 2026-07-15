@@ -75,6 +75,32 @@ test('server manuscript paints before collaboration bootstrap finishes', async (
   await expect(page.locator('#files .file')).toHaveCount(2)
 })
 
+test('long mobile project trees scroll within the files panel', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.getByRole('button', { name: '파일' }).click()
+  const files = page.locator('#files')
+  await files.evaluate(element => {
+    for (let index = 0; index < 60; index += 1) {
+      const item = document.createElement('button')
+      item.className = 'file'
+      item.textContent = `paper/drafts/regression-${index}.tex`
+      element.append(item)
+    }
+  })
+  await expect(files).toHaveCSS('overflow-y', 'auto')
+  const dimensions = await files.evaluate(element => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+  expect(dimensions.clientHeight).toBeGreaterThan(0)
+  expect(dimensions.scrollHeight).toBeGreaterThan(dimensions.clientHeight)
+  await files.evaluate(element => { element.scrollTop = element.scrollHeight })
+  await expect.poll(() => files.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+  await expect(page.locator('.side-heading')).toBeVisible()
+  await expect(page.locator('.file-search')).toBeVisible()
+})
+
 test('local manuscript edits record the current collaborator as project activity', async ({ page }) => {
   await page.route('**/vendor/paper-collab.js*', route => route.abort())
   await page.addInitScript(() => {
