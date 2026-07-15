@@ -1,5 +1,19 @@
 import { expect, test } from '@playwright/test'
 
+function onePagePdf() {
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>',
+    '<< /Length 0 >>\nstream\n\nendstream'
+  ]
+  let body = '%PDF-1.4\n', offsets = [0]
+  objects.forEach((object, index) => { offsets.push(Buffer.byteLength(body)); body += `${index + 1} 0 obj\n${object}\nendobj\n` })
+  const xref = Buffer.byteLength(body)
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(body)
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('paper-workspace-language', 'ko'))
 })
@@ -248,7 +262,67 @@ test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
   expect(result.afterSharedInsert).toHaveLength(30)
   expect(result.afterSharedInsert).toContain('paper/drafts/fifo-37.tex')
   expect(result.sharedDraftCount).toBe(30)
-  expect(result.compiledDrafts).toHaveLength(30)
+  expect(result.compiledDrafts).toEqual([result.afterSharedInsert[0].slice('paper/'.length)])
+})
+
+test('a matching saved PDF opens without recompiling and keeps SyncTeX data', async ({ page }) => {
+  const assets = new Map(), pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
+  let compileRequests = 0
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route(/\/api\/backups\/projects\/[^/]+\/assets(?:\/.*)?$/, async route => {
+    const request = route.request(), url = new URL(request.url()), marker = '/assets', offset = url.pathname.indexOf(marker)
+    const path = decodeURIComponent(url.pathname.slice(offset + marker.length).replace(/^\//, ''))
+    if (request.method() === 'GET' && !path) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ assets: [...assets].map(([name, value]) => ({ path: name, size_bytes: value.length, modified_at: '2026-07-15T00:00:00.000Z' })) }) })
+    if (request.method() === 'GET' && assets.has(path)) return route.fulfill({ status: 200, contentType: path.endsWith('.pdf') ? 'application/pdf' : 'application/gzip', body: assets.get(path) })
+    if (request.method() === 'PUT') { assets.set(path, path.endsWith('.pdf') ? pdf : synctex); return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ asset: { path } }) }) }
+    if (request.method() === 'DELETE') { assets.delete(path); return route.fulfill({ status: 204 }) }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"missing"}' })
+  })
+  await page.route('**/api/compile', route => {
+    compileRequests += 1
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ elapsed_ms: 12, cached: false, compile_id: '1234567890abcdef12345678', pdf_audit: { page_count: 1 }, pdf_base64: pdf.toString('base64'), synctex_base64: synctex.toString('base64') }) })
+  })
+  await page.goto('/')
+  await expect.poll(() => compileRequests).toBe(1)
+  await expect.poll(() => assets.size).toBe(2)
+  await page.reload()
+  await expect(page.locator('#render-state')).toContainText('저장된 PDF')
+  await expect.poll(() => compileRequests).toBe(1)
+  expect([...assets.keys()].some(path => path.endsWith('.synctex.gz'))).toBe(true)
+})
+
+test('a superseded compile response cannot replace the latest PDF state', async ({ page }) => {
+  const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
+  let compileRequests = 0
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route('**/api/compile', async route => {
+    const requestNumber = ++compileRequests
+    if (requestNumber === 1) await new Promise(resolve => setTimeout(resolve, 250))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ elapsed_ms: requestNumber === 1 ? 111 : 222, cached: false, compile_id: requestNumber === 1 ? 'aaaaaaaaaaaaaaaaaaaaaaaa' : 'bbbbbbbbbbbbbbbbbbbbbbbb', pdf_audit: { page_count: 1 }, pdf_base64: pdf.toString('base64'), synctex_base64: synctex.toString('base64') }) }).catch(() => {})
+  })
+  await page.goto('/')
+  await expect.poll(() => compileRequests).toBe(1)
+  await page.evaluate(async () => {
+    window.__compileRaceOriginal = editorValue()
+    const value = `${editorValue()}\n% latest revision`
+    setEditorValue(value)
+    state.files[state.current] = value
+    await runUpdate()
+  })
+  await expect.poll(() => compileRequests).toBe(2)
+  await expect(page.locator('#render-state')).toContainText('0.2초')
+  await expect(page.locator('#render-state')).not.toContainText('오류')
+  await page.evaluate(() => {
+    state.files['paper/main.tex'] = window.__compileRaceOriginal
+    replaceSharedText(collabSession.textFor('paper/main.tex'), window.__compileRaceOriginal)
+    save()
+  })
 })
 
 test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {
@@ -290,7 +364,14 @@ test('cached pre-mapFor collaboration bundle remains compatible', async ({ page 
   })
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
-  await expect(page.locator('#files .file')).toHaveCount(2)
+  await expect(page.locator('#files .file:not([data-file-path^="paper/drafts/"])')).toHaveCount(2)
+  await page.evaluate(() => {
+    collabSession.document.transact(() => {
+      for (const path of [...collabSession.files.keys()]) if (path.startsWith('paper/drafts/')) collabSession.files.delete(path)
+    }, actor.id)
+    for (const path of Object.keys(state.files)) if (path.startsWith('paper/drafts/')) delete state.files[path]
+  })
+  await page.waitForTimeout(100)
 })
 
 test('content-derived cache keys are emitted for workspace assets', async ({ page }) => {

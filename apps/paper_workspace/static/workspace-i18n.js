@@ -77,6 +77,8 @@
     'workspace.compile.error': '{file} compile error',
     'workspace.compile.timeout': '{file} compile timeout',
     'workspace.compile.previousError': '{file} error · previous PDF',
+    'workspace.compile.persisted': '{file} current · saved PDF',
+    'workspace.compile.lastSuccessful': '{file} · last successful PDF',
     'workspace.tasks.empty': 'No tasks yet.'
   })
   i18n.register('ko', {
@@ -86,6 +88,8 @@
     'workspace.compile.error': '{file} 컴파일 오류',
     'workspace.compile.timeout': '{file} 컴파일 시간 초과',
     'workspace.compile.previousError': '{file} 오류 · 이전 PDF',
+    'workspace.compile.persisted': '{file} 최신 · 저장된 PDF',
+    'workspace.compile.lastSuccessful': '{file} · 마지막 정상 PDF',
     'workspace.tasks.empty': '등록된 작업이 없습니다.'
   })
 
