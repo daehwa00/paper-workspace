@@ -294,6 +294,49 @@ test('a matching saved PDF opens without recompiling and keeps SyncTeX data', as
   expect([...assets.keys()].some(path => path.endsWith('.synctex.gz'))).toBe(true)
 })
 
+test('SyncTeX navigation recovers when the compiler cache expires', async ({ page }) => {
+  const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
+  const synctexRequests = []
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route('**/api/compile', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      elapsed_ms: 12,
+      cached: false,
+      compile_id: '1234567890abcdef12345678',
+      pdf_audit: { page_count: 1 },
+      pdf_base64: pdf.toString('base64'),
+      synctex_base64: synctex.toString('base64'),
+    }),
+  }))
+  await page.route('**/api/synctex', async route => {
+    const payload = route.request().postDataJSON()
+    synctexRequests.push(payload)
+    if (payload.compile_id) {
+      return route.fulfill({ status: 422, contentType: 'application/json', body: JSON.stringify({ error: 'SyncTeX cache expired; render the PDF again.' }) })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ file: 'main.tex', line: 2, column: 0 }) })
+  })
+
+  await page.goto('/')
+  await expect.poll(() => page.evaluate(() => renderedSynctex.startsWith('id:'))).toBe(true)
+  await page.evaluate(() => syncPdfToSource(1, 10, 10))
+
+  expect(synctexRequests).toHaveLength(2)
+  expect(synctexRequests[0].compile_id).toBe('1234567890abcdef12345678')
+  expect(synctexRequests[1].synctex_base64).toBe(synctex.toString('base64'))
+  await expect(page.locator('#suggestion')).not.toContainText('PDF 위치 연결 오류')
+
+  await page.evaluate(() => syncPdfToSource(1, 10, 10))
+  expect(synctexRequests).toHaveLength(3)
+  expect(synctexRequests[2].compile_id).toBeUndefined()
+  expect(synctexRequests[2].synctex_base64).toBe(synctex.toString('base64'))
+})
+
 test('a superseded compile response cannot replace the latest PDF state', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   let compileRequests = 0
