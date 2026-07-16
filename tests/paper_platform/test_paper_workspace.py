@@ -322,6 +322,9 @@ def test_synctex_supports_source_to_pdf_navigation() -> None:
     assert "requestAnimationFrame(()=>showSourceSyncHighlight(start))" in app
     assert "height:var(--sync-highlight-height,23px)!important" in components
     assert "'/api/synctex-view'" in app
+    assert "renderedSynctexFallback" in app
+    assert "requestSynctex" in app
+    assert "/SyncTeX cache expired/i" in app
     assert "event.metaKey||event.ctrlKey" in app
     assert 'self.path == "/synctex-view"' in compiler
     assert '"synctex", "view"' in compiler
