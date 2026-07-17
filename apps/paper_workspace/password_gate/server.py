@@ -73,6 +73,19 @@ LOGIN_MAX_TRACKED_IPS = bounded_int("PAPER_LOGIN_MAX_TRACKED_IPS", 4096, 128, 65
 CLIENT_IP_HEADER = "X-Paper-Client-IP"
 
 
+def configuration_errors(password: str | None = None, session_secret: str | None = None) -> list[str]:
+    access = PASSWORD if password is None else password
+    secret = SESSION_SECRET if session_secret is None else session_secret
+    errors: list[str] = []
+    if len(access) < 12 or access.startswith("replace-with-"):
+        errors.append("access password must be at least 12 non-placeholder characters")
+    if len(secret) < 32 or secret.startswith("replace-with-"):
+        errors.append("session secret must be at least 32 random non-placeholder characters")
+    if access and hmac.compare_digest(access, secret):
+        errors.append("access password and session secret must be different")
+    return errors
+
+
 def parse_trusted_proxy_networks(
     value: str,
 ) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
@@ -241,7 +254,13 @@ def issue_session(now: int | None = None) -> tuple[str, int]:
 
 
 def safe_redirect(value: object) -> str:
-    if not isinstance(value, str) or not value.startswith("/") or value.startswith("//") or "\\" in value:
+    if (
+        not isinstance(value, str)
+        or not value.startswith("/")
+        or value.startswith("//")
+        or "\\" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
         return "/"
     return value[:2048]
 
@@ -338,7 +357,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.UNAUTHORIZED, {"authenticated": False})
             return
         if self.path.split("?", 1)[0] == "/health":
-            self._json(HTTPStatus.OK, {"status": "ok"})
+            errors = configuration_errors()
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE if errors else HTTPStatus.OK, {"status": "configuration-error" if errors else "ok", "error_count": len(errors)})
             return
         if self.path.split("?", 1)[0] == "/login":
             query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
@@ -357,7 +377,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] != "/login":
+        request_path = self.path.split("?", 1)[0]
+        if request_path == "/logout":
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header("Location", "/_auth/login")
+            self.send_header("Set-Cookie", "paper_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if request_path != "/login":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
         try:
@@ -451,4 +479,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    errors = configuration_errors()
+    if errors:
+        raise SystemExit("password gate configuration is unsafe: " + "; ".join(errors))
     ThreadingHTTPServer(("0.0.0.0", 8079), Handler).serve_forever()

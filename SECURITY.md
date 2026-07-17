@@ -10,4 +10,8 @@ Uploaded shared assets are restricted to signature-validated PDF, PNG, JPEG, and
 
 Never commit `.env`, `auth.json`, `.codex/`, manuscripts under review, datasets, experiment outputs, or generated PDFs. If a secret was committed once, removing the file later is insufficient: rotate the secret and clean the Git history.
 
-The exporter scans every exported file in bounded-memory chunks and the public repository runs Gitleaks across Git history in CI. These are guardrails, not proof that a manuscript or arbitrary binary is publishable; review the clean export before pushing it.
+The exporter scans every exported file in bounded-memory chunks. Public CI runs the platform unit/browser suites, dependency audit, Compose validation, and Gitleaks across Git history. These are guardrails, not proof that a manuscript or arbitrary binary is publishable; review the clean export before pushing it.
+
+The password gate requires a non-placeholder access password of at least 12 characters and an independent session secret of at least 32 characters. The shared-password mode is still a single security principal: it cannot enforce per-user or per-project authorization. Use OAuth or an identity-aware proxy for individual revocation and attributable access.
+
+Follow [the operations runbook](https://github.com/daehwa00/paper-workspace/blob/main/docs/paper-platform/operations.md) for releases and recovery. Preserve collaboration, backup/assets, and export storage separately; never use `docker compose down -v` as a normal deployment or rollback step.

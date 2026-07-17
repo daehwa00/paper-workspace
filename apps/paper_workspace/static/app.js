@@ -5,6 +5,9 @@ const projectSlug=projectRouteMatch?.[1]||'default';
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;
 const projectStorageKey=`paper-workspace:${projectSlug}`;
 const compileStateStorageKey=`paper-workspace:compile-state:${projectSlug}`;
+const compileClientStorageKey='paper-workspace:compile-client';
+let compileClientId='';
+try{compileClientId=sessionStorage.getItem(compileClientStorageKey)||'';if(!/^[A-Za-z0-9_-]{16,80}$/.test(compileClientId)){compileClientId=crypto.randomUUID();sessionStorage.setItem(compileClientStorageKey,compileClientId)}}catch{compileClientId=crypto.randomUUID()}
 let compileStateId='';
 try{const storedCompileState=sessionStorage.getItem(compileStateStorageKey)||'';if(/^[0-9a-f]{32}$/.test(storedCompileState))compileStateId=storedCompileState}catch{}
 function setCompileStateId(value){compileStateId=/^[0-9a-f]{32}$/.test(String(value||''))?String(value):'';try{if(compileStateId)sessionStorage.setItem(compileStateStorageKey,compileStateId);else sessionStorage.removeItem(compileStateStorageKey)}catch{}}
@@ -25,17 +28,44 @@ let persistedPreviewAssets=[],workspaceReadyForCompile=false,workspaceContentRev
 async function loadServerAssets(){const response=await fetch(serverAssetUrl(),{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw new Error('공유 자산 목록을 불러오지 못했습니다.');const result=await response.json();persistedPreviewAssets=[];for(const item of Array.isArray(result.assets)?result.assets:[]){if(typeof item?.path!=='string')continue;if(persistedPreviewPattern.test(item.path)){persistedPreviewAssets.push(item);continue}const existing=state.assets[item.path]||{};state.assets[item.path]={...existing,type:existing.type||(extensionOf(item.path)==='pdf'?'application/pdf':'application/octet-stream'),size:Number(item.size_bytes)||existing.size||0,server:true};state.uploads=[...new Set([item.path,...state.uploads])]}}
 async function uploadServerAsset(path,body,type='application/octet-stream'){const response=await fetch(serverAssetUrl(path),{method:'PUT',headers:{'Content-Type':type||'application/octet-stream'},body});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||`${baseName(path)} 서버 업로드 실패`);return result.asset}
 async function deleteServerAsset(path){const response=await fetch(serverAssetUrl(path),{method:'DELETE'});if(!response.ok&&response.status!==404){const result=await response.json().catch(()=>({}));throw new Error(result.error||`${baseName(path)} 서버 삭제 실패`)}}
-async function moveServerAsset(source,destination,asset){const loaded=asset.data?asset:await ensureAssetLoaded(source);await uploadServerAsset(destination,assetDataUrlBytes(loaded.data),loaded.type);await deleteServerAsset(source)}
+async function copyServerAsset(source,destination,asset){const loaded=asset.data?asset:await ensureAssetLoaded(source);await uploadServerAsset(destination,assetDataUrlBytes(loaded.data),loaded.type)}
+async function moveServerAssetsSafely(moves){
+  const copied=[];
+  try{
+    for(const {source,destination,asset} of moves){await copyServerAsset(source,destination,asset);copied.push(destination)}
+  }catch(error){
+    await Promise.all(copied.map(path=>deleteServerAsset(path).catch(()=>{})));
+    throw error
+  }
+  const cleanup=await Promise.allSettled(moves.map(({source})=>deleteServerAsset(source)));
+  if(cleanup.some(result=>result.status==='rejected'))notify('이름 변경은 완료했지만 이전 서버 사본 일부를 정리하지 못했습니다. 원본 데이터는 보존되었습니다.',{title:'공유 자료 정리 대기',tone:'warning'})
+}
 function base64Bytes(value){return Uint8Array.from(atob(value),character=>character.charCodeAt(0))}
 function bytesBase64(value){let binary='';const bytes=value instanceof Uint8Array?value:new Uint8Array(value);for(let offset=0;offset<bytes.length;offset+=0x8000)binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000));return btoa(binary)}
 function previewCachePairs(){const pairs=new Map();for(const item of persistedPreviewAssets){const match=item.path.match(persistedPreviewPattern);if(!match)continue;const pair=pairs.get(match[1])||{fingerprint:match[1],modified_at:item.modified_at||''};pair[match[2]==='pdf'?'pdfPath':'synctexPath']=item.path;if(String(item.modified_at||'')>pair.modified_at)pair.modified_at=item.modified_at;pairs.set(match[1],pair)}return [...pairs.values()].filter(pair=>pair.pdfPath&&pair.synctexPath).sort((a,b)=>String(b.modified_at).localeCompare(String(a.modified_at)))}
 async function fetchPersistedPdfPreview(fingerprint=''){const pair=fingerprint?previewCachePairs().find(item=>item.fingerprint===fingerprint):previewCachePairs()[0];if(!pair)return null;const [pdfResponse,synctexResponse]=await Promise.all([fetch(serverAssetUrl(pair.pdfPath),{cache:'no-store'}),fetch(serverAssetUrl(pair.synctexPath),{cache:'no-store'})]);if(!pdfResponse.ok||!synctexResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer()),synctex=new Uint8Array(await synctexResponse.arrayBuffer());if(new TextDecoder().decode(binary.subarray(0,5))!=='%PDF-'||synctex[0]!==0x1f||synctex[1]!==0x8b)return null;return {...pair,binary,synctex:bytesBase64(synctex)}}
-async function persistPdfPreview(binary,synctex,fingerprint){if(!fingerprint||!synctex)return;const pdfPath=`__paper_workspace/preview-${fingerprint}.pdf`,synctexPath=`__paper_workspace/preview-${fingerprint}.synctex.gz`;await Promise.all([uploadServerAsset(pdfPath,binary,'application/pdf'),uploadServerAsset(synctexPath,base64Bytes(synctex),'application/gzip')]);persistedPreviewAssets=[...persistedPreviewAssets.filter(item=>!new Set([pdfPath,synctexPath]).has(item.path)),{path:pdfPath,modified_at:new Date().toISOString(),size_bytes:binary.length},{path:synctexPath,modified_at:new Date().toISOString(),size_bytes:synctex.length}];const obsolete=previewCachePairs().slice(4).flatMap(pair=>[pair.pdfPath,pair.synctexPath]);await Promise.all(obsolete.map(path=>deleteServerAsset(path).catch(()=>{})))}
+async function persistPdfPreview(binary,synctex,fingerprint){
+  if(!fingerprint||!synctex)return;
+  const pdfPath=`__paper_workspace/preview-${fingerprint}.pdf`,synctexPath=`__paper_workspace/preview-${fingerprint}.synctex.gz`,uploaded=[];
+  try{
+    await uploadServerAsset(pdfPath,binary,'application/pdf');uploaded.push(pdfPath);
+    await uploadServerAsset(synctexPath,base64Bytes(synctex),'application/gzip');uploaded.push(synctexPath)
+  }catch(error){
+    await Promise.all(uploaded.map(path=>deleteServerAsset(path).catch(()=>{})));
+    throw error
+  }
+  persistedPreviewAssets=[...persistedPreviewAssets.filter(item=>!new Set([pdfPath,synctexPath]).has(item.path)),{path:pdfPath,modified_at:new Date().toISOString(),size_bytes:binary.length},{path:synctexPath,modified_at:new Date().toISOString(),size_bytes:synctex.length}];
+  const obsolete=previewCachePairs().slice(4).flatMap(pair=>[pair.pdfPath,pair.synctexPath]);
+  await Promise.all(obsolete.map(path=>deleteServerAsset(path).catch(()=>{})))
+}
 state.serverSourceSnapshots||={};
 let projectManifest={id:'default',version:'unversioned',entrypoint:'main.tex',files:[{path:'main.tex',managed:true}]};
 const remoteAssetPaths=new Set();
 const remoteAssetSources=new Map();
 const $ = id => document.getElementById(id); const esc = value => value.replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+let sourceConflictDismissed=false;
+const sourceConflictBanner=$('source-conflict');
+$('close-source-conflict').onclick=()=>{sourceConflictDismissed=true;sourceConflictBanner.hidden=true};
 function configuredTimeout(name,fallback){const value=Number(window[name]);return Number.isFinite(value)&&value>=50?value:fallback}
 const collaborationWatchdogMs=configuredTimeout('__paperCollaborationWatchdogMs',8000);
 const compileRequestTimeoutMs=configuredTimeout('__paperCompileRequestTimeoutMs',40000);
@@ -89,7 +119,8 @@ function bibliographyEntries(value){const entries=[];const pattern=/@[A-Za-z]+\s
 function mergeBibliography(local,canonical){const localEntries=bibliographyEntries(local);const keys=new Set(localEntries.map(entry=>entry.key));const missing=bibliographyEntries(canonical).filter(entry=>!keys.has(entry.key));if(!missing.length)return local;return [String(local||'').trim(),...missing.map(entry=>entry.text)].filter(Boolean).join('\n\n')+'\n'}
 async function fetchProjectSource(name,path){try{const response=await fetch(path,{headers:{Accept:'text/plain'},cache:'no-store'});const contentType=response.headers.get('content-type')||'';if(!response.ok||contentType.toLowerCase().includes('text/html'))return null;const value=await response.text();return isProjectSource(name,value)?value:null;}catch{return null}}
 function bytesToBase64(bytes){let binary='';const chunk=0x8000;for(let offset=0;offset<bytes.length;offset+=chunk)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+chunk,bytes.length)));return btoa(binary)}
-async function fetchPreviewArtifact(){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(`${projectBase}/project/${encodeURI(projectManifest.preview_pdf)}`,{cache:'no-store'});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(`${projectBase}/project/${encodeURI(projectManifest.preview_synctex)}`,{cache:'no-store'});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
+function projectFileUrl(path){return `${projectBase}/project/${String(path).split('/').map(encodeURIComponent).join('/')}`}
+async function fetchPreviewArtifact(){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(projectFileUrl(projectManifest.preview_pdf),{cache:'no-store'});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(projectFileUrl(projectManifest.preview_synctex),{cache:'no-store'});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
 function ensureFolder(path){if(!state.folders.includes(path))state.folders.push(path)}
 const collaboratorPalette=['#2457d6','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#db2777'];
 function collaboratorColor(id){let hash=0;for(const character of id)hash=(hash*31+character.charCodeAt(0))|0;return collaboratorPalette[Math.abs(hash)%collaboratorPalette.length]}
@@ -136,7 +167,7 @@ function createOfflineCollaborationSession({onStatus}){
   const files=document.getMap('files');
   const textFor=(path,initial='')=>{if(files.has(path))return files.get(path);let value=String(initial||'');const text={doc:document,get length(){return value.length},toString:()=>value,insert:(index,addition)=>{value=value.slice(0,index)+addition+value.slice(index)},delete:(index,length)=>{value=value.slice(0,index)+value.slice(index+length)},observe:()=>{},unobserve:()=>{}};files.set(path,text);return text};
   queueMicrotask(()=>onStatus?.('disconnected'));
-  return {document,files,mapFor:name=>document.getMap(name),textFor,setCursor:()=>{},encodeRange:()=>({}),resolveRange:()=>null,resolveCursor:()=>null,updateActor:()=>{},whenReady:Promise.resolve(),destroy:()=>{},offline:true};
+  return {document,files,mapFor:name=>document.getMap(name),textFor,setCursor:()=>{},encodeRange:()=>({}),resolveRange:()=>null,resolveCursor:()=>null,isBootstrapLeader:()=>true,updateActor:()=>{},whenReady:Promise.resolve(),destroy:()=>{},offline:true};
 }
 function createCollaborationSession(options){
   try{if(!window.PaperCollab?.createSession)throw new Error('공동 편집 번들을 사용할 수 없습니다.');return window.PaperCollab.createSession(options)}
@@ -177,12 +208,16 @@ function handleCollaborationStatus(status){
 }
 collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
 armCollaborationWatchdog();
-const collabBootstrapReady=Promise.race([collabSession.whenReady,new Promise(resolve=>setTimeout(resolve,3000))]);
+// Never publish the local tree before both IndexedDB and the collaboration
+// server have supplied their authoritative state. The manuscript is painted
+// above this await, so a slow or offline server cannot hide local work; it also
+// cannot turn a timeout into an accidental empty-room bootstrap.
+const collabBootstrapReady=collabSession.whenReady;
 // Older Safari sessions may retain the pre-mapFor collaboration bundle because
 // vendor assets are immutable. The Y.Doc contract is stable, so use it as a
 // compatibility path while the new cache-keyed bundle replaces the old copy.
 const collaborationMap=name=>typeof collabSession.mapFor==='function'?collabSession.mapFor(name):collabSession.document.getMap(name);
-const sharedComments=collaborationMap('comments'),sharedTasks=collaborationMap('tasks'),sharedFolders=collaborationMap('folders'),sharedAssets=collaborationMap('assets');let sharedMetadataReady=false;
+const sharedComments=collaborationMap('comments'),sharedTasks=collaborationMap('tasks'),sharedFolders=collaborationMap('folders'),sharedAssets=collaborationMap('assets'),sharedProject=collaborationMap('project');let sharedMetadataReady=false;
 function sharedMapValues(map){return [...map.values()].filter(value=>value&&typeof value==='object')}
 function replaceSharedMap(map,entries,keyOf){collabSession.document.transact(()=>{map.clear();for(const entry of entries)map.set(String(keyOf(entry)),structuredClone(entry))},actor.id)}
 function syncSharedMetadataState({persist=true}={}){if(!sharedMetadataReady)return;state.comments=sharedMapValues(sharedComments).sort((a,b)=>(b.revision||0)-(a.revision||0));state.tasks=sharedMapValues(sharedTasks).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));state.folders=[...new Set(['paper',...sharedFolders.keys()])];const sharedPaths=new Set();for(const metadata of sharedMapValues(sharedAssets)){if(typeof metadata.path!=='string')continue;sharedPaths.add(metadata.path);const existing=state.assets[metadata.path]||{};state.assets[metadata.path]={...existing,type:metadata.type||existing.type||'application/octet-stream',size:Number(metadata.size)||existing.size||0,server:true};state.uploads=[...new Set([metadata.path,...state.uploads])]}for(const path of [...state.uploads]){const asset=state.assets[path];if(asset?.server&&!sharedPaths.has(path)){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);deleteLocalAsset(path).catch(()=>{})}}listFiles();renderComments();renderTaskBoard();if(persist)save()}
@@ -193,15 +228,20 @@ function initializeSharedMetadata(){
   if(sharedFolders.size===0)for(const folder of state.folders)sharedFolders.set(folder,true);
   if(sharedAssets.size===0)for(const path of state.uploads){const asset=state.assets[path];if(asset?.server)sharedAssets.set(path,{path,type:asset.type,size:asset.size})}
   sharedMetadataReady=true;
-  // Seed the shared tree before observers are installed. The editor is still
-  // blank during bootstrap, so an observer-triggered save here could publish
-  // that transient empty value over the fetched project source.
-  publishSharedTree();
+  // Startup may race with an update that another browser has just sent after
+  // its own initial sync. Seed only still-empty entries as the settled
+  // awareness leader; never replace or delete shared content during startup.
+  if(collabSession.offline||collabSession.isBootstrapLeader?.()===true){
+    for(const folder of state.folders)if(!sharedFolders.has(folder))sharedFolders.set(folder,true);
+    for(const path of state.uploads){const asset=state.assets[path];if(asset?.server&&!sharedAssets.has(path))sharedAssets.set(path,{path,type:asset.type,size:asset.size})}
+    for(const [path,value] of Object.entries(state.files))collabSession.textFor(path,value);
+  }
   const onMetadataChange=()=>syncSharedMetadataState();
   sharedComments.observe(onMetadataChange);
   sharedTasks.observe(onMetadataChange);
   sharedFolders.observe(onMetadataChange);
   sharedAssets.observe(onMetadataChange);
+  sharedProject.observe(()=>{const version=sharedProject.get('manifestVersion');if(typeof version==='string'&&version&&state.projectVersion!==version){state.projectVersion=version;save()}});
   collabSession.files.observeDeep((events,transaction)=>{
     let changed=false;
     for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string'&&state.files[path]!==value){state.files[path]=value;changed=true}}
@@ -211,14 +251,16 @@ function initializeSharedMetadata(){
   });
   syncSharedMetadataState({persist:false});
 }
-function draftQueuePaths(){const queue=[],seen=new Set();for(const path of collabSession?.files?.keys?.()||[]){if(path.startsWith('paper/drafts/')){queue.push(path);seen.add(path)}}for(const path of Object.keys(state.files)){if(path.startsWith('paper/drafts/')&&!seen.has(path))queue.push(path)}return queue}
+function draftQueuePaths(){const queue=[],seen=new Set();for(const path of Object.keys(state.files)){if(path.startsWith('paper/drafts/')){queue.push(path);seen.add(path)}}for(const path of collabSession?.files?.keys?.()||[]){if(path.startsWith('paper/drafts/')&&!seen.has(path))queue.push(path)}return queue}
 function pruneDraftQueue({sync=false}={}){const queue=draftQueuePaths(),excess=queue.length-archivedDraftLimit;if(excess<=0)return[];const active=state.current?.startsWith('paper/drafts/')?state.current:'';const removed=queue.filter(path=>path!==active).slice(0,excess);for(const path of removed)delete state.files[path];if(sync&&removed.length)collabSession.document.transact(()=>{for(const path of removed)collabSession.files.delete(path)},actor.id);return removed}
-function publishSharedTree(){if(!sharedMetadataReady)return;pruneDraftQueue();collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
+function publishSharedTree(){pruneDraftQueue();if(!sharedMetadataReady)return;collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
 function replaceSharedText(text,value){const current=text.toString();if(current===value)return;let prefix=0;while(prefix<current.length&&prefix<value.length&&current[prefix]===value[prefix])prefix+=1;let suffix=0;while(suffix<current.length-prefix&&suffix<value.length-prefix&&current[current.length-1-suffix]===value[value.length-1-suffix])suffix+=1;text.doc.transact(()=>{const removed=current.length-prefix-suffix;if(removed)text.delete(prefix,removed);const inserted=value.slice(prefix,value.length-suffix);if(inserted)text.insert(prefix,inserted)},actor.id)}
 function syncCurrentFileToShared(){if(!sharedText||activeAsset||state.current!==sharedText._paperPath)return;replaceSharedText(sharedText,editorValue())}
 function transformSharedIndex(index,delta){let oldPosition=0,newPosition=0;for(const part of delta){if(part.retain){if(index<=oldPosition+part.retain)return newPosition+(index-oldPosition);oldPosition+=part.retain;newPosition+=part.retain}else if(part.insert)newPosition+=typeof part.insert==='string'?part.insert.length:1;else if(part.delete){if(index<=oldPosition+part.delete)return newPosition;oldPosition+=part.delete}}return newPosition+(index-oldPosition)}
 function bindSharedFile(path){if(sharedText&&sharedTextObserver)sharedText.unobserve(sharedTextObserver);sharedText=collabSession.textFor(path,state.files[path]||'');sharedText._paperPath=path;const sharedValue=sharedText.toString();if(sharedValue&&sharedValue!==state.files[path])state.files[path]=sharedValue;sharedTextObserver=event=>{if(event.transaction.origin===actor.id||sharedText._paperPath!==state.current)return;const selection=editorSelection(),start=transformSharedIndex(selection.start,event.delta),end=transformSharedIndex(selection.end,event.delta),value=sharedText.toString();state.files[state.current]=value;setEditorValueWithoutActivity(value);setEditorSelection(Math.min(start,value.length),Math.min(end,value.length));$('save-state').textContent=collabReady?'공동 편집 반영됨':'오프라인 변경 병합 중';updateEditorMetadata();renderRemoteCursors();renderCommentAnchors()};sharedText.observe(sharedTextObserver)}
-function setPdfFreshness(stale){const banner=$('pdf-freshness');if(banner)banner.hidden=!stale}
+let renderedPdfStale=false;
+function setPdfFreshness(stale){renderedPdfStale=Boolean(stale);const banner=$('pdf-freshness');if(banner)banner.hidden=!renderedPdfStale}
+function canUseRenderedSynctex(){if(!renderedPdfStale)return true;notify('원고와 PDF가 달라 위치 이동을 잠시 멈췄습니다. 최신 PDF가 준비되면 다시 시도해 주세요.',{title:'PDF 갱신 대기 중',tone:'warning'});return false}
 function refreshEditorLayout(){richEditor?.view?.requestMeasure?.();if(innerWidth<768&&richEditor?.scrollDOM)richEditor.scrollDOM.scrollLeft=0}
 function activateFocusMode(focus){const shell=document.querySelector('.shell');shell.dataset.focus=focus;for(const item of $('focus-modes').querySelectorAll('button')){const active=item.dataset.focus===focus;item.setAttribute('aria-pressed',String(active));item.classList.toggle('is-active',active)}if(focus==='assistant')setAssistantCollapsed(false);requestAnimationFrame(()=>{refreshEditorLayout();schedulePdfPageIndicatorUpdate();renderRemoteCursors();renderCommentAnchors()})}
 function installFocusModes(){document.querySelector('.shell').dataset.focus='source';$('focus-modes')?.querySelectorAll('button').forEach(button=>button.onclick=()=>activateFocusMode(button.dataset.focus))}
@@ -267,6 +309,8 @@ const save = () => { syncCurrentFileToShared();try{localStorage.setItem(projectS
 const backupIntervalMs=10*60*1000;
 let backupInitialized=false;
 let backupBusy=false;
+let backupIdlePromise=Promise.resolve();
+let resolveBackupIdle=null;
 function backupProjectId(){const normalized=String(projectManifest.id||'default').replace(/[^A-Za-z0-9_-]+/g,'-').replace(/^[^A-Za-z0-9]+/,'').slice(0,64);return encodeURIComponent(normalized||'default')}
 function backupApi(path=''){return `/api/backups/projects/${backupProjectId()}/snapshots${path}`}
 function backupPayload(){
@@ -284,7 +328,7 @@ function renderBackupHistory(items){
     const card=document.createElement('article');card.className='backup-card';
     const meta=document.createElement('div');meta.className='backup-card-meta';
     const title=document.createElement('strong');title.textContent=snapshot.title||snapshot.payload?.title||'논문 백업';
-    const detail=document.createElement('span');const reason=String(snapshot.reason||'auto').startsWith('checkpoint:')?`버전 · ${String(snapshot.reason).slice(11)}`:snapshot.reason==='manual'?'수동':snapshot.reason==='pre-restore'?'복원 전':'자동';detail.textContent=`${backupDate(snapshot.created_at||snapshot.createdAt)} · ${reason}${snapshot.actor?` · ${snapshot.actor}`:''}`;
+    const detail=document.createElement('span');const reason=String(snapshot.reason||'auto').startsWith('checkpoint:')?`버전 · ${String(snapshot.reason).slice(11)}`:snapshot.reason==='manual'?'수동':snapshot.reason==='pre-restore'?'복원 전':'자동';detail.textContent=`${backupDate(snapshot.checked_at||snapshot.checkedAt||snapshot.created_at||snapshot.createdAt)} · ${reason}${snapshot.actor?` · ${snapshot.actor}`:''}`;
     const actions=document.createElement('div');actions.className='tool-row';const compare=document.createElement('button');compare.type='button';compare.className='backup-restore';compare.textContent='비교';compare.disabled=!id;compare.onclick=()=>compareServerBackup(id,compare);const restore=document.createElement('button');restore.type='button';restore.className='backup-restore';restore.textContent='복원';restore.disabled=!id;restore.onclick=()=>restoreServerBackup(id,restore);
     actions.append(compare,restore);meta.append(title,detail);card.append(meta,actions);return card
   }))
@@ -294,20 +338,21 @@ async function loadBackupHistory(){
   catch(error){renderBackupHistory([]);setBackupStatus(`연결 오류 · ${error.message}`)}
 }
 async function createServerBackup(reason='manual',{quiet=false}={}){
-  if(backupBusy)return false;
+  if(backupBusy){if(reason!=='pre-restore')return false;await backupIdlePromise;return createServerBackup(reason,{quiet})}
   const snapshot=backupPayload();
-  backupBusy=true;$('create-backup').disabled=true;setBackupStatus(reason==='pre-restore'?'현재 상태를 보존하는 중…':'서버에 저장하는 중…');
-  try{const response=await fetch(backupApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshot,actor:actor.name,reason})});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업에 실패했습니다.');await loadBackupHistory();setBackupStatus(result.deduplicated?'변경 없음 · 백업 확인 완료':`백업 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);return true}
+  backupBusy=true;backupIdlePromise=new Promise(resolve=>{resolveBackupIdle=resolve});$('create-backup').disabled=true;setBackupStatus(reason==='pre-restore'?'현재 상태를 보존하는 중…':'서버에 저장하는 중…');
+  try{const response=await fetch(backupApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshot,actor:actor.name,reason})});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업에 실패했습니다.');await loadBackupHistory();setBackupStatus(result.deduplicated?'변경 없음 · 백업 확인 완료':`백업 완료 · ${backupDate(result.checked_at||result.snapshot?.checked_at||result.created_at||result.snapshot?.created_at||Date.now())}`);return true}
   catch(error){setBackupStatus(`백업 실패 · ${error.message}`);if(!quiet)alert(`서버 백업에 실패했습니다.\n${error.message}`);return false}
-  finally{backupBusy=false;$('create-backup').disabled=false}
+  finally{backupBusy=false;resolveBackupIdle?.();resolveBackupIdle=null;$('create-backup').disabled=false}
 }
 async function restoreServerBackup(snapshotId,button){
-  if(backupBusy||!await actionDialog({title:'백업 복원',message:'이 백업으로 원고를 복원할까요? 현재 상태는 먼저 별도 백업으로 저장됩니다.',confirmLabel:'복원'}))return;
+  if(!await actionDialog({title:'백업 복원',message:'이 백업으로 원고를 복원할까요? 현재 상태는 먼저 별도 백업으로 저장됩니다.',confirmLabel:'복원'}))return;
   button.disabled=true;
   const protectedCurrent=await createServerBackup('pre-restore');
   if(!protectedCurrent){button.disabled=false;return}
+  const restoreGuard=JSON.stringify(backupPayload());
   backupBusy=true;setBackupStatus('백업을 복원하는 중…');
-  try{const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=result.payload||result.snapshot?.payload||result.snapshot||result;if(!snapshot.files||typeof snapshot.files!=='object'||Array.isArray(snapshot.files)||Object.values(snapshot.files).some(content=>typeof content!=='string'))throw new Error('백업의 원고 파일 형식이 올바르지 않습니다.');state.files={...snapshot.files};state.comments=Array.isArray(snapshot.comments)?snapshot.comments:[];state.tasks=Array.isArray(snapshot.tasks)?snapshot.tasks:[];state.projectTitle=typeof snapshot.title==='string'?snapshot.title.slice(0,160):state.projectTitle;state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);if(!state.current)throw new Error('백업에 복원할 원고 파일이 없습니다.');state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];if(sharedMetadataReady){replaceSharedMap(sharedComments,state.comments,item=>item.id||item.revision);replaceSharedMap(sharedTasks,state.tasks,item=>item.id);publishSharedTree()}setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();renderTaskBoard();save();markProjectActivity('restore');setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
+  try{const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=result.payload||result.snapshot?.payload||result.snapshot||result;if(!snapshot.files||typeof snapshot.files!=='object'||Array.isArray(snapshot.files)||Object.values(snapshot.files).some(content=>typeof content!=='string'))throw new Error('백업의 원고 파일 형식이 올바르지 않습니다.');if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');state.files={...snapshot.files};state.comments=Array.isArray(snapshot.comments)?snapshot.comments:[];state.tasks=Array.isArray(snapshot.tasks)?snapshot.tasks:[];state.projectTitle=typeof snapshot.title==='string'?snapshot.title.slice(0,160):state.projectTitle;state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);if(!state.current)throw new Error('백업에 복원할 원고 파일이 없습니다.');state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];if(sharedMetadataReady){replaceSharedMap(sharedComments,state.comments,item=>item.id||item.revision);replaceSharedMap(sharedTasks,state.tasks,item=>item.id);publishSharedTree()}setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();renderTaskBoard();save();markProjectActivity('restore');setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
   catch(error){setBackupStatus(`복원 실패 · ${error.message}`);alert(`백업을 복원하지 못했습니다.\n${error.message}`)}
   finally{backupBusy=false;button.disabled=false;$('create-backup').disabled=false}
 }
@@ -317,7 +362,7 @@ $('create-backup').onclick=()=>createServerBackup('manual');
 async function createNamedCheckpoint(){const input=$('checkpoint-name');const name=input.value.trim().replace(/[\r\n]+/g,' ').slice(0,68);if(!name){input.focus();return}const created=await createServerBackup(`checkpoint:${name}`);if(created)input.value=''}
 $('create-checkpoint').onclick=createNamedCheckpoint;
 function titleOf(tex){return (tex.match(/\\title\{([^}]*)\}/)||['','Untitled Paper'])[1]}
-function setProjectTitle(value,{updateTex=false}={}){const title=value.trim().slice(0,160)||'Untitled Paper';state.projectTitle=title;$('project-title').value=title;$('project-title').title=title;document.title=`${title} · Paper Workspace`;if(updateTex){const source=state.files['paper/main.tex']||'';if(/\\title\{[^}]*\}/.test(source)){const latexTitle=title.replace(/[{}]/g,'');state.files['paper/main.tex']=source.replace(/\\title\{[^}]*\}/,()=>`\\title{${latexTitle}}`);if(state.current==='paper/main.tex')setEditorValueWithoutActivity(state.files['paper/main.tex']);if(save())compileAfterSave();markProjectActivity('title')}}}
+function setProjectTitle(value,{updateTex=false}={}){const title=value.trim().slice(0,160)||'Untitled Paper';state.projectTitle=title;$('project-title').value=title;$('project-title').title=title;document.title=`${title} · Paper Workspace`;if(updateTex){const source=state.files['paper/main.tex']||'';if(/\\title\{[^}]*\}/.test(source)){const latexTitle=title.replace(/[{}]/g,'');state.files['paper/main.tex']=source.replace(/\\title\{[^}]*\}/,()=>`\\title{${latexTitle}}`);if(state.current==='paper/main.tex')setEditorValueWithoutActivity(state.files['paper/main.tex']);save();markCompileInputsChanged();markProjectActivity('title')}}}
 function syncProjectTitleFromTex(force=false){if(state.current!=='paper/main.tex'&&!force)return;const title=titleOf(state.files['paper/main.tex']||$('editor').value);if(title&&(force||title!==state.projectTitle))setProjectTitle(title)}
 $('project-title').addEventListener('change',event=>setProjectTitle(event.target.value,{updateTex:true}));$('project-title').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur()}if(event.key==='Escape'){event.currentTarget.value=state.projectTitle||titleOf(state.files['paper/main.tex']||'');event.currentTarget.blur()}});setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));
 function section(tex,name){const match=tex.match(new RegExp('\\\\section\\{' + name + '\\}([\\s\\S]*?)(?=\\\\section|\\\\bibliography|$)'));return match?match[1].replace(/\\\\[a-zA-Z]+(?:\{([^}]*)\})?/g,'$1').replace(/[{}]/g,'').trim():''}
@@ -326,7 +371,7 @@ let renderedSynctex='';
 let renderedSynctexFallback='';
 let renderedPdfBytes=null;
 let lastPdfAudit=null;
-let activePdfDocument=null,activePdfObserver=null;
+let activePdfDocument=null,activePdfObserver=null,pdfRenderGeneration=0;
 const activePdfRenderTasks=new Set();
 const pdfPreRenderZoom=2,pdfMaxDevicePixelRatio=2,pdfMaxCanvasPixels=16_000_000;
 let pdfPageIndicatorFrame=0;
@@ -375,7 +420,7 @@ function installZoomControls(){
 }
 function installAssetViewer(){$('asset-zoom-out').onclick=()=>{assetZoom=constrain(assetZoom-.1,.5,3);applyAssetZoom()};$('asset-zoom-in').onclick=()=>{assetZoom=constrain(assetZoom+.1,.5,3);applyAssetZoom()}}
 async function syncPdfToSource(page,x,y){
-  if(!renderedSynctex)return;
+  if(!renderedSynctex||!canUseRenderedSynctex())return;
   try{
     const {response,result}=await requestSynctex('/api/synctex',{page,x,y});
     if(!response.ok)throw new Error(result.error||'SyncTeX 위치 검색 실패');
@@ -396,6 +441,8 @@ async function syncPdfToSource(page,x,y){
   }catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>PDF 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
 }
 async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
+  const renderGeneration=++pdfRenderGeneration;
+  const ensureCurrent=(document=null)=>{if(renderGeneration===pdfRenderGeneration)return;document?.destroy?.();const error=new Error('A newer PDF render replaced this request.');error.name='RenderingCancelledException';throw error};
   const panel=document.querySelector('.preview-panel');
   const viewportSnapshot=window.PaperPdfViewport.capture(panel);
   disposePdfPreview();
@@ -406,14 +453,17 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
   resetPdfPageIndicator();
   preview.innerHTML=pdfWaitMarkup('첫 페이지 준비 중','첫 페이지를 먼저 표시합니다');
   const pdfjs=await import('/vendor/pdfjs/pdf.mjs');
+  ensureCurrent();
   pdfjs.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/pdf.worker.mjs';
   const pdfDocument=await pdfjs.getDocument({data:binary}).promise;
+  ensureCurrent(pdfDocument);
   activePdfDocument=pdfDocument;
   const viewer=document.createElement('div');
   viewer.className='pdf-canvas-viewer';
   viewer.style.zoom=String(layout.pdfZoom);
   preview.replaceChildren(viewer);
   const firstPage=await pdfDocument.getPage(1);
+  ensureCurrent(pdfDocument);
   const firstBase=firstPage.getViewport({scale:1});
   const firstScale=Math.max(.35,(preview.clientWidth-36)/firstBase.width);
   const firstViewport=firstPage.getViewport({scale:firstScale});
@@ -440,6 +490,7 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
     if(entry.rendered)return Promise.resolve();
     if(entry.promise)return entry.promise;
     entry.promise=(entry.pageNumber===1?Promise.resolve(firstPage):pdfDocument.getPage(entry.pageNumber)).then(page=>{
+      ensureCurrent(pdfDocument);
       if(activePdfDocument!==pdfDocument)return;
       const base=page.getViewport({scale:1});
       entry.scale=Math.max(.35,(preview.clientWidth-36)/base.width);
@@ -472,6 +523,7 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
   const restoredPage=window.PaperPdfViewport.restore(panel,entries.map(entry=>entry.wrapper),viewportSnapshot);
   const restoredEntry=entryByWrapper.get(restoredPage)||entries[0];
   await renderPage(restoredEntry);
+  ensureCurrent(pdfDocument);
   schedulePdfPageIndicatorUpdate();
 }
 function pdfFileName(){const title=titleOf(state.files['paper/main.tex']||'').replace(/\\[a-zA-Z]+|[{}]/g,' ').replace(/[^\p{L}\p{N}._ -]+/gu,'').trim().replace(/\s+/g,'-').slice(0,80);return `${title||'paper'}.pdf`}
@@ -502,7 +554,7 @@ function fileToDataUrl(file){return new Promise((resolve,reject)=>{const reader=
 async function readDropEntry(entry,prefix=''){if(entry.isFile)return new Promise(resolve=>entry.file(file=>resolve([{file,relativePath:`${prefix}${file.name}`}]),()=>resolve([])));if(!entry.isDirectory)return[];const reader=entry.createReader();const children=[];for(;;){const batch=await new Promise(resolve=>reader.readEntries(resolve,()=>resolve([])));if(!batch.length)break;children.push(...batch)}const nested=await Promise.all(children.map(child=>readDropEntry(child,`${prefix}${entry.name}/`)));return nested.flat()}
 async function droppedLocalFiles(dataTransfer){const items=Array.from(dataTransfer.items||[]);const entries=items.map(item=>item.webkitGetAsEntry?.()).filter(Boolean);if(entries.length)return (await Promise.all(entries.map(entry=>readDropEntry(entry)))).flat();return Array.from(dataTransfer.files||[]).map(file=>({file,relativePath:file.webkitRelativePath||file.name}))}
 function cleanRelativePath(value){return value.split('/').map(cleanSegment).filter(Boolean).join('/')}
-async function importLocalFiles(entries,targetFolder='paper'){let imported=0;const skipped=[],localOnly=[];for(const {file,relativePath} of entries){const relative=cleanRelativePath(relativePath||file.name);if(!relative)continue;if(file.size>assetDataLimit){skipped.push(`${file.name} (8 MB 초과)`);continue;}const destination=uniqueProjectPath(targetFolder?`${targetFolder}/${relative}`:relative);ensureFolderChain(parentPath(destination));const extension=extensionOf(destination);try{if(file.type.startsWith('text/')||textExtensions.has(extension)){state.files[destination]=await file.text();}else{state.assets[destination]={type:file.type||'application/octet-stream',size:file.size,data:await fileToDataUrl(file)};await storeLocalAsset(destination,state.assets[destination]).catch(()=>{});try{await uploadServerAsset(destination,file,state.assets[destination].type);state.assets[destination].server=true}catch{localOnly.push(file.name)}}state.uploads=[...new Set([destination,...state.uploads])];imported+=1;}catch{skipped.push(file.name)}}for(let folder=targetFolder;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);listFiles();if(imported){publishSharedTree();save();markProjectActivity('import')}if(localOnly.length)notify(`${localOnly.join(', ')}은 브라우저에만 저장됐습니다. 연결 후 다시 업로드해 주세요.`,{title:'일부 자료 공유 대기',tone:'warning'});if(skipped.length)alert(`가져오지 못한 자료:\n${skipped.join('\n')}`);return imported}
+async function importLocalFiles(entries,targetFolder='paper'){let imported=0;const skipped=[],localOnly=[];for(const {file,relativePath} of entries){const relative=cleanRelativePath(relativePath||file.name);if(!relative)continue;if(file.size>assetDataLimit){skipped.push(`${file.name} (8 MB 초과)`);continue;}const destination=uniqueProjectPath(targetFolder?`${targetFolder}/${relative}`:relative);ensureFolderChain(parentPath(destination));const extension=extensionOf(destination);try{if(file.type.startsWith('text/')||textExtensions.has(extension)){state.files[destination]=await file.text();}else{state.assets[destination]={type:file.type||'application/octet-stream',size:file.size,data:await fileToDataUrl(file)};await storeLocalAsset(destination,state.assets[destination]).catch(()=>{});try{await uploadServerAsset(destination,file,state.assets[destination].type);state.assets[destination].server=true}catch{localOnly.push(file.name)}}state.uploads=[...new Set([destination,...state.uploads])];imported+=1;}catch{skipped.push(file.name)}}for(let folder=targetFolder;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);listFiles();if(imported){publishSharedTree();save();markCompileInputsChanged();markProjectActivity('import')}if(localOnly.length)notify(`${localOnly.join(', ')}은 브라우저에만 저장됐습니다. 연결 후 다시 업로드해 주세요.`,{title:'일부 자료 공유 대기',tone:'warning'});if(skipped.length)alert(`가져오지 못한 자료:\n${skipped.join('\n')}`);return imported}
 function previewEntrypoints(){const configured=Array.isArray(projectManifest.preview_entrypoints)?projectManifest.preview_entrypoints:[projectManifest.entrypoint||'main.tex'];return configured.filter(path=>typeof path==='string'&&path.endsWith('.tex'))}
 function selectedEntrypoint(){const fallback=projectManifest.entrypoint||'main.tex';const current=state.current?.startsWith('paper/')?state.current.slice('paper/'.length):'';return current&&extensionOf(current)==='tex'&&state.files[`paper/${current}`]!==undefined?current:fallback}
 function selectedPreviewMode(entrypoint=selectedEntrypoint()){const root=projectManifest.entrypoint||'main.tex';const source=state.files[`paper/${entrypoint}`]||'';return entrypoint!==root&&!isLatexDocument(source)?'fragment':'document'}
@@ -528,6 +580,7 @@ function trimEditorHistory(stack){let bytes=stack.reduce((total,item)=>total+ite
 function recordEditorHistory(event){const now=Date.now();const type=event.inputType||'edit';const grouped=state.current===lastEdit.path&&type===lastEdit.type&&now-lastEdit.time<700&&['insertText','deleteContentBackward','deleteContentForward'].includes(type);if(!grouped){const stack=historyFor(undoHistory,state.current);stack.push(editorSnapshot());trimEditorHistory(stack)}historyFor(redoHistory,state.current).length=0;lastEdit={path:state.current,type,time:now}}
 const autoSaveDelayMs=1000;
 function scheduleCompileAfterSave(){if(!workspaceReadyForCompile)return;workspaceContentRevision+=1;clearTimeout(window.saveTimer);window.saveTimer=setTimeout(()=>{if(save())compileAfterSave()},autoSaveDelayMs)}
+function markCompileInputsChanged(){setPdfFreshness(Boolean(renderedPdfUrl));scheduleCompileAfterSave()}
 function updateEditorMetadata(){const value=editorValue();state.files[state.current]=value;$('word-count').textContent=`${value.trim().split(/\s+/).filter(Boolean).length} words`;$('save-state').textContent='저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();scheduleCompileAfterSave()}
 function applyEditorSnapshot(snapshot){setEditorValue(snapshot.value);setEditorSelection(snapshot.start,snapshot.end);focusEditor();lastEdit={path:'',type:'',time:0};updateEditorMetadata();markProjectActivity('history')}
 function undoEditor(){const stack=historyFor(undoHistory,state.current);if(!stack.length)return;historyFor(redoHistory,state.current).push(editorSnapshot());applyEditorSnapshot(stack.pop())}
@@ -592,7 +645,7 @@ async function requestSynctex(path,payload){
   return retry;
 }
 async function syncSourceToPdf(){
-  if(!renderedSynctex||!state.current.endsWith('.tex'))return;
+  if(!renderedSynctex||!state.current.endsWith('.tex')||!canUseRenderedSynctex())return;
   const value=editorValue(),selection=editorSelection();const line=value.slice(0,selection.start).split('\n').length;const column=selection.start-(value.lastIndexOf('\n',selection.start-1)+1);
   try{const {response,result}=await requestSynctex('/api/synctex-view',{file:state.current.replace(/^paper\//,''),line,column});if(!response.ok)throw new Error(result.error||'PDF 위치 검색 실패');const page=document.querySelector(`.pdf-page[data-page="${result.page}"]`);if(!page)throw new Error('렌더링된 PDF 페이지를 찾지 못했습니다.');page.scrollIntoView({behavior:'smooth',block:'center'});document.querySelectorAll('.pdf-source-highlight').forEach(marker=>marker.remove());const marker=document.createElement('span');marker.className='pdf-source-highlight';const scale=Number(page.dataset.scale)||1;marker.style.left=`${Math.max(0,result.x*scale)}px`;marker.style.top=`${Math.max(0,result.y*scale)}px`;marker.style.width=`${Math.max(24,result.width*scale)}px`;marker.style.height=`${Math.max(10,result.height*scale)}px`;page.append(marker);setTimeout(()=>marker.remove(),700)}catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>소스 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
 }
@@ -614,7 +667,7 @@ function allPaperSource(){return allTexSources().map(([,source])=>source).join('
 function bibliographyCatalog(){const entries=[];for(const [file,source] of Object.entries(state.files))if(file.endsWith('.bib'))for(const entry of bibliographyEntries(source))entries.push({...entry,file});return entries}
 function renderAssetInventory(){const source=allPaperSource();const items=Object.keys(state.assets).filter(path=>path.startsWith('paper/')).sort();$('asset-inventory-summary').textContent=`${items.length}개`;$('asset-inventory').replaceChildren(...items.map(path=>{const name=baseName(path);const stem=name.replace(/\.[^.]+$/,'');const used=source.includes(name)||source.includes(stem);const row=document.createElement('div');row.className='inventory-item';row.innerHTML=`<span class="check-symbol">${used?'●':'○'}</span>`;const button=document.createElement('button');button.type='button';button.textContent=`${name} · ${used?'본문에서 사용':'미사용'}`;button.onclick=()=>{const location=sourceLocationFor(name)||sourceLocationFor(stem);if(location)goToSourceLocation(location.file,location.line);else showAssetPreview(path)};row.append(button);return row}))}
 function renderReferenceInventory(){const source=allPaperSource();const entries=bibliographyCatalog();const cited=new Set([...source.matchAll(/\\cite(?:t|p)?\{([^}]+)\}/g)].flatMap(match=>match[1].split(',').map(key=>key.trim().toLowerCase())));const counts=new Map();for(const entry of entries)counts.set(entry.key,(counts.get(entry.key)||0)+1);const missing=[...cited].filter(key=>!entries.some(entry=>entry.key===key));$('reference-inventory-summary').textContent=`${entries.length}개 · 누락 ${missing.length}`;const rows=[...missing.map(key=>({key,status:'인용 키 누락',kind:'missing'})),...entries.map(entry=>({key:entry.key,status:counts.get(entry.key)>1?'중복':cited.has(entry.key)?'사용 중':'미인용',file:entry.file,kind:counts.get(entry.key)>1?'duplicate':cited.has(entry.key)?'used':'unused'}))];$('reference-inventory').replaceChildren(...rows.slice(0,80).map(item=>{const row=document.createElement('div');row.className='inventory-item';row.innerHTML=`<span class="check-symbol">${item.kind==='used'?'●':'○'}</span>`;const button=document.createElement('button');button.type='button';button.textContent=`${item.key} · ${item.status}`;button.onclick=()=>{const location=item.file?sourceLocationFor(new RegExp(`@[A-Za-z]+\\s*\\{\\s*${item.key.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'i')):sourceLocationFor(item.key);if(location)goToSourceLocation(location.file,location.line)};row.append(button);return row}))}
-function importBibtex(){const input=$('bibtex-import');const incoming=input.value.trim();if(!incoming){input.focus();return}const parsed=bibliographyEntries(incoming);if(!parsed.length){alert('유효한 BibTeX 항목을 찾지 못했습니다.');return}const target=Object.keys(state.files).find(path=>path.endsWith('references.bib'))||Object.keys(state.files).find(path=>path.endsWith('.bib'))||'paper/references.bib';const existing=state.files[target]||'';const merged=mergeBibliography(existing,incoming);const added=bibliographyEntries(merged).length-bibliographyEntries(existing).length;state.files[target]=merged;input.value='';save();renderReferenceInventory();if(added)compileAfterSave();alert(added?`${added}개 항목을 ${target}에 추가했습니다.`:'모든 citation key가 이미 존재합니다.')}
+function importBibtex(){const input=$('bibtex-import');const incoming=input.value.trim();if(!incoming){input.focus();return}const parsed=bibliographyEntries(incoming);if(!parsed.length){alert('유효한 BibTeX 항목을 찾지 못했습니다.');return}const target=Object.keys(state.files).find(path=>path.endsWith('references.bib'))||Object.keys(state.files).find(path=>path.endsWith('.bib'))||'paper/references.bib';const existing=state.files[target]||'';const merged=mergeBibliography(existing,incoming);const added=bibliographyEntries(merged).length-bibliographyEntries(existing).length;state.files[target]=merged;input.value='';save();renderReferenceInventory();if(added)markCompileInputsChanged();alert(added?`${added}개 항목을 ${target}에 추가했습니다.`:'모든 citation key가 이미 존재합니다.')}
 function addCheck(list,severity,message,location=null){list.push({severity,message,location})}
 function runSubmissionChecks(){
   state.files[state.current]=$('editor').value;const source=allPaperSource();const checks=[];const entries=bibliographyCatalog();const bibKeys=new Set(entries.map(entry=>entry.key));const citations=[...source.matchAll(/\\cite(?:t|p)?\{([^}]+)\}/g)].flatMap(match=>match[1].split(',').map(key=>key.trim().toLowerCase()));
@@ -635,14 +688,68 @@ let compileQueue=Promise.resolve(),compileRevision=0,compileController=null,comp
 function compileAfterSave(){const revision=++compileRevision;compileController?.abort();compileQueue=compileQueue.finally(()=>revision===compileRevision?runUpdate():undefined);return compileQueue}
 function setRenderStateCompiling(file){const target=$('render-state'),label=window.PaperI18n.t('workspace.compile.compiling',{file});target.classList.add('compiling');target.removeAttribute('data-i18n');target.removeAttribute('data-i18n-variables');target.setAttribute('aria-label',label);target.innerHTML=`<span class="render-state-spinner" aria-hidden="true"></span><span class="render-state-label">${esc(label)}</span>`}
 function setRenderStateMessage(key,variables={}){const target=$('render-state');target.classList.remove('compiling');target.removeAttribute('aria-label');window.PaperI18n.setText(target,key,variables)}
-async function runUpdate(prepared={}){const generation=++compileRequestGeneration,contentRevision=prepared.contentRevision??workspaceContentRevision;compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=$('editor').value;let payload=prepared.payload,fingerprint=prepared.fingerprint,compileTimedOut=false;let timeout=0;const current=()=>generation===compileRequestGeneration&&contentRevision===workspaceContentRevision&&!controller.signal.aborted;const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{compileTimedOut=true;controller.abort();reject(new DOMException('Compile request timed out','TimeoutError'))},compileRequestTimeoutMs)});try{payload=payload||await Promise.race([compilePayload(),deadline]);fingerprint=fingerprint||await Promise.race([compilePayloadFingerprint(payload),deadline]);if(prepared.fullBuild)payload={...payload,build_mode:'clean'};if(!current())return false;setRenderStateCompiling(payload.entrypoint);const headers={'Content-Type':'application/json','X-Compile-Client':actor.id};if(compileStateId)headers['X-Compile-State']=compileStateId;const response=await fetch('/api/compile',{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');if(!current())return false;setCompileStateId(result.build_state_id);clearTimeout(timeout);const binary=base64Bytes(result.pdf_base64),synctex=result.synctex_base64||'';lastPdfAudit=result.pdf_audit||null;setRenderedPdf(binary);await renderPdfPreviewLazy(binary.slice(),result.compile_id?`id:${result.compile_id}`:synctex,synctex);if(!current())return false;renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();persistPdfPreview(binary,synctex,fingerprint).catch(error=>reportClientError(error,'persistPdfPreview'));return true}catch(error){if(generation!==compileRequestGeneration||contentRevision!==workspaceContentRevision||error.name==='RenderingCancelledException'||(error.name==='AbortError'&&!compileTimedOut))return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(compileTimedOut?'workspace.compile.timeout':hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const message=compileTimedOut?'컴파일 서버가 제한 시간 안에 응답하지 않았습니다.':error.message;const diagnostics=parseLatexDiagnostics(message,payload?.entrypoint);renderCompileDiagnostics(diagnostics,message);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf){if(compileTimedOut)notify('컴파일 응답이 지연되어 마지막 정상 PDF를 유지했습니다.',{title:'PDF 응답 시간 초과',tone:'error'});else notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'})}return false}finally{clearTimeout(timeout);if(compileController===controller)compileController=null}}
+async function runUpdate(prepared={}){const generation=++compileRequestGeneration,contentRevision=prepared.contentRevision??workspaceContentRevision;compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=$('editor').value;let payload=prepared.payload,fingerprint=prepared.fingerprint,compileTimedOut=false;let timeout=0;const current=()=>generation===compileRequestGeneration&&contentRevision===workspaceContentRevision&&!controller.signal.aborted;const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{compileTimedOut=true;controller.abort();reject(new DOMException('Compile request timed out','TimeoutError'))},compileRequestTimeoutMs)});try{payload=payload||await Promise.race([compilePayload(),deadline]);fingerprint=fingerprint||await Promise.race([compilePayloadFingerprint(payload),deadline]);if(prepared.fullBuild)payload={...payload,build_mode:'clean'};if(!current())return false;setRenderStateCompiling(payload.entrypoint);const headers={'Content-Type':'application/json','X-Compile-Client':compileClientId};if(compileStateId)headers['X-Compile-State']=compileStateId;const response=await fetch('/api/compile',{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');if(!current())return false;setCompileStateId(result.build_state_id);clearTimeout(timeout);const binary=base64Bytes(result.pdf_base64),synctex=result.synctex_base64||'';lastPdfAudit=result.pdf_audit||null;setRenderedPdf(binary);await renderPdfPreviewLazy(binary.slice(),result.compile_id?`id:${result.compile_id}`:synctex,synctex);if(!current())return false;renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();persistPdfPreview(binary,synctex,fingerprint).catch(error=>reportClientError(error,'persistPdfPreview'));return true}catch(error){if(generation!==compileRequestGeneration||contentRevision!==workspaceContentRevision||error.name==='RenderingCancelledException'||(error.name==='AbortError'&&!compileTimedOut))return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(compileTimedOut?'workspace.compile.timeout':hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const message=compileTimedOut?'컴파일 서버가 제한 시간 안에 응답하지 않았습니다.':error.message;const diagnostics=parseLatexDiagnostics(message,payload?.entrypoint);renderCompileDiagnostics(diagnostics,message);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf){if(compileTimedOut)notify('컴파일 응답이 지연되어 마지막 정상 PDF를 유지했습니다.',{title:'PDF 응답 시간 초과',tone:'error'});else notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'})}return false}finally{clearTimeout(timeout);if(compileController===controller)compileController=null}}
 $('refresh-pdf').onclick=async()=>{const button=$('refresh-pdf');button.classList.add('loading');button.disabled=true;try{await runUpdate()}finally{button.classList.remove('loading');button.disabled=false}};
 $('download-pdf').onclick=()=>{if(!renderedPdfUrl)return;const link=document.createElement('a');link.href=renderedPdfUrl;link.download=pdfFileName();document.body.append(link);link.click();link.remove()};
 window.addEventListener('pagehide',()=>{disposePdfPreview();if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl)});
-async function createFile(folder='paper'){const name=cleanSegment(await actionDialog({title:'새 파일',message:`${folder||'프로젝트'}에 만들 파일 이름을 입력하세요.`,value:'section.tex',confirmLabel:'만들기'}));if(!name)return;const path=folder?`${folder}/${name}`:name;if(state.files[path])return notify('같은 이름의 파일이 이미 있습니다.',{tone:'error'});state.files[path]='% 새 파일';state.current=path;for(let parent=folder;parent;parent=parentPath(parent))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==parent);publishSharedTree();setEditor();listFiles();save();markProjectActivity('file')}
-async function createFolder(parent=''){const name=cleanSegment(await actionDialog({title:'새 폴더',message:`${parent||'프로젝트 루트'} 아래에 만들 폴더 이름을 입력하세요.`,value:parent?'results':'experiments',confirmLabel:'만들기'}));if(!name)return;const path=parent?`${parent}/${name}`:name;if(state.folders.includes(path))return notify('같은 이름의 폴더가 이미 있습니다.',{tone:'error'});state.folders.push(path);for(let folder=parent;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);publishSharedTree();listFiles();save();markProjectActivity('folder')}
-async function renameTarget(type,path){const name=cleanSegment(await actionDialog({title:'이름 변경',message:baseName(path),value:baseName(path),confirmLabel:'변경'}));if(!name||name===baseName(path))return;const destination=parentPath(path)?`${parentPath(path)}/${name}`:name;if(state.files[destination]||state.assets[destination])return notify('같은 이름의 파일이 이미 있습니다.',{tone:'error'});try{if(type==='asset'&&state.assets[path]?.server)await moveServerAsset(path,destination,state.assets[path]);if(type==='folder'){const moves=Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&(asset===path||asset.startsWith(`${path}/`)));for(const [source,metadata] of moves)await moveServerAsset(source,destination+source.slice(path.length),metadata)}}catch(error){return notify(error.message,{title:'공유 자료 이름 변경 실패',tone:'error'})}if(type==='file'){state.files[destination]=state.files[path];delete state.files[path];if(state.current===path)state.current=destination;}else if(type==='asset'){state.assets[destination]={...state.assets[path],server:state.assets[path].server};delete state.assets[path];state.uploads=state.uploads.map(item=>item===path?destination:item);}else{if(state.folders.includes(destination))return notify('같은 이름의 폴더가 이미 있습니다.',{tone:'error'});state.files=Object.fromEntries(Object.entries(state.files).map(([file,content])=>[file===path||file.startsWith(`${path}/`)?destination+file.slice(path.length):file,content]));state.assets=Object.fromEntries(Object.entries(state.assets).map(([file,content])=>[file===path||file.startsWith(`${path}/`)?destination+file.slice(path.length):file,content]));state.uploads=state.uploads.map(item=>item===path||item.startsWith(`${path}/`)?destination+item.slice(path.length):item);state.folders=state.folders.map(folder=>folder===path||folder.startsWith(`${path}/`)?destination+folder.slice(path.length):folder);state.collapsedFolders=state.collapsedFolders.map(folder=>folder===path||folder.startsWith(`${path}/`)?destination+folder.slice(path.length):folder);if(state.current===path||state.current.startsWith(`${path}/`))state.current=destination+state.current.slice(path.length);}publishSharedTree();await reconcileLocalAssets().catch(()=>{});setEditor();listFiles();save();markProjectActivity('rename')}
-async function deleteTarget(type,path){if(!await actionDialog({title:'삭제',message:`'${baseName(path)}'을(를) 삭제할까요? 공동 편집자에게도 즉시 반영됩니다.`,confirmLabel:'삭제'}))return;const serverPaths=type==='asset'&&state.assets[path]?.server?[path]:type==='folder'?Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&(asset===path||asset.startsWith(`${path}/`))).map(([asset])=>asset):[];try{await Promise.all(serverPaths.map(deleteServerAsset))}catch(error){return notify(error.message,{title:'공유 자료 삭제 실패',tone:'error'})}if(type==='file')delete state.files[path];else if(type==='asset'){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);await deleteLocalAsset(path).catch(()=>{});}else{state.files=Object.fromEntries(Object.entries(state.files).filter(([file])=>file!==path&&!file.startsWith(`${path}/`)));state.assets=Object.fromEntries(Object.entries(state.assets).filter(([file])=>file!==path&&!file.startsWith(`${path}/`)));state.uploads=state.uploads.filter(item=>item!==path&&!item.startsWith(`${path}/`));state.folders=state.folders.filter(folder=>folder!==path&&!folder.startsWith(`${path}/`));state.collapsedFolders=state.collapsedFolders.filter(folder=>folder!==path&&!folder.startsWith(`${path}/`));await reconcileLocalAssets().catch(()=>{});}publishSharedTree();if(!state.files[state.current])state.current=state.files['paper/main.tex']?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markProjectActivity('delete')}
+async function createFile(folder='paper'){
+  const name=cleanSegment(await actionDialog({title:'새 파일',message:`${folder||'프로젝트'}에 만들 파일 이름을 입력하세요.`,value:'section.tex',confirmLabel:'만들기'}));
+  if(!name)return;
+  const path=folder?`${folder}/${name}`:name;
+  if(state.files[path]||state.assets[path]||state.folders.includes(path))return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
+  state.files[path]='% 새 파일';state.current=path;
+  for(let parent=folder;parent;parent=parentPath(parent))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==parent);
+  publishSharedTree();setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('file')
+}
+async function createFolder(parent=''){
+  const name=cleanSegment(await actionDialog({title:'새 폴더',message:`${parent||'프로젝트 루트'} 아래에 만들 폴더 이름을 입력하세요.`,value:parent?'results':'experiments',confirmLabel:'만들기'}));
+  if(!name)return;
+  const path=parent?`${parent}/${name}`:name;
+  if(state.folders.includes(path)||state.files[path]||state.assets[path])return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
+  state.folders.push(path);
+  for(let folder=parent;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);
+  publishSharedTree();listFiles();save();markProjectActivity('folder')
+}
+const pathInTree=(candidate,root)=>candidate===root||candidate.startsWith(`${root}/`);
+const renamedTreePath=(candidate,source,destination)=>pathInTree(candidate,source)?destination+candidate.slice(source.length):candidate;
+function renameHasCollision(type,source,destination){
+  if(type!=='folder')return Boolean(state.files[destination]||state.assets[destination]||state.folders.includes(destination));
+  const occupied=[...Object.keys(state.files),...Object.keys(state.assets),...state.folders];
+  if(occupied.some(candidate=>pathInTree(candidate,destination)&&!pathInTree(candidate,source)))return true;
+  const moving=[...Object.keys(state.files),...Object.keys(state.assets),...state.folders].filter(candidate=>pathInTree(candidate,source));
+  const movingSet=new Set(moving);
+  return moving.some(candidate=>{const target=renamedTreePath(candidate,source,destination);return occupied.includes(target)&&!movingSet.has(target)})
+}
+async function renameTarget(type,path){
+  const name=cleanSegment(await actionDialog({title:'이름 변경',message:baseName(path),value:baseName(path),confirmLabel:'변경'}));
+  if(!name||name===baseName(path))return;
+  const destination=parentPath(path)?`${parentPath(path)}/${name}`:name;
+  if(renameHasCollision(type,path,destination))return notify('대상 위치에 같은 이름의 항목이 있어 변경하지 않았습니다.',{tone:'error'});
+  const moves=type==='asset'&&state.assets[path]?.server?[{source:path,destination,asset:state.assets[path]}]:type==='folder'?Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&pathInTree(asset,path)).map(([source,asset])=>({source,destination:renamedTreePath(source,path,destination),asset})):[];
+  try{if(moves.length)await moveServerAssetsSafely(moves)}catch(error){return notify(error.message,{title:'공유 자료 이름 변경 실패',tone:'error'})}
+  if(type==='file'){
+    state.files[destination]=state.files[path];delete state.files[path];if(state.current===path)state.current=destination
+  }else if(type==='asset'){
+    state.assets[destination]={...state.assets[path],server:state.assets[path].server};delete state.assets[path];state.uploads=state.uploads.map(item=>item===path?destination:item)
+  }else{
+    state.files=Object.fromEntries(Object.entries(state.files).map(([file,content])=>[renamedTreePath(file,path,destination),content]));
+    state.assets=Object.fromEntries(Object.entries(state.assets).map(([file,content])=>[renamedTreePath(file,path,destination),content]));
+    state.uploads=state.uploads.map(item=>renamedTreePath(item,path,destination));
+    state.folders=state.folders.map(folder=>renamedTreePath(folder,path,destination));
+    state.collapsedFolders=state.collapsedFolders.map(folder=>renamedTreePath(folder,path,destination));
+    if(pathInTree(state.current,path))state.current=renamedTreePath(state.current,path,destination)
+  }
+  publishSharedTree();await reconcileLocalAssets().catch(()=>{});setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('rename')
+}
+async function deleteTarget(type,path){
+  if(!await actionDialog({title:'삭제',message:`'${baseName(path)}'을(를) 삭제할까요? 공동 편집자에게도 즉시 반영됩니다.`,confirmLabel:'삭제'}))return;
+  const serverPaths=type==='asset'&&state.assets[path]?.server?[path]:type==='folder'?Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&pathInTree(asset,path)).map(([asset])=>asset):[];
+  try{for(const serverPath of serverPaths)await deleteServerAsset(serverPath)}catch(error){return notify(`${error.message} 삭제가 일부만 반영되었을 수 있으므로 파일 목록을 새로 확인해 주세요.`,{title:'공유 자료 삭제 실패',tone:'error'})}
+  if(type==='file')delete state.files[path];
+  else if(type==='asset'){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);await deleteLocalAsset(path).catch(()=>{})}
+  else{state.files=Object.fromEntries(Object.entries(state.files).filter(([file])=>!pathInTree(file,path)));state.assets=Object.fromEntries(Object.entries(state.assets).filter(([file])=>!pathInTree(file,path)));state.uploads=state.uploads.filter(item=>!pathInTree(item,path));state.folders=state.folders.filter(folder=>!pathInTree(folder,path));state.collapsedFolders=state.collapsedFolders.filter(folder=>!pathInTree(folder,path));await reconcileLocalAssets().catch(()=>{})}
+  publishSharedTree();if(!state.files[state.current])state.current=state.files['paper/main.tex']?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('delete')
+}
 $('new-file').onclick=()=>createFile(state.activeFolder||'paper');
 $('new-folder').onclick=()=>createFolder('');
 $('files').oncontextmenu=event=>{if(event.target===$('files'))showTreeMenu(event,'root','')};
@@ -675,10 +782,10 @@ async function loadProject(){
     const source=item.source||item.path;
     if(item.type==='asset'){
       remoteAssetPaths.add(name);
-      remoteAssetSources.set(name,`${projectBase}/project/${encodeURI(source)}`);
+      remoteAssetSources.set(name,projectFileUrl(source));
       state.assets[name]={type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||0,data:'',remote:true};
     }else{
-      const value=await fetchProjectSource(name,`${projectBase}/project/${encodeURI(source)}`);
+      const value=await fetchProjectSource(name,projectFileUrl(source));
       if(value)remoteSources[name]=value;
     }
   }));
@@ -697,7 +804,11 @@ async function loadProject(){
   const remoteMain=remoteSources['paper/main.tex'];
   const sharedMainValue=collabSession.textFor('paper/main.tex').toString();
   const localMain=sharedMainValue||state.files['paper/main.tex'];
-  const projectVersionChanged=state.projectVersion!==projectManifest.version;
+  const canCoordinateProjectUpgrade=collabSession.offline||collabSession.isBootstrapLeader?.()===true;
+  let sharedProjectVersion=sharedProject.get('manifestVersion');
+  if(typeof sharedProjectVersion!=='string')sharedProjectVersion='';
+  if(!sharedProjectVersion&&canCoordinateProjectUpgrade){sharedProjectVersion=typeof state.projectVersion==='string'&&state.projectVersion?state.projectVersion:projectManifest.version;sharedProject.set('manifestVersion',sharedProjectVersion)}
+  const projectVersionChanged=canCoordinateProjectUpgrade&&Boolean(sharedProjectVersion&&sharedProjectVersion!==projectManifest.version);
   const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,localMain))||(!state.serverMainSnapshot&&projectVersionChanged)));
   const serverManagedProjectFiles=new Set(projectManifest.files.filter(item=>item.managed).map(item=>`paper/${item.path}`));
   const retiredProjectFiles=new Set(projectManifest.retired_paths.map(path=>`paper/${path}`));
@@ -753,7 +864,6 @@ async function loadProject(){
       state.files['paper/main.tex']=remoteMain;
       state.current='paper/main.tex';
     }
-    state.projectVersion=projectManifest.version;
     state.serverMainSnapshot=sourceFingerprint(remoteMain);
   }
 
@@ -780,11 +890,13 @@ async function loadProject(){
     }
     if(serverManagedProjectFiles.has(name))state.serverSourceSnapshots[name]=sourceFingerprint(value);
   }
+  if(canCoordinateProjectUpgrade&&projectVersionChanged)sharedProject.set('manifestVersion',projectManifest.version);
+  const synchronizedProjectVersion=sharedProject.get('manifestVersion');
+  if(typeof synchronizedProjectVersion==='string'&&synchronizedProjectVersion)state.projectVersion=synchronizedProjectVersion;
   for(const [path,text] of collabSession.files){if(projectVersionChanged&&serverManagedProjectFiles.has(path))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
   pruneDraftQueue();
   initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);if(!renderedPdfUrl)render();listFiles();save();initializeServerBackups();
-  const sourceConflictBanner=$('source-conflict');$('close-source-conflict').onclick=()=>{sourceConflictBanner.hidden=true};
-  if(preservedDraftPath){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
+  if(preservedDraftPath&&!sourceConflictDismissed){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
   if(isLatexDocument(state.files['paper/main.tex'])){
     const preview=await previewPromise;
     workspaceReadyForCompile=true;
@@ -806,4 +918,4 @@ initializeRichEditor();
 loadProject().catch(error=>{reportClientError(error,'loadProject');$('render-state').textContent='프로젝트 로드 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>원고 로드 오류</strong><br>${esc(error.message)}</div>`;notify(error.message,{title:'원고를 불러오지 못했습니다.',tone:'error'})});
 installOptionalFeature('초기 편집 화면',setEditor);installOptionalFeature('초기 파일 목록',listFiles);installOptionalFeature('초기 댓글',renderComments);installOptionalFeature('초기 PDF 화면',render);
 for(const [name,installer] of [['패널 조절',installPanelResizers],['집중 화면',installFocusModes],['확대·축소',installZoomControls],['자료 미리보기',installAssetViewer],['PDF 페이지 표시',installPdfPageIndicator],['편집기 단축키',installEditorShortcuts],['선택 영역 도구',installSelectionTools],['논문 작성 도구',installAuthoringTools],['상태 센터',installStatusCenter]])installOptionalFeature(name,installer);
-let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{richEditor?.destroy();collabSession.destroy()});
+let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{clearTimeout(window.saveTimer);if(!activeAsset&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save();richEditor?.destroy();collabSession.destroy()});

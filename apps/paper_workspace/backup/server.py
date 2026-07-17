@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import threading
 import urllib.parse
 import zlib
 from datetime import datetime, timezone
@@ -50,6 +51,34 @@ def validate_project_id(project_id: object) -> str:
     if not isinstance(project_id, str) or not PROJECT_ID_PATTERN.fullmatch(project_id):
         raise ValidationError("invalid project id")
     return project_id
+
+
+def allowed_project_ids(runtime_root: str | Path) -> set[str]:
+    root = Path(runtime_root)
+    catalog = json.loads((root / "projects/index.json").read_text(encoding="utf-8"))
+    projects = catalog.get("projects") if isinstance(catalog, dict) else None
+    if not isinstance(projects, list):
+        raise ValueError("project runtime catalog is invalid")
+    allowed: set[str] = set()
+    default_manifest = json.loads((root / "project/project.json").read_text(encoding="utf-8"))
+    default_id = validate_project_id(default_manifest.get("id"))
+    allowed.add(default_id)
+    for entry in projects:
+        if not isinstance(entry, dict):
+            raise ValueError("project runtime catalog entry is invalid")
+        slug = validate_project_id(entry.get("slug"))
+        allowed.add(slug)
+        if entry.get("activity_id") is not None:
+            allowed.add(validate_project_id(entry["activity_id"]))
+        if entry.get("source") == "default":
+            allowed.add(default_id)
+            continue
+        manifest_path = root / "projects" / slug / "project.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("project runtime manifest is invalid")
+        allowed.add(validate_project_id(manifest.get("id")))
+    return allowed
 
 
 def validate_project_path(name: object) -> str:
@@ -101,6 +130,20 @@ def canonical_snapshot(snapshot: object) -> tuple[dict[str, Any], bytes]:
     # Decode the canonical representation so callers cannot mutate the stored value
     # through a reference retained from the request object.
     return json.loads(encoded), encoded
+
+
+def decompress_snapshot_payload(payload: bytes) -> bytes:
+    try:
+        decompressor = zlib.decompressobj()
+        decoded = decompressor.decompress(payload, MAX_SNAPSHOT_BYTES + 1)
+        if len(decoded) > MAX_SNAPSHOT_BYTES or decompressor.unconsumed_tail:
+            raise ValidationError("stored snapshot expands beyond the size limit")
+        decoded += decompressor.flush(MAX_SNAPSHOT_BYTES + 1 - len(decoded))
+        if len(decoded) > MAX_SNAPSHOT_BYTES or not decompressor.eof or decompressor.unused_data:
+            raise ValidationError("stored snapshot is truncated or invalid")
+        return decoded
+    except zlib.error as error:
+        raise ValidationError("stored snapshot compression is invalid") from error
 
 
 def validate_optional_text(value: object, field: str, maximum: int) -> str | None:
@@ -239,8 +282,12 @@ class BackupStore:
             )
             if cursor.rowcount == 0:
                 connection.execute(
-                    "UPDATE snapshots SET checked_at = ? WHERE project_id = ? AND content_hash = ?",
-                    (created_at, project, digest),
+                    """
+                    UPDATE snapshots
+                    SET checked_at = ?, actor = ?, reason = ?
+                    WHERE project_id = ? AND content_hash = ?
+                    """,
+                    (created_at, author, backup_reason, project, digest),
                 )
                 existing = connection.execute(
                     "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
@@ -254,7 +301,8 @@ class BackupStore:
                 """
                 DELETE FROM snapshots
                 WHERE project_id = ? AND id NOT IN (
-                    SELECT id FROM snapshots WHERE project_id = ? ORDER BY id DESC LIMIT ?
+                    SELECT id FROM snapshots WHERE project_id = ?
+                    ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
                 )
                 """,
                 (project, project, self.retention),
@@ -283,7 +331,8 @@ class BackupStore:
         project = validate_project_id(project_id)
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM snapshots WHERE project_id = ? ORDER BY id DESC LIMIT ?",
+                """SELECT * FROM snapshots WHERE project_id = ?
+                   ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?""",
                 (project, self.retention),
             ).fetchall()
         return [self._metadata(row) for row in rows]
@@ -298,12 +347,19 @@ class BackupStore:
             ).fetchone()
         if row is None:
             raise SnapshotNotFound("snapshot not found")
-        raw_payload = row["payload"]
+        raw_payload = bytes(row["payload"]) if isinstance(row["payload"], (bytes, bytearray, memoryview)) else str(row["payload"]).encode("utf-8")
         if row["payload_encoding"] == "zlib":
-            raw_payload = zlib.decompress(bytes(raw_payload)).decode("utf-8")
-        elif isinstance(raw_payload, bytes):
-            raw_payload = raw_payload.decode("utf-8")
-        return {**self._metadata(row), "payload": json.loads(raw_payload)}
+            raw_payload = decompress_snapshot_payload(raw_payload)
+        elif row["payload_encoding"] != "json":
+            raise ValidationError("stored snapshot encoding is unsupported")
+        if len(raw_payload) != row["size_bytes"] or hashlib.sha256(raw_payload).hexdigest() != row["content_hash"]:
+            raise ValidationError("stored snapshot integrity check failed")
+        try:
+            payload = json.loads(raw_payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValidationError("stored snapshot JSON is invalid") from error
+        canonical_snapshot(payload)
+        return {**self._metadata(row), "payload": payload}
 
     def record_activity(self, project_id: object, actor: object, reason: object = None) -> dict[str, Any]:
         project = validate_project_id(project_id)
@@ -326,7 +382,7 @@ class BackupStore:
             )
         return {"project_id": project, "modified_at": modified_at, "actor": author.strip(), "reason": activity_reason}
 
-    def list_activity(self) -> list[dict[str, Any]]:
+    def list_activity(self, allowed_projects: set[str] | None = None) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -346,12 +402,15 @@ class BackupStore:
             ).fetchall()
         return [
             {"project_id": row["project_id"], "modified_at": row["modified_at"], "actor": row["actor"], "reason": row["reason"]}
-            for row in rows
+            for row in rows if allowed_projects is None or row["project_id"] in allowed_projects
         ]
 
     def healthcheck(self) -> None:
         with self._connect() as connection:
             connection.execute("SELECT 1").fetchone()
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("UPDATE project_activity SET reason = reason WHERE 0")
+            connection.rollback()
 
 
 class AssetStore:
@@ -362,23 +421,47 @@ class AssetStore:
         self.max_project_bytes = max_project_bytes
         if min(max_file_bytes, max_project_bytes) < 1 or max_file_bytes > max_project_bytes:
             raise ValueError("invalid asset quotas")
+        self._lock = threading.RLock()
         self.root.mkdir(parents=True, exist_ok=True)
+
+    def healthcheck(self) -> None:
+        with self._lock:
+            if self.root.is_symlink() or not self.root.is_dir():
+                raise OSError("asset store is unavailable")
+            with tempfile.NamedTemporaryFile(prefix=".health-", dir=self.root) as probe:
+                probe.write(b"ok")
+                probe.flush()
+                os.fsync(probe.fileno())
 
     def _path(self, project_id: object, name: object) -> Path:
         project = validate_project_id(project_id)
         clean_name = validate_project_path(name)
-        return self.root / project / clean_name
+        root = self.root.resolve()
+        target = self.root / project / clean_name
+        try:
+            target.resolve(strict=False).relative_to(root)
+        except ValueError as error:
+            raise ValidationError("asset path escapes the storage root") from error
+        cursor = target
+        while True:
+            if cursor.is_symlink():
+                raise ValidationError("symbolic links are not allowed in asset storage")
+            if cursor == self.root:
+                break
+            cursor = cursor.parent
+        return target
 
     def list(self, project_id: object) -> list[dict[str, Any]]:
         project = validate_project_id(project_id)
-        project_dir = self.root / project
-        if not project_dir.exists():
-            return []
-        return [{
-            "path": path.relative_to(project_dir).as_posix(),
-            "size_bytes": path.stat().st_size,
-            "modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-        } for path in sorted(project_dir.rglob("*")) if path.is_file()]
+        project_dir = self._path(project, "__inventory__.pdf").parent
+        with self._lock:
+            if not project_dir.exists():
+                return []
+            return [{
+                "path": path.relative_to(project_dir).as_posix(),
+                "size_bytes": path.stat().st_size,
+                "modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            } for path in sorted(project_dir.rglob("*")) if path.is_file() and not path.is_symlink()]
 
     def put(self, project_id: object, name: object, content: bytes) -> dict[str, Any]:
         if len(content) > self.max_file_bytes:
@@ -386,28 +469,31 @@ class AssetStore:
         validate_asset_content(name, content)
         target = self._path(project_id, name)
         project_dir = self.root / validate_project_id(project_id)
-        current_size = target.stat().st_size if target.exists() else 0
-        total = sum(path.stat().st_size for path in project_dir.rglob("*") if path.is_file()) if project_dir.exists() else 0
-        if total - current_size + len(content) > self.max_project_bytes:
-            raise ValidationError("project asset quota exceeded")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as temporary:
-            temporary.write(content)
-            temporary_path = Path(temporary.name)
-        os.replace(temporary_path, target)
+        with self._lock:
+            current_size = target.stat().st_size if target.exists() else 0
+            total = sum(path.stat().st_size for path in project_dir.rglob("*") if path.is_file()) if project_dir.exists() else 0
+            if total - current_size + len(content) > self.max_project_bytes:
+                raise ValidationError("project asset quota exceeded")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as temporary:
+                temporary.write(content)
+                temporary_path = Path(temporary.name)
+            os.replace(temporary_path, target)
         return {"path": validate_project_path(name), "size_bytes": len(content)}
 
     def get(self, project_id: object, name: object) -> bytes:
         target = self._path(project_id, name)
-        if not target.is_file():
-            raise SnapshotNotFound("asset not found")
-        return target.read_bytes()
+        with self._lock:
+            if not target.is_file():
+                raise SnapshotNotFound("asset not found")
+            return target.read_bytes()
 
     def delete(self, project_id: object, name: object) -> None:
         target = self._path(project_id, name)
-        if not target.is_file():
-            raise SnapshotNotFound("asset not found")
-        target.unlink()
+        with self._lock:
+            if not target.is_file():
+                raise SnapshotNotFound("asset not found")
+            target.unlink()
 
 
 class BackupHandler(BaseHTTPRequestHandler):
@@ -415,23 +501,31 @@ class BackupHandler(BaseHTTPRequestHandler):
     assets: AssetStore
     actor_mode = "shared"
     shared_actor = DEFAULT_SHARED_ACTOR
+    allowed_projects: set[str] | None = None
+
+    def _project_id(self, value: object) -> str:
+        project = validate_project_id(value)
+        if self.allowed_projects is not None and project not in self.allowed_projects:
+            raise SnapshotNotFound("project not found")
+        return project
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         try:
             if path == "/health":
                 self.store.healthcheck()
+                self.assets.healthcheck()
                 self._json(HTTPStatus.OK, {"status": "ok"})
                 return
             if ACTIVITY_COLLECTION_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"projects": self.store.list_activity()})
+                self._json(HTTPStatus.OK, {"projects": self.store.list_activity(self.allowed_projects)})
                 return
             if match := ASSET_COLLECTION_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"assets": self.assets.list(match.group(1))})
+                self._json(HTTPStatus.OK, {"assets": self.assets.list(self._project_id(match.group(1)))})
                 return
             if match := ASSET_ITEM_PATTERN.fullmatch(path):
                 name = urllib.parse.unquote(match.group(2))
-                content = self.assets.get(match.group(1), name)
+                content = self.assets.get(self._project_id(match.group(1)), name)
                 self._bytes(
                     HTTPStatus.OK,
                     content,
@@ -440,10 +534,10 @@ class BackupHandler(BaseHTTPRequestHandler):
                 )
                 return
             if match := COLLECTION_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"snapshots": self.store.list(match.group(1))})
+                self._json(HTTPStatus.OK, {"snapshots": self.store.list(self._project_id(match.group(1)))})
                 return
             if match := ITEM_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"snapshot": self.store.get(match.group(1), int(match.group(2)))})
+                self._json(HTTPStatus.OK, {"snapshot": self.store.get(self._project_id(match.group(1)), int(match.group(2)))})
                 return
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
         except ValidationError as error:
@@ -457,11 +551,13 @@ class BackupHandler(BaseHTTPRequestHandler):
             try:
                 payload = self._request_json()
                 activity = self.store.record_activity(
-                    activity_match.group(1), self._request_actor(), payload.get("reason")
+                    self._project_id(activity_match.group(1)), self._request_actor(), payload.get("reason")
                 )
                 self._json(HTTPStatus.OK, {"activity": activity})
             except ValidationError as error:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            except SnapshotNotFound as error:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
             return
         match = COLLECTION_PATTERN.fullmatch(path)
         if match is None:
@@ -470,7 +566,7 @@ class BackupHandler(BaseHTTPRequestHandler):
         try:
             payload = self._request_json()
             metadata, deduplicated = self.store.create(
-                match.group(1),
+                self._project_id(match.group(1)),
                 payload.get("snapshot"),
                 self._request_actor(),
                 payload.get("reason"),
@@ -481,6 +577,8 @@ class BackupHandler(BaseHTTPRequestHandler):
             )
         except ValidationError as error:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except SnapshotNotFound as error:
+            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
 
     def do_PUT(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -491,11 +589,13 @@ class BackupHandler(BaseHTTPRequestHandler):
         try:
             size = self._content_length(self.assets.max_file_bytes)
             metadata = self.assets.put(
-                match.group(1), urllib.parse.unquote(match.group(2)), self.rfile.read(size)
+                self._project_id(match.group(1)), urllib.parse.unquote(match.group(2)), self.rfile.read(size)
             )
             self._json(HTTPStatus.CREATED, {"asset": metadata})
         except ValidationError as error:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+        except SnapshotNotFound as error:
+            self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
 
     def do_DELETE(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -504,7 +604,7 @@ class BackupHandler(BaseHTTPRequestHandler):
             if match is None:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
-            self.assets.delete(match.group(1), urllib.parse.unquote(match.group(2)))
+            self.assets.delete(self._project_id(match.group(1)), urllib.parse.unquote(match.group(2)))
             self.send_response(HTTPStatus.NO_CONTENT)
             self.end_headers()
         except ValidationError as error:
@@ -589,6 +689,8 @@ def create_server() -> ThreadingHTTPServer:
     if BackupHandler.actor_mode not in {"shared", "proxy"}:
         raise ValueError("BACKUP_ACTOR_MODE must be shared or proxy")
     BackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
+    runtime_root = os.environ.get("BACKUP_PROJECT_RUNTIME", "").strip()
+    BackupHandler.allowed_projects = allowed_project_ids(runtime_root) if runtime_root else None
     return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
 
 

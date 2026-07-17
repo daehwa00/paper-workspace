@@ -15,6 +15,8 @@ def test_runtime_is_project_agnostic() -> None:
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
 
     assert "PAPER_PROJECT_DIR" in compose
+    assert "sync_project_runtime.py" in compose
+    assert "project_runtime:/usr/share/nginx/html/project-runtime:ro" in compose
     assert "../../paper/" not in compose
     assert "paper/vendor" not in web_image
     assert "paper/" not in compiler_image
@@ -130,6 +132,12 @@ def test_public_export_installs_a_pinned_history_secret_scan(tmp_path: Path) -> 
     assert "fetch-depth: 0" in workflow
     assert "gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3" in workflow
     assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in workflow
+    platform = (destination / ".github/workflows/platform.yml").read_text(encoding="utf-8")
+    assert "pytest -q tests/paper_platform" in platform
+    assert "node --test apps/paper_workspace/collaboration/server.test.cjs" in platform
+    assert "npm run test:e2e:ci" in platform
+    assert "npm audit" in platform
+    assert "docker compose -f infra/paper-workspace/compose.yaml config --quiet" in platform
 
 
 def test_public_export_scans_large_files_and_chunk_boundaries(tmp_path: Path) -> None:
@@ -192,15 +200,20 @@ def test_optional_github_oauth_override_protects_every_route() -> None:
     assert ".auth/allowed-emails" in (ROOT / "infra/paper-workspace/allowed-emails.example").read_text(encoding="utf-8")
 
 
-def test_optional_shared_password_override_is_exported_without_a_secret() -> None:
+def test_optional_shared_password_override_protects_manuscript_metadata_without_a_secret() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.password.yaml").read_text(encoding="utf-8")
     caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
     env = (ROOT / "infra/paper-workspace/.env.password.example").read_text(encoding="utf-8")
 
     assert "password-gate" in compose
     assert "forward_auth password-gate:8079" in caddy
+    assert caddy.index("forward_auth password-gate:8079") < caddy.index("@hub expression")
+    assert caddy.index("forward_auth password-gate:8079") < caddy.index("/projects/[A-Za-z0-9]")
+    public_prefix = caddy[:caddy.index("forward_auth password-gate:8079")]
+    assert "/projects/index.json" not in public_prefix
+    assert "thumbnail" not in public_prefix
     assert '["caddy", "run", "--config"' in compose
-    assert "PAPER_ACCESS_PASSWORD=replace-with-your-private-lab-password" in env
+    assert "PAPER_ACCESS_PASSWORD=replace-with-a-random-password-of-12-or-more-characters" in env
     assert "210628" not in env
 
 
@@ -217,6 +230,8 @@ def test_public_edge_and_collaboration_are_hardened() -> None:
     assert "caddy:2.11.4-alpine" in compose
     assert 'user: "1000:1000"' in compose
     assert "service_completed_successfully" in compose
+    assert '"https://127.0.0.1/favicon.ico"' in compose
+    assert "p.stat().st_mtime < 120" in compose
     assert "net.ipv4.ip_unprivileged_port_start" in compose
     assert "compiler_internal:" in compose and "internal: true" in compose
     assert ":/projects:ro" not in compose
@@ -249,6 +264,9 @@ def test_browser_error_reports_are_redacted_post_bodies() -> None:
     assert "__BOOTSTRAP_JS_HASH__" in workspace and "__BOOTSTRAP_JS_HASH__" in hub
     assert "access_log off" in nginx
     assert "client_max_body_size 2k" in nginx
+    assert "response.status === 401" in bootstrap
+    assert "response.redirected" in bootstrap
+    assert "location.assign(`/_auth/login?rd=${encodeURIComponent(returnTo)}`)" in bootstrap
 
 
 def test_brand_icons_are_public_before_authentication() -> None:
@@ -259,7 +277,7 @@ def test_brand_icons_are_public_before_authentication() -> None:
     for path in icon_paths:
         assert path in password_caddy
         assert path in oauth_caddy
-    assert "/bootstrap.js" in password_caddy
+    assert "/bootstrap.js" not in password_caddy[:password_caddy.index("forward_auth")]
 
     assert password_caddy.index("/apple-touch-icon.png") < password_caddy.index("forward_auth")
     assert oauth_caddy.index("@public_brand_asset") < oauth_caddy.index("forward_auth")

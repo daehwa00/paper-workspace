@@ -32,6 +32,7 @@ ROOT_FILES = {
     Path("apps/paper_workspace/THIRD_PARTY_NOTICES.md"): Path("THIRD_PARTY_NOTICES.md"),
     Path("apps/paper_workspace/SECURITY.md"): Path("SECURITY.md"),
     Path("apps/paper_workspace/github/workflows/security.yml"): Path(".github/workflows/security.yml"),
+    Path("apps/paper_workspace/github/workflows/platform.yml"): Path(".github/workflows/platform.yml"),
     Path("apps/paper_workspace/public.gitignore"): Path(".gitignore"),
     Path("apps/paper_workspace/public.dockerignore"): Path(".dockerignore"),
 }

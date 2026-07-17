@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import hashlib
 import io
 import json
@@ -9,6 +10,7 @@ import os
 import re
 import secrets
 import signal
+import shutil
 import subprocess
 import tempfile
 import time
@@ -26,13 +28,18 @@ MAX_PROJECT_FILES = 120
 MAX_ASSET_BYTES = 32_000_000
 COMPILE_CACHE_TTL = 600
 COMPILE_CACHE_ITEMS = 16
+COMPILE_CACHE_MAX_BYTES = max(1, int(os.environ.get("PAPER_COMPILE_CACHE_MAX_BYTES", "100663296")))
 BUILD_STATE_TTL = 600
 BUILD_STATE_ITEMS = 16
 BUILD_STATE_MAX_BYTES = 2_000_000
 BUILD_STATE_TOTAL_BYTES = 16_000_000
 BUILD_STATE_EXTENSIONS = {".aux", ".bbl", ".toc", ".out", ".lof", ".lot", ".nav", ".snm", ".vrb"}
 MAX_LATEX_PASSES = 3
+MAX_PROCESS_LOG_BYTES = 128_000
+MAX_SYNCTEX_BYTES = 8_000_000
+MAX_SYNCTEX_EXPANDED_BYTES = 64_000_000
 MAX_CONCURRENT_COMPILES = max(1, int(os.environ.get("PAPER_MAX_CONCURRENT_COMPILES", "2")))
+COMPILE_SINGLEFLIGHT_WAIT_SECONDS = max(1, int(os.environ.get("PAPER_COMPILE_SINGLEFLIGHT_WAIT_SECONDS", "35")))
 _compile_cache: OrderedDict[str, tuple[float, bytes, bytes, int]] = OrderedDict()
 _synctex_cache: OrderedDict[str, tuple[float, bytes]] = OrderedDict()
 
@@ -52,14 +59,56 @@ _build_state_lock = threading.Lock()
 _process_lock = threading.Lock()
 _active_processes: dict[str, subprocess.Popen[str]] = {}
 _compile_slots = threading.BoundedSemaphore(MAX_CONCURRENT_COMPILES)
+_compile_flight_lock = threading.Lock()
+_compile_flights: dict[str, threading.Event] = {}
+
+
+def _claim_compile_flight(cache_key: str) -> tuple[bool, threading.Event]:
+    """Elect one compiler for identical input while followers await its cache result."""
+    with _compile_flight_lock:
+        event = _compile_flights.get(cache_key)
+        if event is not None:
+            return False, event
+        event = threading.Event()
+        _compile_flights[cache_key] = event
+        return True, event
+
+
+def _finish_compile_flight(cache_key: str, event: threading.Event) -> None:
+    with _compile_flight_lock:
+        if _compile_flights.get(cache_key) is event:
+            _compile_flights.pop(cache_key, None)
+        event.set()
+
+
+def _prune_compile_caches(now: float) -> None:
+    for key, cached in list(_compile_cache.items()):
+        if now - cached[0] > COMPILE_CACHE_TTL:
+            _compile_cache.pop(key, None)
+    for key, cached in list(_synctex_cache.items()):
+        if now - cached[0] > COMPILE_CACHE_TTL:
+            _synctex_cache.pop(key, None)
+    while len(_compile_cache) > COMPILE_CACHE_ITEMS:
+        _compile_cache.popitem(last=False)
+    while len(_synctex_cache) > COMPILE_CACHE_ITEMS * 2:
+        _synctex_cache.popitem(last=False)
+    def total_bytes() -> int:
+        return sum(len(item[1]) + len(item[2]) for item in _compile_cache.values()) + sum(len(item[1]) for item in _synctex_cache.values())
+    while total_bytes() > COMPILE_CACHE_MAX_BYTES and (_compile_cache or _synctex_cache):
+        compile_oldest = next(iter(_compile_cache.values()))[0] if _compile_cache else float("inf")
+        synctex_oldest = next(iter(_synctex_cache.values()))[0] if _synctex_cache else float("inf")
+        if compile_oldest <= synctex_oldest:
+            _compile_cache.popitem(last=False)
+        else:
+            _synctex_cache.popitem(last=False)
 
 
 def _cache_get(key: str) -> tuple[bytes, bytes, int] | None:
     now = time.monotonic()
     with _cache_lock:
+        _prune_compile_caches(now)
         cached = _compile_cache.get(key)
-        if cached is None or now - cached[0] > COMPILE_CACHE_TTL:
-            _compile_cache.pop(key, None)
+        if cached is None:
             return None
         _compile_cache.move_to_end(key)
         return cached[1:]
@@ -73,19 +122,16 @@ def _cache_put(key: str, pdf: bytes, synctex: bytes, elapsed_ms: int) -> str:
         _compile_cache.move_to_end(key)
         _synctex_cache[compile_id] = (now, synctex)
         _synctex_cache.move_to_end(compile_id)
-        while len(_compile_cache) > COMPILE_CACHE_ITEMS:
-            _compile_cache.popitem(last=False)
-        while len(_synctex_cache) > COMPILE_CACHE_ITEMS * 2:
-            _synctex_cache.popitem(last=False)
+        _prune_compile_caches(now)
     return compile_id
 
 
 def _synctex_get(compile_id: str) -> bytes | None:
     now = time.monotonic()
     with _cache_lock:
+        _prune_compile_caches(now)
         cached = _synctex_cache.get(compile_id)
-        if cached is None or now - cached[0] > COMPILE_CACHE_TTL:
-            _synctex_cache.pop(compile_id, None)
+        if cached is None:
             return None
         _synctex_cache.move_to_end(compile_id)
         return cached[1]
@@ -220,14 +266,20 @@ def _run_process(command: list[str], cwd: Path, env: dict[str, str], client_id: 
     process = subprocess.Popen(
         command,
         cwd=cwd,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         env=env,
         start_new_session=True,
     )
+    captured = bytearray()
+    def drain_output() -> None:
+        assert process.stdout is not None
+        while chunk := process.stdout.read(65_536):
+            captured.extend(chunk)
+            if len(captured) > MAX_PROCESS_LOG_BYTES:
+                del captured[:-MAX_PROCESS_LOG_BYTES]
+    drain_thread = threading.Thread(target=drain_output, name="latex-output-drain", daemon=True)
+    drain_thread.start()
     if client_id:
         with _process_lock:
             previous = _active_processes.get(client_id)
@@ -238,17 +290,18 @@ def _run_process(command: list[str], cwd: Path, env: dict[str, str], client_id: 
             except ProcessLookupError:
                 pass
     try:
-        stdout, stderr = process.communicate(timeout=timeout)
+        process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
-        process.communicate()
+        process.wait()
         raise
     finally:
+        drain_thread.join(timeout=2)
         if client_id:
             with _process_lock:
                 if _active_processes.get(client_id) is process:
                     _active_processes.pop(client_id, None)
-    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    return subprocess.CompletedProcess(command, process.returncode, captured.decode("utf-8", errors="replace"), "")
 
 
 def safe_project_path(name: object, extensions: set[str]) -> Path:
@@ -275,6 +328,43 @@ def restricted_tex_environment(texmf: Path) -> dict[str, str]:
     }
 
 
+def validated_synctex(data: bytes) -> bytes:
+    if len(data) > MAX_SYNCTEX_BYTES:
+        raise ValueError("SyncTeX data is too large")
+    if not data.startswith(b"\x1f\x8b"):
+        raise ValueError("SyncTeX data is not gzip encoded")
+    expanded = 0
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+            while chunk := stream.read(65_536):
+                expanded += len(chunk)
+                if expanded > MAX_SYNCTEX_EXPANDED_BYTES:
+                    raise ValueError("SyncTeX expanded data is too large")
+    except (EOFError, OSError) as error:
+        raise ValueError("SyncTeX data is invalid") from error
+    return data
+
+
+def synctex_source_path(value: str, work: Path) -> str:
+    source = Path(value.strip())
+    try:
+        relative = source.resolve(strict=False).relative_to(work.resolve()).as_posix() if source.is_absolute() else source.as_posix()
+    except ValueError as error:
+        raise ValueError("SyncTeX source is outside the project") from error
+    safe = safe_project_path(relative, {".tex"})
+    return safe.as_posix()
+
+
+def compiler_health_errors() -> list[str]:
+    errors = [name for name in ("pdflatex", "bibtex", "synctex", "pdffonts") if shutil.which(name) is None]
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "probe").write_bytes(b"ok")
+    except OSError:
+        errors.append("temporary-workspace")
+    return errors
+
+
 def _run_latex_build(
     work: Path,
     compile_input: Path,
@@ -288,7 +378,7 @@ def _run_latex_build(
 
     def run_latex() -> subprocess.CompletedProcess[str]:
         result = _run_process(
-            ["pdflatex", "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-jobname=preview", str(compile_input)],
+            ["pdflatex", "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", "-file-line-error", "-no-shell-escape", "-jobname=preview", str(compile_input)],
             cwd=work, timeout=30, client_id=client_id, env=environment,
         )
         if result.returncode:
@@ -330,7 +420,11 @@ def _run_latex_build(
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
-            self._json(HTTPStatus.OK, {"status": "ok"})
+            errors = compiler_health_errors()
+            self._json(
+                HTTPStatus.SERVICE_UNAVAILABLE if errors else HTTPStatus.OK,
+                {"status": "dependency-error" if errors else "ok", "error_count": len(errors)},
+            )
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -408,7 +502,17 @@ class Handler(BaseHTTPRequestHandler):
                 if asset_bytes > MAX_ASSET_BYTES:
                     raise ValueError("assets exceed 32 MB")
                 decoded_assets[name] = decoded
+            compile_leader, compile_event = _claim_compile_flight(cache_key)
+            if not compile_leader:
+                if compile_event.wait(COMPILE_SINGLEFLIGHT_WAIT_SECONDS) and (cached := _cache_get(cache_key)):
+                    pdf, synctex, elapsed_ms = cached
+                    compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                    self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "build_mode": "cached", "passes": 0, "bibtex_runs": 0, "build_state_id": requested_state_id if bound_state else "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
+                    return
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identical compile is still running; retry shortly"})
+                return
             if not _compile_slots.acquire(blocking=False):
+                _finish_compile_flight(cache_key, compile_event)
                 self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "compiler is busy; retry shortly"})
                 return
             started = time.monotonic()
@@ -451,14 +555,15 @@ class Handler(BaseHTTPRequestHandler):
                     pdf = (work / "preview.pdf").read_bytes()
                     synctex = (work / "preview.synctex.gz").read_bytes()
                     artifacts = _snapshot_build_artifacts(work)
+                elapsed_ms = round((time.monotonic() - started) * 1000)
+                build_state_id = _build_state_put(
+                    binding, artifacts, bibliography_signature,
+                    requested_state_id if bound_state else None,
+                ) if client_id else None
+                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
             finally:
                 _compile_slots.release()
-            elapsed_ms = round((time.monotonic() - started) * 1000)
-            build_state_id = _build_state_put(
-                binding, artifacts, bibliography_signature,
-                requested_state_id if bound_state else None,
-            ) if client_id else None
-            compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                _finish_compile_flight(cache_key, compile_event)
             self._json(HTTPStatus.OK, {"elapsed_ms": elapsed_ms, "cached": False, "build_mode": "incremental" if warm else "clean", "passes": latex_passes, "bibtex_runs": bibtex_runs, "build_state_id": build_state_id or "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
         except (KeyError, ValueError, binascii.Error, json.JSONDecodeError, RuntimeError, subprocess.TimeoutExpired) as error:
             self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
@@ -481,8 +586,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("SyncTeX cache expired; render the PDF again.")
             else:
                 synctex = base64.b64decode(payload["synctex_base64"], validate=True)
-            if len(synctex) > 8_000_000:
-                raise ValueError("SyncTeX data is too large")
+            synctex = validated_synctex(synctex)
             with tempfile.TemporaryDirectory() as directory:
                 work = Path(directory)
                 (work / "main.synctex.gz").write_bytes(synctex)
@@ -498,7 +602,7 @@ class Handler(BaseHTTPRequestHandler):
             column_match = re.search(r"^Column:(-?\d+)$", output, re.MULTILINE)
             if result.returncode or not input_match or not line_match:
                 raise ValueError("해당 PDF 위치에 연결된 LaTeX 줄을 찾지 못했습니다.")
-            source = PurePosixPath(input_match.group(1).strip()).name
+            source = synctex_source_path(input_match.group(1), work)
             self._json(HTTPStatus.OK, {"file": source, "line": int(line_match.group(1)), "column": max(0, int(column_match.group(1))) if column_match else 0})
         except (KeyError, ValueError, binascii.Error, subprocess.TimeoutExpired) as error:
             self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
@@ -509,14 +613,12 @@ class Handler(BaseHTTPRequestHandler):
             synctex = _synctex_get(compile_id)
             if synctex is None:
                 raise ValueError("SyncTeX cache expired; render the PDF again.")
-            return synctex
+            return validated_synctex(synctex)
         encoded = payload.get("synctex_base64")
         if not isinstance(encoded, str):
             raise ValueError("SyncTeX data is required")
         synctex = base64.b64decode(encoded, validate=True)
-        if len(synctex) > 8_000_000:
-            raise ValueError("SyncTeX data is too large")
-        return synctex
+        return validated_synctex(synctex)
 
     def _synctex_view(self) -> None:
         try:

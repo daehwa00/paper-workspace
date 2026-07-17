@@ -48,7 +48,10 @@ services:
     environment:
       COLLAB_ALLOWED_ORIGINS: ${COLLAB_ALLOWED_ORIGINS:-https://${PAPER_DOMAIN:-localhost}}
       COLLAB_TRUST_PROXY: "1"
-      COLLAB_MAX_PAYLOAD_BYTES: ${COLLAB_MAX_PAYLOAD_BYTES:-16777216}
+      COLLAB_MAX_PAYLOAD_BYTES: ${COLLAB_MAX_PAYLOAD_BYTES:-4194304}
+      COLLAB_MAX_INGRESS_BYTES_PER_MINUTE: ${COLLAB_MAX_INGRESS_BYTES_PER_MINUTE:-16777216}
+      COLLAB_MAX_DOCUMENT_BYTES: ${COLLAB_MAX_DOCUMENT_BYTES:-33554432}
+      COLLAB_MAX_CONNECTION_AGE_MS: ${COLLAB_MAX_CONNECTION_AGE_MS:-21600000}
       COLLAB_MAX_CONNECTIONS: ${COLLAB_MAX_CONNECTIONS:-128}
       COLLAB_MAX_CONNECTIONS_PER_IP: ${COLLAB_MAX_CONNECTIONS_PER_IP:-16}
       COLLAB_MAX_CONNECTIONS_PER_ROOM: ${COLLAB_MAX_CONNECTIONS_PER_ROOM:-32}
@@ -96,6 +99,9 @@ services:
     build:
       context: ../..
       dockerfile: apps/paper_workspace/backup/Dockerfile
+    depends_on:
+      project-runtime:
+        condition: service_healthy
     environment:
       BACKUP_DB_PATH: /data/backups.sqlite3
       BACKUP_RETENTION: ${BACKUP_RETENTION:-50}
@@ -103,9 +109,11 @@ services:
       BACKUP_ASSET_DIR: /data/assets
       BACKUP_MAX_ASSET_BYTES: ${BACKUP_MAX_ASSET_BYTES:-16777216}
       BACKUP_MAX_PROJECT_ASSET_BYTES: ${BACKUP_MAX_PROJECT_ASSET_BYTES:-134217728}
+      BACKUP_PROJECT_RUNTIME: /run/project-runtime
     volumes:
       - ${BACKUP_DATA_SOURCE:-backup_data}:/data
       - ${BACKUP_EXPORT_SOURCE:-backup_exports}:/exports
+      - project_runtime:/run/project-runtime:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=2)"]
       interval: 30s
@@ -186,7 +194,7 @@ services:
     pids_limit: 32
     cpus: 0.25
     healthcheck:
-      test: ["CMD", "python", "-c", "from pathlib import Path; raise SystemExit(0 if Path('/output/.ready').is_file() else 1)"]
+      test: ["CMD", "python", "-c", "import time; from pathlib import Path; p=Path('/output/.ready'); raise SystemExit(0 if p.is_file() and time.time()-p.stat().st_mtime < 120 else 1)"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -211,6 +219,63 @@ services:
       - DAC_OVERRIDE
       - FOWNER
     restart: "no"
+  project-runtime:
+    image: paper-workspace-compiler
+    depends_on:
+      project-runtime-storage-init:
+        condition: service_completed_successfully
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint: ["python", "/app/sync_project_runtime.py"]
+    command:
+      - --default-project
+      - /project
+      - --projects
+      - /project-library
+      - --output
+      - /runtime
+      - --watch-seconds
+      - ${PROJECT_RUNTIME_WATCH_SECONDS:-10}
+    volumes:
+      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/project:ro
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/project-library:ro
+      - project_runtime:/runtime
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    pids_limit: 16
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time; from pathlib import Path; p=Path('/runtime/.ready'); raise SystemExit(0 if p.is_file() and time.time()-p.stat().st_mtime < 60 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+  project-runtime-storage-init:
+    image: paper-workspace-compiler
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - chown -R ${HOST_UID:-1000}:${HOST_GID:-1000} /runtime
+    volumes:
+      - project_runtime:/runtime
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    restart: "no"
   workspace:
     build:
       context: ../..
@@ -218,11 +283,12 @@ services:
     depends_on:
       project-thumbnails:
         condition: service_healthy
+      project-runtime:
+        condition: service_healthy
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     read_only: true
     volumes:
-      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/usr/share/nginx/html/project:ro
-      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/usr/share/nginx/html/projects:ro
+      - project_runtime:/usr/share/nginx/html/project-runtime:ro
       - project_thumbnails:/usr/share/nginx/html/generated-thumbnails:ro
     security_opt:
       - no-new-privileges:true
@@ -301,6 +367,12 @@ services:
     mem_limit: 256m
     pids_limit: 64
     cpus: 0.5
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-q", "-O", "/dev/null", "https://127.0.0.1/favicon.ico"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - edge
       - backup_internal
@@ -313,6 +385,7 @@ volumes:
   backup_exports:
   collaboration_data:
   project_thumbnails:
+  project_runtime:
   caddy_data:
   caddy_config:
 networks:

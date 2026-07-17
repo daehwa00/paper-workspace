@@ -21,6 +21,21 @@
     document.documentElement.lang = 'en'
   }
 
+  const nativeFetch = window.fetch.bind(window)
+  window.fetch = async (...args) => {
+    const response = await nativeFetch(...args)
+    let redirectedToLogin = false
+    try {
+      redirectedToLogin = response.status === 401 || (response.redirected && new URL(response.url).pathname.startsWith('/_auth/login'))
+    } catch {}
+    if (redirectedToLogin && !location.pathname.startsWith('/_auth/')) {
+      const returnTo = `${location.pathname}${location.search}${location.hash}`
+      location.assign(`/_auth/login?rd=${encodeURIComponent(returnTo)}`)
+      throw new DOMException('Authentication required', 'AbortError')
+    }
+    return response
+  }
+
   if (page !== 'workspace') return
 
   const redactError = value => String(value || 'unknown error')

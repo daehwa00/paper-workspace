@@ -7,6 +7,7 @@ const PORT = 8790;
 const MAX_BODY_BYTES = 120_000;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT = 10;
+const MAX_RATE_CLIENTS = 2_048;
 const bridgeToken = process.env.CODEX_BRIDGE_TOKEN || '';
 const codexHome = process.env.CODEX_HOME || '/home/node/.codex';
 const workspace = process.env.CODEX_WORKSPACE || '/tmp/codex-workspace';
@@ -90,9 +91,18 @@ function clientAddress(request) {
 function withinRateLimit(request) {
   const key = clientAddress(request);
   const now = Date.now();
+  for (const [client, timestamps] of calls) {
+    const active = timestamps.filter(timestamp => now - timestamp < RATE_WINDOW_MS);
+    if (active.length) calls.set(client, active);
+    else calls.delete(client);
+  }
+  if (!calls.has(key) && calls.size >= MAX_RATE_CLIENTS) {
+    calls.delete(calls.keys().next().value);
+  }
   const recent = (calls.get(key) || []).filter(timestamp => now - timestamp < RATE_WINDOW_MS);
   if (recent.length >= RATE_LIMIT) return false;
   recent.push(now);
+  calls.delete(key);
   calls.set(key, recent);
   return true;
 }

@@ -18,6 +18,7 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
   const files = document.getMap('files')
   const awareness = provider.awareness
   let bootstrapReady = false
+  const bootstrapSettleMs = 400
   awareness.setLocalStateField('user', actor)
 
   provider.on('status', event => onStatus?.(event.status))
@@ -101,11 +102,12 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
     encodeRange,
     resolveRange,
     resolveCursor,
+    isBootstrapLeader,
     updateActor,
     whenReady: Promise.all([
       persistence.whenSynced,
       new Promise(resolve => provider.once('sync', resolve))
-    ]).then(() => { bootstrapReady = true }),
+    ]).then(() => new Promise(resolve => setTimeout(resolve, bootstrapSettleMs))).then(() => { bootstrapReady = true }),
     destroy() {
       awareness.off('change', publishPeers)
       provider.destroy()
