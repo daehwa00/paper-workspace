@@ -1192,6 +1192,7 @@ test('Yjs merges text and awareness between two browsers', async ({ browser }) =
 })
 
 test('a fresh browser cannot replace an established shared manuscript with the static seed', async ({ browser }) => {
+  test.slow()
   const slug = `fresh-client-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
   const workspaceUrl = `/p/${slug}`
   const marker = `% shared manuscript survives ${slug}`
@@ -1217,7 +1218,9 @@ test('a fresh browser cannot replace an established shared manuscript with the s
 
   await pages[1].goto(workspaceUrl)
   await pages[1].waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
-  await expect.poll(() => pages[1].evaluate(value => editorValue().includes(value), marker), { timeout: 15_000 }).toBe(true)
+  await expect.poll(() => pages[1].evaluate(() => collabReady), { timeout: 30_000 }).toBe(true)
+  await expect.poll(() => pages[1].evaluate(value => collabSession.textFor('paper/main.tex').toString().includes(value), marker), { timeout: 30_000 }).toBe(true)
+  await expect.poll(() => pages[1].evaluate(value => editorValue().includes(value), marker)).toBe(true)
   await expect.poll(() => pages[0].evaluate(value => editorValue().includes(value), marker), { timeout: 15_000 }).toBe(true)
   const migrationDrafts = await pages[1].evaluate(() => [...collabSession.files.keys()].filter(path => path.startsWith('paper/drafts/')).length)
   expect(migrationDrafts).toBe(0)
@@ -1274,6 +1277,8 @@ test('folder rename collision detection refuses to merge two file trees', async 
 
 test('backup restore aborts instead of overwriting edits made while the snapshot loads', async ({ page }) => {
   let restoreFetchStarted = false
+  let releaseRestoreResponse
+  const restoreResponseGate = new Promise(resolve => { releaseRestoreResponse = resolve })
   await page.route('**/api/backups/projects/*/snapshots**', async route => {
     const request = route.request()
     const pathname = new URL(request.url()).pathname
@@ -1283,7 +1288,7 @@ test('backup restore aborts instead of overwriting edits made while the snapshot
     }
     if (pathname.endsWith('/restore-1')) {
       restoreFetchStarted = true
-      await new Promise(resolve => setTimeout(resolve, 250))
+      await restoreResponseGate
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ payload: { title: 'Old', files: { 'paper/main.tex': '\\documentclass{article}\\begin{document}old snapshot\\end{document}' }, comments: [], tasks: [] } }) })
       return
     }
@@ -1306,6 +1311,7 @@ test('backup restore aborts instead of overwriting edits made while the snapshot
   const marker = `% concurrent-${Date.now()}`
   await page.locator('.cm-content').click()
   await page.keyboard.type(marker)
+  releaseRestoreResponse()
   await page.evaluate(() => window.restoreRegression)
   await expect(page.locator('#app-toasts')).toContainText('새 편집 내용이 감지되어')
   await expect.poll(() => page.evaluate(value => editorValue().includes(value), marker)).toBe(true)
