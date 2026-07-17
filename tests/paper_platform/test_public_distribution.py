@@ -230,7 +230,8 @@ def test_public_edge_and_collaboration_are_hardened() -> None:
     assert "caddy:2.11.4-alpine" in compose
     assert 'user: "1000:1000"' in compose
     assert "service_completed_successfully" in compose
-    assert '"https://127.0.0.1/favicon.ico"' in compose
+    assert '"http://127.0.0.1:2019/config/"' in compose
+    assert '"https://127.0.0.1/favicon.ico"' not in compose
     assert "p.stat().st_mtime < 120" in compose
     assert "net.ipv4.ip_unprivileged_port_start" in compose
     assert "compiler_internal:" in compose and "internal: true" in compose
