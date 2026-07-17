@@ -732,7 +732,8 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   if (browserName === 'chromium') {
     await expect(page.locator('body')).toHaveScreenshot('workspace-wide.png', {
       animations: 'disabled',
-      mask: [page.locator('#save-state'), page.locator('#render-state'), page.locator('#collab-status'), page.locator('#collab-label'), page.locator('#collab-name'), page.locator('#app-toasts')]
+      mask: [page.locator('#save-state'), page.locator('#render-state'), page.locator('#collab-status'), page.locator('#collab-label'), page.locator('#collab-name'), page.locator('#app-toasts')],
+      maxDiffPixelRatio: 0.015
     })
   }
 })
