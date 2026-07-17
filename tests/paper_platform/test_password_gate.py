@@ -352,9 +352,11 @@ def test_logout_clears_the_session_cookie(monkeypatch) -> None:
 
 
 def test_edge_rejects_unsafe_requests_with_a_foreign_origin() -> None:
-    for name in ("Caddyfile", "Caddyfile.password"):
+    for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password"):
         source = (ROOT / "infra/paper-workspace" / name).read_text(encoding="utf-8")
         assert "@foreign_unsafe" in source
         assert "method POST PUT PATCH DELETE" in source
         assert "not header Origin https://{$PAPER_DOMAIN}" in source
-        assert "respond @foreign_unsafe 403" in source
+        assert "handle @foreign_unsafe {" in source
+        assert "respond 403" in source
+        assert source.index("handle @foreign_unsafe {") < source.index("handle /__client_error")

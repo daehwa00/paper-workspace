@@ -5,7 +5,9 @@
         header Origin *
         not header Origin https://{$PAPER_DOMAIN}
     }
-    respond @foreign_unsafe 403
+    handle @foreign_unsafe {
+        respond 403
+    }
     @client_error {
         path /__client_error
         method POST
