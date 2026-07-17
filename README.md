@@ -173,6 +173,8 @@ Use only letters, numbers, `-`, and `_` in slugs. Titles may change without chan
 
 Paths must be relative and cannot contain `..`. Any selected `.tex` file can be previewed: standalone documents compile directly, while fragments reuse the main preamble. The compiler accepts up to 120 files, a 48 MB request, and 32 MB of binary assets; browser uploads are limited to 8 MB per file.
 
+Interactive builds reuse only server-generated reference artifacts behind a short-lived opaque token, so ordinary prose edits usually need one LaTeX pass. Citation, label, or bibliography changes automatically run the additional settling passes. **Build source ZIP** always performs a clean multi-pass compile before packaging.
+
 Server files seed the browser workspace. Increment `version` in `project.json` when a deployed manuscript should replace an older browser seed.
 
 ## Everyday workflow

@@ -6,14 +6,16 @@ import hashlib
 import io
 import json
 import os
+import re
+import secrets
 import signal
 import subprocess
 import tempfile
 import time
-import re
 import threading
 import zipfile
 from collections import OrderedDict
+from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -24,10 +26,29 @@ MAX_PROJECT_FILES = 120
 MAX_ASSET_BYTES = 32_000_000
 COMPILE_CACHE_TTL = 600
 COMPILE_CACHE_ITEMS = 16
+BUILD_STATE_TTL = 600
+BUILD_STATE_ITEMS = 16
+BUILD_STATE_MAX_BYTES = 2_000_000
+BUILD_STATE_TOTAL_BYTES = 16_000_000
+BUILD_STATE_EXTENSIONS = {".aux", ".bbl", ".toc", ".out", ".lof", ".lot", ".nav", ".snm", ".vrb"}
+MAX_LATEX_PASSES = 3
 MAX_CONCURRENT_COMPILES = max(1, int(os.environ.get("PAPER_MAX_CONCURRENT_COMPILES", "2")))
 _compile_cache: OrderedDict[str, tuple[float, bytes, bytes, int]] = OrderedDict()
 _synctex_cache: OrderedDict[str, tuple[float, bytes]] = OrderedDict()
+
+
+@dataclass(frozen=True)
+class BuildState:
+    created_at: float
+    binding: tuple[str, str, str, str, str]
+    artifacts: dict[str, bytes]
+    bibliography_signature: str
+    size_bytes: int
+
+
+_build_states: OrderedDict[str, BuildState] = OrderedDict()
 _cache_lock = threading.Lock()
+_build_state_lock = threading.Lock()
 _process_lock = threading.Lock()
 _active_processes: dict[str, subprocess.Popen[str]] = {}
 _compile_slots = threading.BoundedSemaphore(MAX_CONCURRENT_COMPILES)
@@ -68,6 +89,102 @@ def _synctex_get(compile_id: str) -> bytes | None:
             return None
         _synctex_cache.move_to_end(compile_id)
         return cached[1]
+
+
+def _prune_build_states(now: float) -> None:
+    for token, state in list(_build_states.items()):
+        if now - state.created_at > BUILD_STATE_TTL:
+            _build_states.pop(token, None)
+    while len(_build_states) > BUILD_STATE_ITEMS:
+        _build_states.popitem(last=False)
+    while sum(state.size_bytes for state in _build_states.values()) > BUILD_STATE_TOTAL_BYTES:
+        _build_states.popitem(last=False)
+
+
+def _build_state_get(token: str | None, binding: tuple[str, str, str, str, str]) -> BuildState | None:
+    if not token or not re.fullmatch(r"[0-9a-f]{32}", token):
+        return None
+    now = time.monotonic()
+    with _build_state_lock:
+        _prune_build_states(now)
+        state = _build_states.get(token)
+        if state is None or state.binding != binding:
+            return None
+        _build_states.move_to_end(token)
+        return state
+
+
+def _build_state_put(
+    binding: tuple[str, str, str, str, str],
+    artifacts: dict[str, bytes],
+    bibliography_signature: str,
+    previous_token: str | None = None,
+) -> str | None:
+    size_bytes = sum(len(value) for value in artifacts.values())
+    if not artifacts or size_bytes > BUILD_STATE_MAX_BYTES:
+        if previous_token:
+            with _build_state_lock:
+                _build_states.pop(previous_token, None)
+        return None
+    token = secrets.token_hex(16)
+    state = BuildState(time.monotonic(), binding, artifacts, bibliography_signature, size_bytes)
+    with _build_state_lock:
+        if previous_token:
+            _build_states.pop(previous_token, None)
+        _build_states[token] = state
+        _build_states.move_to_end(token)
+        _prune_build_states(state.created_at)
+    return token
+
+
+def _snapshot_build_artifacts(work: Path) -> dict[str, bytes]:
+    artifacts: dict[str, bytes] = {}
+    total = 0
+    for path in sorted(work.rglob("*")):
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in BUILD_STATE_EXTENSIONS:
+            continue
+        relative = path.relative_to(work).as_posix()
+        safe_project_path(relative, BUILD_STATE_EXTENSIONS)
+        data = path.read_bytes()
+        total += len(data)
+        if total > BUILD_STATE_MAX_BYTES:
+            return {}
+        artifacts[relative] = data
+    return artifacts
+
+
+def _restore_build_artifacts(work: Path, artifacts: dict[str, bytes]) -> None:
+    for name, data in artifacts.items():
+        destination = work / safe_project_path(name, BUILD_STATE_EXTENSIONS)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+
+
+def _auxiliary_digest(work: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(work.rglob("*")):
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in BUILD_STATE_EXTENSIONS - {".bbl"}:
+            continue
+        digest.update(path.relative_to(work).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _bibliography_signature(aux: str, files: dict[str, str]) -> str:
+    digest = hashlib.sha256()
+    for line in aux.splitlines():
+        if line.startswith(("\\citation", "\\bibdata", "\\bibstyle")):
+            digest.update(line.encode())
+            digest.update(b"\n")
+    for name, content in sorted(files.items()):
+        if PurePosixPath(name).suffix.lower() in {".bib", ".bst"}:
+            digest.update(name.encode())
+            digest.update(b"\0")
+            digest.update(content.encode())
+            digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _needs_rerun(output: str) -> bool:
@@ -158,6 +275,58 @@ def restricted_tex_environment(texmf: Path) -> dict[str, str]:
     }
 
 
+def _run_latex_build(
+    work: Path,
+    compile_input: Path,
+    files: dict[str, str],
+    client_id: str,
+    texmf: Path,
+    warm: bool,
+    previous_bibliography_signature: str,
+) -> tuple[int, int, str]:
+    environment = restricted_tex_environment(texmf)
+
+    def run_latex() -> subprocess.CompletedProcess[str]:
+        result = _run_process(
+            ["pdflatex", "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-jobname=preview", str(compile_input)],
+            cwd=work, timeout=30, client_id=client_id, env=environment,
+        )
+        if result.returncode:
+            raise RuntimeError((result.stdout + result.stderr)[-6000:])
+        return result
+
+    before_digest = _auxiliary_digest(work)
+    result = run_latex()
+    latex_passes = 1
+    aux_path = work / "preview.aux"
+    aux = aux_path.read_text(encoding="utf-8", errors="replace")
+    bibliography_signature = _bibliography_signature(aux, files)
+    used_bibtex = "\\bibdata" in aux and (
+        not (work / "preview.bbl").is_file()
+        or bibliography_signature != previous_bibliography_signature
+    )
+    bibtex_runs = 0
+    if used_bibtex:
+        bibtex = _run_process(
+            ["bibtex", "preview"], cwd=work, timeout=30, client_id=client_id, env=environment,
+        )
+        if bibtex.returncode:
+            raise RuntimeError((bibtex.stdout + bibtex.stderr)[-6000:])
+        bibtex_runs = 1
+
+    after_digest = _auxiliary_digest(work)
+    needs_rerun = used_bibtex or before_digest != after_digest or _needs_rerun(result.stdout + result.stderr)
+    minimum_passes = 3 if used_bibtex else (1 if warm else 2)
+    while latex_passes < MAX_LATEX_PASSES and (latex_passes < minimum_passes or needs_rerun):
+        before_digest = _auxiliary_digest(work)
+        result = run_latex()
+        latex_passes += 1
+        after_digest = _auxiliary_digest(work)
+        needs_rerun = before_digest != after_digest or _needs_rerun(result.stdout + result.stderr)
+
+    return latex_passes, bibtex_runs, bibliography_signature
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
@@ -180,19 +349,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if size > MAX_REQUEST_BYTES:
+            if size < 1 or size > MAX_REQUEST_BYTES:
                 raise ValueError("project exceeds 48 MB")
             raw_payload = self.rfile.read(size)
+            payload = json.loads(raw_payload)
             client_id = self.headers.get("X-Compile-Client", "")
             if client_id and (len(client_id) > 80 or not re.fullmatch(r"[A-Za-z0-9_-]+", client_id)):
                 raise ValueError("invalid compile client")
-            cache_key = hashlib.sha256(raw_payload).hexdigest()
-            if cached := _cache_get(cache_key):
-                pdf, synctex, elapsed_ms = cached
-                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
-                self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
-                return
-            payload = json.loads(raw_payload)
             files = payload["files"]
             assets = payload.get("assets", {})
             if payload.get("remote_assets"):
@@ -200,6 +363,8 @@ class Handler(BaseHTTPRequestHandler):
             entrypoint = payload.get("entrypoint", "main.tex")
             root_entrypoint = payload.get("root_entrypoint", "main.tex")
             preview_mode = payload.get("preview_mode", "document")
+            workspace_id = payload.get("workspace_id", "")
+            build_mode = payload.get("build_mode", "incremental")
             if not isinstance(files, dict) or not isinstance(files.get("main.tex"), str):
                 raise ValueError("main.tex is required")
             if not isinstance(entrypoint, str) or not entrypoint.endswith(".tex"):
@@ -208,6 +373,19 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("root_entrypoint must be a .tex file")
             if preview_mode not in {"document", "fragment"}:
                 raise ValueError("invalid preview mode")
+            if not isinstance(workspace_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", workspace_id):
+                raise ValueError("invalid workspace id")
+            if build_mode not in {"incremental", "clean"}:
+                raise ValueError("invalid build mode")
+            binding = (client_id, workspace_id, entrypoint, root_entrypoint, preview_mode)
+            requested_state_id = self.headers.get("X-Compile-State", "")
+            bound_state = _build_state_get(requested_state_id, binding) if client_id else None
+            cache_key = hashlib.sha256(raw_payload).hexdigest()
+            if cached := _cache_get(cache_key):
+                pdf, synctex, elapsed_ms = cached
+                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "build_mode": "cached", "passes": 0, "bibtex_runs": 0, "build_state_id": requested_state_id if bound_state else "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
+                return
             if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
                 raise ValueError("too many project files")
             source_paths = {name: safe_project_path(name, SOURCE_EXTENSIONS) for name in files}
@@ -239,6 +417,9 @@ class Handler(BaseHTTPRequestHandler):
                     work = Path(directory)
                     texmf = work / ".texmf"
                     texmf.mkdir()
+                    warm = build_mode == "incremental" and bound_state is not None
+                    if warm:
+                        _restore_build_artifacts(work, bound_state.artifacts)
                     for name, content in files.items():
                         destination = work / source_paths[name]
                         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -263,38 +444,23 @@ class Handler(BaseHTTPRequestHandler):
                         )
                         compile_input = Path("__fragment_preview.tex")
                         (work / compile_input).write_text(wrapper, encoding="utf-8")
-                    def run_latex() -> subprocess.CompletedProcess[str]:
-                        result = _run_process(
-                            ["pdflatex", "-synctex=1", "-interaction=nonstopmode", "-halt-on-error", "-no-shell-escape", "-jobname=preview", str(compile_input)],
-                            cwd=work, timeout=30, client_id=client_id,
-                            env=restricted_tex_environment(texmf),
-                        )
-                        if result.returncode:
-                            raise RuntimeError((result.stdout + result.stderr)[-6000:])
-                        return result
-
-                    result = run_latex()
-                    aux = (work / "preview.aux").read_text(encoding="utf-8", errors="replace")
-                    used_bibtex = False
-                    if "\\bibdata" in aux:
-                        bibtex = _run_process(
-                            ["bibtex", "preview"], cwd=work, timeout=30, client_id=client_id,
-                            env=restricted_tex_environment(texmf),
-                        )
-                        if bibtex.returncode:
-                            raise RuntimeError((bibtex.stdout + bibtex.stderr)[-6000:])
-                        used_bibtex = True
-                    result = run_latex()
-                    if used_bibtex or _needs_rerun(result.stdout + result.stderr):
-                        run_latex()
+                    latex_passes, bibtex_runs, bibliography_signature = _run_latex_build(
+                        work, compile_input, files, client_id, texmf, warm,
+                        bound_state.bibliography_signature if warm else "",
+                    )
                     pdf = (work / "preview.pdf").read_bytes()
                     synctex = (work / "preview.synctex.gz").read_bytes()
+                    artifacts = _snapshot_build_artifacts(work)
             finally:
                 _compile_slots.release()
             elapsed_ms = round((time.monotonic() - started) * 1000)
+            build_state_id = _build_state_put(
+                binding, artifacts, bibliography_signature,
+                requested_state_id if bound_state else None,
+            ) if client_id else None
             compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
-            self._json(HTTPStatus.OK, {"elapsed_ms": elapsed_ms, "cached": False, "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
-        except (KeyError, ValueError, binascii.Error, RuntimeError, subprocess.TimeoutExpired) as error:
+            self._json(HTTPStatus.OK, {"elapsed_ms": elapsed_ms, "cached": False, "build_mode": "incremental" if warm else "clean", "passes": latex_passes, "bibtex_runs": bibtex_runs, "build_state_id": build_state_id or "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
+        except (KeyError, ValueError, binascii.Error, json.JSONDecodeError, RuntimeError, subprocess.TimeoutExpired) as error:
             self._json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": str(error)})
 
     def _synctex(self) -> None:

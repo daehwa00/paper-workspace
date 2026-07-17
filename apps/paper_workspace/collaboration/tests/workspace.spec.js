@@ -368,6 +368,50 @@ test('a superseded compile response cannot replace the latest PDF state', async 
   })
 })
 
+test('compile state is reused for edits while final builds stay clean', async ({ page }) => {
+  const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
+  const requests = []
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route('**/api/compile', route => {
+    const request = route.request(), index = requests.length
+    requests.push({ payload: request.postDataJSON(), state: request.headers()['x-compile-state'] })
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        elapsed_ms: index ? 8 : 24,
+        cached: false,
+        build_state_id: index === 0 ? '11111111111111111111111111111111' : '22222222222222222222222222222222',
+        compile_id: '1234567890abcdef12345678',
+        pdf_audit: { page_count: 1 },
+        pdf_base64: pdf.toString('base64'),
+        synctex_base64: synctex.toString('base64'),
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect.poll(() => requests.length).toBe(1)
+  await page.evaluate(async () => {
+    const value = `${editorValue()}\n% incremental edit`
+    setEditorValue(value)
+    state.files[state.current] = value
+    await runUpdate()
+    await runUpdate({ fullBuild: true })
+  })
+
+  expect(requests).toHaveLength(3)
+  expect(requests[0].payload.workspace_id).toBe('default')
+  expect(requests[0].state).toBeUndefined()
+  expect(requests[1].state).toBe('11111111111111111111111111111111')
+  expect(requests[1].payload.build_mode).toBeUndefined()
+  expect(requests[2].state).toBe('22222222222222222222222222222222')
+  expect(requests[2].payload.build_mode).toBe('clean')
+})
+
 test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {
   await page.goto('/')
   const normalized = await page.evaluate(() => {
