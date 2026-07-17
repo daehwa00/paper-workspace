@@ -755,7 +755,9 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
     assert "preservedDraftPath=`paper/drafts/${previousVersion}.tex`" in app
     assert "state.files['paper/main.tex']=remoteMain" in app
     assert "def _needs_rerun" in compiler
-    assert "if used_bibtex or _needs_rerun" in compiler
+    assert "def _run_latex_build" in compiler
+    assert "minimum_passes = 3 if used_bibtex" in compiler
+    assert '"build_state_id"' in compiler
     assert '"compile_id"' in compiler
     assert '"-synctex=1"' in compiler
     assert '"-jobname=preview"' in compiler
@@ -793,7 +795,12 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "const releasePage=entry=>" in app
     assert "_cache_get" in compiler
     assert "COMPILE_CACHE_TTL" in compiler
-    assert "if used_bibtex or _needs_rerun" in compiler
+    assert "_snapshot_build_artifacts" in compiler
+    assert "_restore_build_artifacts" in compiler
+    assert "BUILD_STATE_MAX_BYTES" in compiler
+    assert "workspace_id:projectSlug" in app
+    assert "X-Compile-State" in app
+    assert "runUpdate({fullBuild:true})" in app
     assert "PAPER_PROJECTS_ROOT" not in compose
     assert ":/projects:ro" not in compose
     assert ":/project-default:ro" not in compose
