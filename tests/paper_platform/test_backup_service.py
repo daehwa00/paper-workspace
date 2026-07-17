@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import sqlite3
 import threading
 import time
 import urllib.error
@@ -60,6 +62,30 @@ def test_retention_keeps_latest_snapshots_per_project(tmp_path: Path) -> None:
     with pytest.raises(backup.SnapshotNotFound):
         store.get("paper-one", created[0]["id"])
     assert len(store.list("paper-two")) == 1
+
+
+def test_snapshot_list_does_not_read_large_payload_blobs(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    database = tmp_path / "backups.sqlite3"
+    store = backup.BackupStore(database, retention=3)
+    large_source = "".join(
+        hashlib.sha256(str(index).encode()).hexdigest() for index in range(512)
+    )
+    created, _ = store.create("paper-one", snapshot_payload(large_source), None, "auto")
+    with store._connect() as connection:
+        assert connection.execute(
+            "SELECT length(payload) FROM snapshots WHERE id = ?", (created["id"],)
+        ).fetchone()[0] > 1024
+
+    original_connect = store._connect
+
+    def metadata_limited_connection() -> sqlite3.Connection:
+        connection = original_connect()
+        connection.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 1024)
+        return connection
+
+    store._connect = metadata_limited_connection
+    assert store.list("paper-one") == [created]
 
 
 def test_deduplicated_checkpoint_is_recent_and_survives_retention(tmp_path: Path) -> None:
