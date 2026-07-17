@@ -69,6 +69,7 @@ $('close-source-conflict').onclick=()=>{sourceConflictDismissed=true;sourceConfl
 function configuredTimeout(name,fallback){const value=Number(window[name]);return Number.isFinite(value)&&value>=50?value:fallback}
 const collaborationWatchdogMs=configuredTimeout('__paperCollaborationWatchdogMs',8000);
 const compileRequestTimeoutMs=configuredTimeout('__paperCompileRequestTimeoutMs',40000);
+const serverSourcePollMs=configuredTimeout('__paperServerSourcePollMs',10000);
 const archivedDraftLimit=30;
 let richEditor=null;
 function initializeRichEditor(){
@@ -119,7 +120,8 @@ function bibliographyEntries(value){const entries=[];const pattern=/@[A-Za-z]+\s
 function mergeBibliography(local,canonical){const localEntries=bibliographyEntries(local);const keys=new Set(localEntries.map(entry=>entry.key));const missing=bibliographyEntries(canonical).filter(entry=>!keys.has(entry.key));if(!missing.length)return local;return [String(local||'').trim(),...missing.map(entry=>entry.text)].filter(Boolean).join('\n\n')+'\n'}
 async function fetchProjectSource(name,path){try{const response=await fetch(path,{headers:{Accept:'text/plain'},cache:'no-store'});const contentType=response.headers.get('content-type')||'';if(!response.ok||contentType.toLowerCase().includes('text/html'))return null;const value=await response.text();return isProjectSource(name,value)?value:null;}catch{return null}}
 function bytesToBase64(bytes){let binary='';const chunk=0x8000;for(let offset=0;offset<bytes.length;offset+=chunk)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+chunk,bytes.length)));return btoa(binary)}
-function projectFileUrl(path){return `${projectBase}/project/${String(path).split('/').map(encodeURIComponent).join('/')}`}
+function runtimeFileRevision(manifest,path){const value=manifest?.runtime_file_revisions?.[path];return /^[0-9a-f]{64}$/.test(String(value||''))?String(value):''}
+function projectFileUrl(path,manifest=projectManifest){const base=`${projectBase}/project/${String(path).split('/').map(encodeURIComponent).join('/')}`,revision=runtimeFileRevision(manifest,path);return revision?`${base}?v=${revision.slice(0,16)}`:base}
 async function fetchPreviewArtifact(){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(projectFileUrl(projectManifest.preview_pdf),{cache:'no-store'});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(projectFileUrl(projectManifest.preview_synctex),{cache:'no-store'});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
 function ensureFolder(path){if(!state.folders.includes(path))state.folders.push(path)}
 const collaboratorPalette=['#2457d6','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#db2777'];
@@ -255,6 +257,65 @@ function draftQueuePaths(){const queue=[],seen=new Set();for(const path of Objec
 function pruneDraftQueue({sync=false}={}){const queue=draftQueuePaths(),excess=queue.length-archivedDraftLimit;if(excess<=0)return[];const active=state.current?.startsWith('paper/drafts/')?state.current:'';const removed=queue.filter(path=>path!==active).slice(0,excess);for(const path of removed)delete state.files[path];if(sync&&removed.length)collabSession.document.transact(()=>{for(const path of removed)collabSession.files.delete(path)},actor.id);return removed}
 function publishSharedTree(){pruneDraftQueue();if(!sharedMetadataReady)return;collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
 function replaceSharedText(text,value){const current=text.toString();if(current===value)return;let prefix=0;while(prefix<current.length&&prefix<value.length&&current[prefix]===value[prefix])prefix+=1;let suffix=0;while(suffix<current.length-prefix&&suffix<value.length-prefix&&current[current.length-1-suffix]===value[value.length-1-suffix])suffix+=1;text.doc.transact(()=>{const removed=current.length-prefix-suffix;if(removed)text.delete(prefix,removed);const inserted=value.slice(prefix,value.length-suffix);if(inserted)text.insert(prefix,inserted)},actor.id)}
+function serverSourceFingerprints(manifest,sources){const fingerprints={};for(const item of serverManagedManifestItems(manifest)){const path=`paper/${item.path}`,source=sources[path];if(typeof source==='string')fingerprints[path]=sourceFingerprint(source)}return fingerprints}
+function initializeServerRuntimeState(remoteSources){
+  if(!projectManifest.runtime_revision||!collabSession.isBootstrapLeader?.()||sharedProject.get('serverRuntimeRevision'))return;
+  const paths=serverManagedManifestItems(projectManifest).map(item=>`paper/${item.path}`),fingerprints=serverSourceFingerprints(projectManifest,remoteSources);
+  collabSession.document.transact(()=>{if(sharedProject.get('serverRuntimeRevision'))return;sharedProject.set('serverRuntimeRevision',projectManifest.runtime_revision);sharedProject.set('serverManagedPaths',paths);sharedProject.set('serverSourceFingerprints',fingerprints)},actor.id)
+}
+function changedManifestPaths(previous,next){
+  const describe=manifest=>new Map((manifest.files||[]).map(item=>{const source=item.source||item.path;return [`paper/${item.path}`,`${item.type||'text'}:${source}:${runtimeFileRevision(manifest,source)}`]}));
+  const before=describe(previous),after=describe(next),paths=new Set([...before.keys(),...after.keys()]);
+  return [...paths].filter(path=>before.get(path)!==after.get(path))
+}
+function adoptServerManifest(manifest,sources={}, {changedPaths=[],preservedPaths=[],scheduleCompile=false}={}){
+  const previous=projectManifest,currentPath=state.current,selection=editorSelection();
+  projectManifest=manifest;syncRemoteManifestAssets(manifest,previous);
+  for(const [path,value] of Object.entries(sources)){if(path==='paper/main.tex')state.serverMainSnapshot=sourceFingerprint(value);else state.serverSourceSnapshots[path]=sourceFingerprint(value)}
+  const sharedFingerprints=sharedProject.get('serverSourceFingerprints');
+  if(sharedFingerprints&&typeof sharedFingerprints==='object'&&!Array.isArray(sharedFingerprints))for(const item of serverManagedManifestItems(manifest)){const path=`paper/${item.path}`,fingerprint=sharedFingerprints[path];if(typeof fingerprint!=='string')continue;if(path==='paper/main.tex')state.serverMainSnapshot=fingerprint;else state.serverSourceSnapshots[path]=fingerprint}
+  for(const retired of manifest.retired_paths||[])delete state.serverSourceSnapshots[`paper/${retired}`];
+  for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string')state.files[path]=value}
+  for(const path of Object.keys(state.files))ensureFolderChain(parentPath(path));
+  if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];
+  if(state.current&&(!activeAsset||!state.assets[activeAsset])){setEditor();if(state.current===currentPath)setEditorSelection(Math.min(selection.start,editorValue().length),Math.min(selection.end,editorValue().length))}
+  listFiles();syncProjectTitleFromTex(true);renderReferenceInventory();save();
+  if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
+  if(scheduleCompile&&changedPaths.some(path=>compileTextExtensions.has(extensionOf(path))||compileAssetExtensions.has(extensionOf(path))))markCompileInputsChanged()
+}
+function waitForServerRuntimeRevision(revision,timeoutMs=5000){
+  if(sharedProject.get('serverRuntimeRevision')===revision)return Promise.resolve(true);
+  return new Promise(resolve=>{let settled=false;const finish=value=>{if(settled)return;settled=true;clearTimeout(timer);sharedProject.unobserve(observer);resolve(value)},observer=()=>{if(sharedProject.get('serverRuntimeRevision')===revision)finish(true)},timer=setTimeout(()=>finish(false),timeoutMs);sharedProject.observe(observer)})
+}
+async function submitServerRuntimeUpdate(manifest,previousRevision){
+  const response=await fetch(`/collab-runtime/${encodeURIComponent(collaborationRoom)}`,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({previous_runtime_revision:previousRevision,runtime_revision:manifest.runtime_revision})});
+  const result=await response.json().catch(()=>({}));
+  if(response.status===409)return {conflict:true,currentRevision:String(result.current_revision||'')};
+  if(!response.ok)throw new Error(result.error||'서버 원고를 공동 작업공간에 반영하지 못했습니다.');
+  const synchronized=await waitForServerRuntimeRevision(manifest.runtime_revision);
+  if(!synchronized)throw new Error('서버 원고는 저장되었지만 공동 편집 화면 반영을 기다리고 있습니다.');
+  return {applied:!result.deduplicated,preservedPaths:Array.isArray(result.preserved_paths)?result.preserved_paths:[]}
+}
+let serverSourceRefreshTimer=0,serverSourceRefreshBusy=false,lastServerSourceRefreshError='';
+async function refreshServerSources(){
+  if(serverSourceRefreshBusy||!sharedMetadataReady||!projectManifest.runtime_revision)return false;
+  serverSourceRefreshBusy=true;
+  try{
+    const manifest=await loadProjectManifest();if(!manifest.runtime_revision)return false;
+    const appliedRevision=sharedProject.get('serverRuntimeRevision');
+    if(manifest.runtime_revision===projectManifest.runtime_revision&&appliedRevision===manifest.runtime_revision)return false;
+    if(appliedRevision===manifest.runtime_revision){adoptServerManifest(manifest,{}, {changedPaths:changedManifestPaths(projectManifest,manifest)});lastServerSourceRefreshError='';return true}
+    if(!collabReady||!/^[0-9a-f]{64}$/.test(String(appliedRevision||'')))return false;
+    const changedPaths=changedManifestPaths(projectManifest,manifest),result=await submitServerRuntimeUpdate(manifest,appliedRevision);
+    if(result.conflict)return false;
+    adoptServerManifest(manifest,{}, {changedPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(path=>compileAssetExtensions.has(extensionOf(path)))});pruneDraftQueue({sync:true});markProjectActivity('server-sync');lastServerSourceRefreshError='';
+    if(result.applied)notify(result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영'});
+    return true
+  }catch(error){const message=String(error?.message||error);if(lastServerSourceRefreshError!==message){lastServerSourceRefreshError=message;notify(message,{title:'서버 원고 확인 지연',tone:'warning'})}return false}
+  finally{serverSourceRefreshBusy=false}
+}
+function scheduleServerSourceRefresh(delay=serverSourcePollMs){clearTimeout(serverSourceRefreshTimer);if(!projectManifest.runtime_revision)return;serverSourceRefreshTimer=setTimeout(async()=>{await refreshServerSources();scheduleServerSourceRefresh()},delay)}
+function initializeServerSourceRefresh(){if(!projectManifest.runtime_revision)return;scheduleServerSourceRefresh();window.addEventListener('focus',refreshServerSources);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshServerSources()})}
 function syncCurrentFileToShared(){if(!sharedText||activeAsset||state.current!==sharedText._paperPath)return;replaceSharedText(sharedText,editorValue())}
 function transformSharedIndex(index,delta){let oldPosition=0,newPosition=0;for(const part of delta){if(part.retain){if(index<=oldPosition+part.retain)return newPosition+(index-oldPosition);oldPosition+=part.retain;newPosition+=part.retain}else if(part.insert)newPosition+=typeof part.insert==='string'?part.insert.length:1;else if(part.delete){if(index<=oldPosition+part.delete)return newPosition;oldPosition+=part.delete}}return newPosition+(index-oldPosition)}
 function bindSharedFile(path){if(sharedText&&sharedTextObserver)sharedText.unobserve(sharedTextObserver);sharedText=collabSession.textFor(path,state.files[path]||'');sharedText._paperPath=path;const sharedValue=sharedText.toString();if(sharedValue&&sharedValue!==state.files[path])state.files[path]=sharedValue;sharedTextObserver=event=>{if(event.transaction.origin===actor.id||sharedText._paperPath!==state.current)return;const selection=editorSelection(),start=transformSharedIndex(selection.start,event.delta),end=transformSharedIndex(selection.end,event.delta),value=sharedText.toString();state.files[state.current]=value;setEditorValueWithoutActivity(value);setEditorSelection(Math.min(start,value.length),Math.min(end,value.length));$('save-state').textContent=collabReady?'공동 편집 반영됨':'오프라인 변경 병합 중';updateEditorMetadata();renderRemoteCursors();renderCommentAnchors()};sharedText.observe(sharedTextObserver)}
@@ -765,7 +826,27 @@ $('fix-compile-error').onclick=requestCompileDiagnosticFix;
 $('ask').onclick=()=>{const instruction=$('instruction').value.trim();if(!instruction){$('instruction').focus();return}requestCodexRevision(selectedEditorRange(),instruction)};
 $('add-comment').onclick=()=>{const selection=selectedEditorRange();const body=$('comment-body').value.trim();if(!selection||!body){alert('본문에서 문장을 드래그하고 댓글을 입력해 주세요.');return;}addCommentForSelection(selection,body);$('comment-body').value='';activeSelection=null;};
 function validManifestPath(path){return typeof path==='string'&&path.length>0&&path.length<=240&&!path.startsWith('/')&&!path.split('/').some(part=>!part||part==='.'||part==='..')}
-async function loadProjectManifest(){const response=await fetch(`${projectBase}/project/project.json`,{cache:'no-store'});if(!response.ok)throw new Error('project.json을 찾지 못했습니다.');const manifest=await response.json();const previewEntrypointList=manifest.preview_entrypoints??[manifest.entrypoint||'main.tex'];const retiredPaths=manifest.retired_paths??[];if(!Array.isArray(manifest.files)||!validManifestPath(manifest.entrypoint||'main.tex')||!Array.isArray(previewEntrypointList)||previewEntrypointList.some(path=>!validManifestPath(path)||!path.endsWith('.tex'))||!Array.isArray(retiredPaths)||retiredPaths.some(path=>!validManifestPath(path))||(manifest.preview_pdf&&!validManifestPath(manifest.preview_pdf))||(manifest.preview_synctex&&!validManifestPath(manifest.preview_synctex)))throw new Error('project.json 형식이 올바르지 않습니다.');for(const item of manifest.files)if(!item||!validManifestPath(item.path)||(item.source&&!validManifestPath(item.source)))throw new Error('project.json에 잘못된 파일 경로가 있습니다.');return {...manifest,entrypoint:manifest.entrypoint||'main.tex',preview_entrypoints:previewEntrypointList,retired_paths:retiredPaths,version:String(manifest.version||'unversioned')}}
+function validRuntimeFileRevisions(value){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,revision])=>validManifestPath(path)&&/^[0-9a-f]{64}$/.test(String(revision||'')))}
+function serverManagedManifestItems(manifest){const entrypoint=manifest.entrypoint||'main.tex';return manifest.files.filter(item=>item.type!=='asset'&&(item.managed||item.path===entrypoint))}
+function syncRemoteManifestAssets(manifest,previous=projectManifest){
+  const previousItems=new Map((previous.files||[]).filter(item=>item.type==='asset').map(item=>[`paper/${item.path}`,item]));
+  const nextItems=(manifest.files||[]).filter(item=>item.type==='asset'),nextPaths=new Set(nextItems.map(item=>`paper/${item.path}`));
+  for(const path of [...remoteAssetPaths]){
+    if(nextPaths.has(path))continue;
+    remoteAssetPaths.delete(path);remoteAssetSources.delete(path);
+    if(state.assets[path]?.remote){delete state.assets[path];deleteLocalAsset(path).catch(()=>{})}
+  }
+  for(const item of nextItems){
+    const name=`paper/${item.path}`,source=item.source||item.path,previousItem=previousItems.get(name),previousSource=previousItem?.source||previousItem?.path||'';
+    const changed=Boolean(previousItem&&runtimeFileRevision(previous,previousSource)!==runtimeFileRevision(manifest,source));
+    const existing=state.assets[name]||{};
+    if(changed){delete existing.data;delete existing.loading;deleteLocalAsset(name).catch(()=>{})}
+    remoteAssetPaths.add(name);remoteAssetSources.set(name,projectFileUrl(source,manifest));
+    state.assets[name]={...existing,type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||existing.size||0,remote:true};
+  }
+  if(activeAsset&&!state.assets[activeAsset])setEditor()
+}
+async function loadProjectManifest(){const response=await fetch(`${projectBase}/project/project.json`,{cache:'no-store'});if(!response.ok)throw new Error('project.json을 찾지 못했습니다.');const manifest=await response.json();const previewEntrypointList=manifest.preview_entrypoints??[manifest.entrypoint||'main.tex'];const retiredPaths=manifest.retired_paths??[],runtimeRevision=manifest.runtime_revision??'',runtimeFileRevisions=manifest.runtime_file_revisions??{};if(!Array.isArray(manifest.files)||!validManifestPath(manifest.entrypoint||'main.tex')||!Array.isArray(previewEntrypointList)||previewEntrypointList.some(path=>!validManifestPath(path)||!path.endsWith('.tex'))||!Array.isArray(retiredPaths)||retiredPaths.some(path=>!validManifestPath(path))||(manifest.preview_pdf&&!validManifestPath(manifest.preview_pdf))||(manifest.preview_synctex&&!validManifestPath(manifest.preview_synctex))||(runtimeRevision&&!/^[0-9a-f]{64}$/.test(String(runtimeRevision)))||(runtimeRevision&&!validRuntimeFileRevisions(runtimeFileRevisions)))throw new Error('project.json 형식이 올바르지 않습니다.');for(const item of manifest.files)if(!item||!validManifestPath(item.path)||(item.source&&!validManifestPath(item.source)))throw new Error('project.json에 잘못된 파일 경로가 있습니다.');return {...manifest,entrypoint:manifest.entrypoint||'main.tex',preview_entrypoints:previewEntrypointList,retired_paths:retiredPaths,version:String(manifest.version||'unversioned'),runtime_revision:String(runtimeRevision),runtime_file_revisions:runtimeFileRevisions}}
 async function loadProject(){
   try{projectManifest=await loadProjectManifest()}catch(error){$('render-state').textContent='프로젝트 설정 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>프로젝트를 불러오지 못했습니다.</strong><br>${esc(error.message)}</div>`;return}
   for(const path of state.uploads)if(state.assets[path]?.data)await storeLocalAsset(path,state.assets[path]).catch(()=>{});
@@ -777,14 +858,11 @@ async function loadProject(){
   const remoteSources={};
   remoteAssetPaths.clear();
   remoteAssetSources.clear();
+  syncRemoteManifestAssets(projectManifest,{files:[],runtime_file_revisions:{}});
   await Promise.all(projectManifest.files.map(async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
-    if(item.type==='asset'){
-      remoteAssetPaths.add(name);
-      remoteAssetSources.set(name,projectFileUrl(source));
-      state.assets[name]={type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||0,data:'',remote:true};
-    }else{
+    if(item.type!=='asset'){
       const value=await fetchProjectSource(name,projectFileUrl(source));
       if(value)remoteSources[name]=value;
     }
@@ -808,7 +886,11 @@ async function loadProject(){
   let sharedProjectVersion=sharedProject.get('manifestVersion');
   if(typeof sharedProjectVersion!=='string')sharedProjectVersion='';
   if(!sharedProjectVersion&&canCoordinateProjectUpgrade){sharedProjectVersion=typeof state.projectVersion==='string'&&state.projectVersion?state.projectVersion:projectManifest.version;sharedProject.set('manifestVersion',sharedProjectVersion)}
-  const projectVersionChanged=canCoordinateProjectUpgrade&&Boolean(sharedProjectVersion&&sharedProjectVersion!==projectManifest.version);
+  const sharedRuntimeRevision=String(sharedProject.get('serverRuntimeRevision')||''),runtimeSynchronizationRequired=Boolean(projectManifest.runtime_revision&&/^[0-9a-f]{64}$/.test(sharedRuntimeRevision)&&sharedRuntimeRevision!==projectManifest.runtime_revision);
+  // Once a room has runtime metadata, only the collaboration server may apply
+  // a staged source revision. The legacy version migration remains available
+  // solely for rooms that predate the runtime-revision protocol.
+  const projectVersionChanged=!runtimeSynchronizationRequired&&canCoordinateProjectUpgrade&&Boolean(sharedProjectVersion&&sharedProjectVersion!==projectManifest.version);
   const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,localMain))||(!state.serverMainSnapshot&&projectVersionChanged)));
   const serverManagedProjectFiles=new Set(projectManifest.files.filter(item=>item.managed).map(item=>`paper/${item.path}`));
   const retiredProjectFiles=new Set(projectManifest.retired_paths.map(path=>`paper/${path}`));
@@ -895,7 +977,8 @@ async function loadProject(){
   if(typeof synchronizedProjectVersion==='string'&&synchronizedProjectVersion)state.projectVersion=synchronizedProjectVersion;
   for(const [path,text] of collabSession.files){if(projectVersionChanged&&serverManagedProjectFiles.has(path))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
   pruneDraftQueue();
-  initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);if(!renderedPdfUrl)render();listFiles();save();initializeServerBackups();
+  initializeServerRuntimeState(remoteSources);
+  initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);if(!renderedPdfUrl)render();listFiles();save();initializeServerBackups();initializeServerSourceRefresh();
   if(preservedDraftPath&&!sourceConflictDismissed){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
   if(isLatexDocument(state.files['paper/main.tex'])){
     const preview=await previewPromise;
@@ -918,4 +1001,4 @@ initializeRichEditor();
 loadProject().catch(error=>{reportClientError(error,'loadProject');$('render-state').textContent='프로젝트 로드 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>원고 로드 오류</strong><br>${esc(error.message)}</div>`;notify(error.message,{title:'원고를 불러오지 못했습니다.',tone:'error'})});
 installOptionalFeature('초기 편집 화면',setEditor);installOptionalFeature('초기 파일 목록',listFiles);installOptionalFeature('초기 댓글',renderComments);installOptionalFeature('초기 PDF 화면',render);
 for(const [name,installer] of [['패널 조절',installPanelResizers],['집중 화면',installFocusModes],['확대·축소',installZoomControls],['자료 미리보기',installAssetViewer],['PDF 페이지 표시',installPdfPageIndicator],['편집기 단축키',installEditorShortcuts],['선택 영역 도구',installSelectionTools],['논문 작성 도구',installAuthoringTools],['상태 센터',installStatusCenter]])installOptionalFeature(name,installer);
-let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{clearTimeout(window.saveTimer);if(!activeAsset&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save();richEditor?.destroy();collabSession.destroy()});
+let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer);if(!activeAsset&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save();richEditor?.destroy();collabSession.destroy()});

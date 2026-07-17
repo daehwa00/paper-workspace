@@ -79,6 +79,11 @@
                 header_up X-Paper-Actor {http.request.header.X-Auth-Request-Email}
             }
         }
+        handle /collab-runtime/* {
+            reverse_proxy collaboration:8765 {
+                header_up X-Paper-Actor {http.request.header.X-Auth-Request-Email}
+            }
+        }
         handle /collab* {
             reverse_proxy collaboration:8765 {
                 header_up X-Paper-Actor {http.request.header.X-Auth-Request-Email}

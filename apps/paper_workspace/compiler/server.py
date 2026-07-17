@@ -328,29 +328,68 @@ def restricted_tex_environment(texmf: Path) -> dict[str, str]:
     }
 
 
-def validated_synctex(data: bytes) -> bytes:
+def expanded_synctex(data: bytes) -> bytes:
     if len(data) > MAX_SYNCTEX_BYTES:
         raise ValueError("SyncTeX data is too large")
     if not data.startswith(b"\x1f\x8b"):
         raise ValueError("SyncTeX data is not gzip encoded")
     expanded = 0
+    chunks: list[bytes] = []
     try:
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
             while chunk := stream.read(65_536):
                 expanded += len(chunk)
                 if expanded > MAX_SYNCTEX_EXPANDED_BYTES:
                     raise ValueError("SyncTeX expanded data is too large")
+                chunks.append(chunk)
     except (EOFError, OSError) as error:
         raise ValueError("SyncTeX data is invalid") from error
+    return b"".join(chunks)
+
+
+def validated_synctex(data: bytes) -> bytes:
+    expanded_synctex(data)
     return data
+
+
+def normalized_synctex(data: bytes, work: Path, project_tex_paths: set[str]) -> bytes:
+    """Replace ephemeral compile roots with validated project-relative paths."""
+    expanded = expanded_synctex(data)
+    root = work.resolve()
+    allowed = {safe_project_path(path, {".tex"}).as_posix() for path in project_tex_paths}
+    normalized: list[bytes] = []
+    input_line = re.compile(rb"^(Input:\d+:)(.*?)(\r?\n)?$")
+    for line in expanded.splitlines(keepends=True):
+        match = input_line.match(line)
+        if match:
+            source = Path(os.fsdecode(match.group(2)))
+            try:
+                candidate = source.resolve(strict=False) if source.is_absolute() else (root / source).resolve(strict=False)
+                relative = candidate.relative_to(root).as_posix()
+            except ValueError:
+                relative = ""
+            if relative in allowed:
+                ending = match.group(3) or b""
+                line = match.group(1) + os.fsencode(relative) + ending
+        normalized.append(line)
+    result = gzip.compress(b"".join(normalized), compresslevel=6, mtime=0)
+    if len(result) > MAX_SYNCTEX_BYTES:
+        raise ValueError("SyncTeX data is too large")
+    return result
 
 
 def synctex_source_path(value: str, work: Path) -> str:
     source = Path(value.strip())
-    try:
-        relative = source.resolve(strict=False).relative_to(work.resolve()).as_posix() if source.is_absolute() else source.as_posix()
-    except ValueError as error:
-        raise ValueError("SyncTeX source is outside the project") from error
+    if source.is_absolute():
+        try:
+            relative = source.resolve(strict=False).relative_to(work.resolve()).as_posix()
+        except ValueError as error:
+            parts = PurePosixPath(source.as_posix()).parts
+            if len(parts) < 4 or parts[1] != "tmp" or not re.fullmatch(r"tmp[a-z0-9_]{8}", parts[2]):
+                raise ValueError("SyncTeX source is outside the project") from error
+            relative = PurePosixPath(*parts[3:]).as_posix()
+    else:
+        relative = source.as_posix()
     safe = safe_project_path(relative, {".tex"})
     return safe.as_posix()
 
@@ -553,7 +592,12 @@ class Handler(BaseHTTPRequestHandler):
                         bound_state.bibliography_signature if warm else "",
                     )
                     pdf = (work / "preview.pdf").read_bytes()
-                    synctex = (work / "preview.synctex.gz").read_bytes()
+                    project_tex_paths = {
+                        path.as_posix() for path in source_paths.values() if path.suffix.lower() == ".tex"
+                    }
+                    synctex = normalized_synctex(
+                        (work / "preview.synctex.gz").read_bytes(), work, project_tex_paths,
+                    )
                     artifacts = _snapshot_build_artifacts(work)
                 elapsed_ms = round((time.monotonic() - started) * 1000)
                 build_state_id = _build_state_put(

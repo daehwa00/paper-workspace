@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -70,6 +71,77 @@ def test_runtime_contains_only_manifest_listed_project_files(tmp_path: Path) -> 
     assert not (output / "project/private-draft.tex").exists()
     assert not (output / "project/.secret").exists()
     assert not (output / "projects/paper-two/private-draft.tex").exists()
+
+    manifest = json.loads((output / "project/project.json").read_text())
+    assert len(manifest["runtime_revision"]) == 64
+    assert "project.json" not in manifest["runtime_file_revisions"]
+    for relative in ("main.tex", "sections/method.tex"):
+        assert manifest["runtime_file_revisions"][relative] == hashlib.sha256(
+            (output / "project" / relative).read_bytes()
+        ).hexdigest()
+
+
+def test_runtime_revision_tracks_only_staged_manifest_files(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+
+    runtime.sync_runtime(default, projects, output)
+    initial = json.loads((output / "project/project.json").read_text())
+    (default / "private-draft.tex").write_text("private change", encoding="utf-8")
+    runtime.sync_runtime(default, projects, output)
+    private_change = json.loads((output / "project/project.json").read_text())
+    assert private_change["runtime_revision"] == initial["runtime_revision"]
+
+    (default / "main.tex").write_text("main changed without a version bump", encoding="utf-8")
+    runtime.sync_runtime(default, projects, output)
+    source_change = json.loads((output / "project/project.json").read_text())
+    assert source_change["version"] == initial["version"] == "1"
+    assert source_change["runtime_revision"] != initial["runtime_revision"]
+    assert source_change["runtime_file_revisions"]["main.tex"] == hashlib.sha256(
+        (output / "project/main.tex").read_bytes()
+    ).hexdigest()
+
+
+def test_runtime_hashes_the_staged_copy_when_source_changes_mid_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+    original_copy = runtime.shutil.copyfile
+    raced = False
+
+    def copy_then_edit(source: Path, destination: Path) -> None:
+        nonlocal raced
+        original_copy(source, destination)
+        if not raced and Path(source) == default / "main.tex":
+            raced = True
+            Path(source).write_text("changed after staged copy", encoding="utf-8")
+
+    monkeypatch.setattr(runtime.shutil, "copyfile", copy_then_edit)
+    runtime.sync_runtime(default, projects, output)
+
+    staged = output / "project/main.tex"
+    manifest = json.loads((output / "project/project.json").read_text())
+    assert staged.read_text() == "main default-paper"
+    assert manifest["runtime_file_revisions"]["main.tex"] == hashlib.sha256(
+        staged.read_bytes()
+    ).hexdigest()
 
 
 def test_runtime_rejects_manifest_symlinks_without_replacing_last_good_copy(tmp_path: Path) -> None:

@@ -258,14 +258,125 @@ def test_synctex_validation_rejects_invalid_and_expanding_payloads(monkeypatch: 
     assert compiler.validated_synctex(gzip.compress(b"valid"))
 
 
+def test_compile_normalizes_only_project_synctex_sources(tmp_path: Path) -> None:
+    nested = tmp_path / "sections" / "method.tex"
+    nested.parent.mkdir()
+    nested.write_text("method", encoding="utf-8")
+    localized = tmp_path / "한글" / "방법.tex"
+    localized.parent.mkdir()
+    localized.write_text("방법", encoding="utf-8")
+    expanded = (
+        f"SyncTeX Version:1\n"
+        f"Input:1:{tmp_path}/./main.tex\n"
+        f"Input:2:{nested}\n"
+        f"Input:3:{localized}\n"
+        "Input:4:/usr/share/texlive/article.cls\n"
+    ).encode()
+
+    normalized = gzip.decompress(compiler.normalized_synctex(
+        gzip.compress(expanded), tmp_path, {"main.tex", "sections/method.tex", "한글/방법.tex"},
+    )).decode()
+
+    assert "Input:1:main.tex\n" in normalized
+    assert "Input:2:sections/method.tex\n" in normalized
+    assert "Input:3:한글/방법.tex\n" in normalized
+    assert "Input:4:/usr/share/texlive/article.cls\n" in normalized
+    assert str(tmp_path) not in normalized
+
+
 def test_reverse_synctex_keeps_nested_project_paths_and_rejects_escape(tmp_path: Path) -> None:
     nested = tmp_path / "sections" / "method.tex"
     nested.parent.mkdir()
     nested.write_text("method", encoding="utf-8")
 
     assert compiler.synctex_source_path(str(nested), tmp_path) == "sections/method.tex"
+    assert compiler.synctex_source_path("main.tex", tmp_path) == "main.tex"
+    assert compiler.synctex_source_path(
+        "/tmp/tmpabcd1234/sections/method.tex", tmp_path,
+    ) == "sections/method.tex"
     with pytest.raises(ValueError, match="outside"):
         compiler.synctex_source_path(str(tmp_path.parent / "secret.tex"), tmp_path)
+    with pytest.raises(ValueError, match="outside"):
+        compiler.synctex_source_path("/tmp/uploaded/main.tex", tmp_path)
+    with pytest.raises(ValueError, match="invalid project path"):
+        compiler.synctex_source_path("/tmp/tmpabcd1234/../secret.tex", tmp_path)
+
+
+@pytest.mark.skipif(
+    not all(compiler.shutil.which(tool) for tool in ("pdflatex", "synctex")),
+    reason="TeX tools are available in the compiler image",
+)
+def test_normalized_synctex_survives_a_new_navigation_workspace(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    navigation = tmp_path / "navigation"
+    build.mkdir()
+    navigation.mkdir()
+    (build / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nHello SyncTeX\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-synctex=1", "-jobname=preview", "main.tex"],
+        cwd=build, capture_output=True, check=True,
+    )
+    normalized = compiler.normalized_synctex(
+        (build / "preview.synctex.gz").read_bytes(), build, {"main.tex"},
+    )
+    (navigation / "main.synctex.gz").write_bytes(normalized)
+    (navigation / "main.pdf").write_bytes((build / "preview.pdf").read_bytes())
+
+    forward = subprocess.run(
+        ["synctex", "view", "-i", "3:0:main.tex", "-o", "main.pdf"],
+        cwd=navigation, text=True, capture_output=True, check=True,
+    )
+    reverse = subprocess.run(
+        ["synctex", "edit", "-o", "1:300:300:main.pdf"],
+        cwd=navigation, text=True, capture_output=True, check=True,
+    )
+
+    assert "Page:1" in forward.stdout
+    input_match = compiler.re.search(r"^Input:(.+)$", reverse.stdout, compiler.re.MULTILINE)
+    assert input_match
+    assert compiler.synctex_source_path(input_match.group(1), navigation) == "main.tex"
+
+
+@pytest.mark.skipif(
+    not all(compiler.shutil.which(tool) for tool in ("pdflatex", "synctex")),
+    reason="TeX tools are available in the compiler image",
+)
+def test_legacy_nested_synctex_remains_bidirectional(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    navigation = tmp_path / "navigation"
+    (build / "sections").mkdir(parents=True)
+    navigation.mkdir()
+    (build / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n"
+        "\\input{sections/method}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (build / "sections" / "method.tex").write_text("Nested legacy source\n", encoding="utf-8")
+    subprocess.run(
+        ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-synctex=1", "-jobname=preview", "main.tex"],
+        cwd=build, capture_output=True, check=True,
+    )
+    (navigation / "main.synctex.gz").write_bytes((build / "preview.synctex.gz").read_bytes())
+    (navigation / "main.pdf").write_bytes((build / "preview.pdf").read_bytes())
+
+    forward = subprocess.run(
+        ["synctex", "view", "-i", "1:0:sections/method.tex", "-o", "main.pdf"],
+        cwd=navigation, text=True, capture_output=True, check=True,
+    )
+    page = compiler.re.search(r"^Page:(\d+)$", forward.stdout, compiler.re.MULTILINE)
+    x = compiler.re.search(r"^x:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
+    y = compiler.re.search(r"^y:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
+    assert page and x and y
+    reverse = subprocess.run(
+        ["synctex", "edit", "-o", f"{page.group(1)}:{x.group(1)}:{y.group(1)}:main.pdf"],
+        cwd=navigation, text=True, capture_output=True, check=True,
+    )
+    input_match = compiler.re.search(r"^Input:(.+)$", reverse.stdout, compiler.re.MULTILINE)
+    assert input_match
+    assert compiler.synctex_source_path(input_match.group(1), navigation) == "sections/method.tex"
 
 
 def test_compiler_health_reflects_required_tex_tools(monkeypatch: pytest.MonkeyPatch) -> None:

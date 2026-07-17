@@ -1228,6 +1228,96 @@ test('a fresh browser cannot replace an established shared manuscript with the s
   await Promise.all(contexts.map(context => context.close()))
 })
 
+test('staged server source changes reach an open workspace without reload and preserve web edits', async ({ page }) => {
+  test.slow()
+  const slug = `runtime-sync-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const revisions = { initial: '1'.repeat(64), next: '2'.repeat(64) }
+  let runtimeRevision = revisions.initial
+  let fileRevision = 'a'.repeat(64)
+  let serverSource = '\\documentclass{article}\n\\title{Initial server source}\n\\begin{document}\nInitial server source\n\\end{document}\n'
+  let synchronizationRequests = 0
+  await page.addInitScript(() => { window.__paperServerSourcePollMs = 50 })
+  await page.route(`**/p/${slug}/project/**`, async route => {
+    const requestUrl = new URL(route.request().url())
+    const projectPath = requestUrl.pathname.split(`/p/${slug}/project/`)[1]
+    if (projectPath === 'project.json') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slug,
+          version: '1',
+          entrypoint: 'main.tex',
+          files: [{ path: 'main.tex', managed: true }],
+          runtime_revision: runtimeRevision,
+          runtime_file_revisions: { 'main.tex': fileRevision }
+        })
+      })
+      return
+    }
+    if (projectPath === 'main.tex') {
+      await route.fulfill({ contentType: 'text/plain', body: serverSource })
+      return
+    }
+    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+  await page.route('**/collab-runtime/**', async route => {
+    synchronizationRequests += 1
+    const signal = route.request().postDataJSON()
+    const result = await page.evaluate(({ source, signal }) => {
+      const files = collabSession.files
+      const project = sharedProject
+      if (project.get('serverRuntimeRevision') === signal.runtime_revision) return { deduplicated: true, preserved_paths: [] }
+      if (project.get('serverRuntimeRevision') !== signal.previous_runtime_revision) return { conflict: true, current_revision: project.get('serverRuntimeRevision') }
+      const current = files.get('paper/main.tex').toString()
+      const draftPath = `paper/drafts/server-before-sync-e2e-main.tex`
+      collabSession.document.transact(() => {
+        const draft = collabSession.textFor(draftPath)
+        if (draft.length) draft.delete(0, draft.length)
+        draft.insert(0, current)
+        const main = files.get('paper/main.tex')
+        if (main.length) main.delete(0, main.length)
+        main.insert(0, source)
+        project.set('serverRuntimeRevision', signal.runtime_revision)
+        project.set('serverManagedPaths', ['paper/main.tex'])
+        project.set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint(source) })
+      }, 'server-runtime-sync')
+      return { deduplicated: false, preserved_paths: [draftPath] }
+    }, { source: serverSource, signal })
+    await route.fulfill({
+      status: result.conflict ? 409 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(result)
+    })
+  })
+
+  await page.goto(`/p/${slug}`)
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('Initial server source'))
+  await expect.poll(() => page.evaluate(() => collabReady)).toBe(true)
+  await expect.poll(() => page.evaluate(() => sharedProject.get('serverRuntimeRevision'))).toBe(revisions.initial)
+  const webMarker = `% connected-web-edit-${slug}`
+  await page.evaluate(marker => {
+    const next = `${editorValue()}\n${marker}`
+    state.files[state.current] = next
+    setEditorValue(next)
+    save()
+  }, webMarker)
+  await expect.poll(() => page.evaluate(marker => collabSession.textFor('paper/main.tex').toString().includes(marker), webMarker)).toBe(true)
+
+  serverSource = '\\documentclass{article}\n\\title{Server revision two}\n\\begin{document}\nServer revision two\n\\end{document}\n'
+  runtimeRevision = revisions.next
+  fileRevision = 'b'.repeat(64)
+
+  await expect.poll(() => page.evaluate(() => editorValue()), { timeout: 10_000 }).toContain('Server revision two')
+  await expect.poll(() => page.evaluate(() => projectManifest.runtime_revision)).toBe(revisions.next)
+  const preserved = await page.evaluate(marker => {
+    const drafts = [...collabSession.files.entries()].filter(([name]) => name.startsWith('paper/drafts/server-before-sync-'))
+    return { count: drafts.length, containsMarker: drafts.some(([, text]) => text.toString().includes(marker)) }
+  }, webMarker)
+  expect(preserved).toEqual({ count: 1, containsMarker: true })
+  expect(synchronizationRequests).toBe(1)
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
+})
+
 test('compile cancellation identity is isolated per tab and stable across reloads', async ({ browser }) => {
   const context = await browser.newContext()
   const first = await context.newPage()

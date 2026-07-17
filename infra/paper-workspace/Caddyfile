@@ -60,6 +60,11 @@
             header_up X-Paper-Actor "local-user"
         }
     }
+    handle /collab-runtime/* {
+        reverse_proxy collaboration:8765 {
+            header_up X-Paper-Actor "local-user"
+        }
+    }
     handle /collab* {
         reverse_proxy collaboration:8765 {
             header_up X-Paper-Actor "local-user"

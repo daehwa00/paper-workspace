@@ -1,6 +1,7 @@
 'use strict'
 
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const http = require('node:http')
 const os = require('node:os')
@@ -8,9 +9,10 @@ const path = require('node:path')
 const test = require('node:test')
 const WebSocket = require('ws')
 const Y = require('yjs')
+const { WebsocketProvider } = require('y-websocket')
 const encoding = require('lib0/encoding')
 const syncProtocol = require('y-protocols/sync')
-const { createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost } = require('./server.cjs')
+const { applyRuntimeSources, createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint } = require('./server.cjs')
 const { docs, getYDoc } = require('y-websocket/bin/utils')
 
 const listen = instance => new Promise(resolve => {
@@ -23,6 +25,45 @@ const responseStatus = url => new Promise((resolve, reject) => {
     response.on('end', () => resolve(response.statusCode))
   }).on('error', reject)
 })
+
+const postJson = (url, payload, headers = {}) => new Promise((resolve, reject) => {
+  const body = Buffer.from(JSON.stringify(payload))
+  const request = http.request(url, {
+    method: 'POST',
+    headers: {
+      'Content-Length': body.length,
+      'Content-Type': 'application/json',
+      Origin: 'https://paper.example',
+      'X-Paper-Actor': 'test-user',
+      ...headers
+    }
+  }, response => {
+    const chunks = []
+    response.on('data', chunk => chunks.push(chunk))
+    response.on('end', () => resolve({
+      body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+      status: response.statusCode
+    }))
+  })
+  request.on('error', reject)
+  request.end(body)
+})
+
+const writeRuntimeProject = (root, { revision, source, retiredPaths = [] }) => {
+  const project = path.join(root, 'projects', 'example-paper')
+  fs.mkdirSync(project, { recursive: true })
+  fs.writeFileSync(path.join(project, 'main.tex'), source)
+  fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({
+    entrypoint: 'main.tex',
+    files: [{ path: 'main.tex', managed: true }],
+    retired_paths: retiredPaths,
+    runtime_file_revisions: {
+      'main.tex': crypto.createHash('sha256').update(source).digest('hex')
+    },
+    runtime_revision: revision,
+    version: '1'
+  }))
+}
 
 const websocketOutcome = (url, origin) => new Promise(resolve => {
   const socket = new WebSocket(url, { origin })
@@ -59,12 +100,173 @@ const websocketCloseCode = (url, origin, onOpen = () => {}) => new Promise((reso
   socket.once('error', () => {})
 })
 
+class PaperOriginWebSocket extends WebSocket {
+  constructor (url, protocols) {
+    super(url, protocols, { origin: 'https://paper.example' })
+  }
+}
+
 test('room parser accepts only the workspace room namespace', () => {
   assert.equal(requestRoom({ url: '/collab/paper-workspace%3Apaper.example%3Aexample-paper' }), 'paper-workspace:paper.example:example-paper')
   assert.equal(requestRoom({ url: '/collab/arbitrary-room' }), null)
   assert.equal(requestRoom({ url: '/collab/paper-workspace%3Apaper.example%3A..%2Fsecret' }), null)
   assert.equal(roomHost('paper-workspace:paper.example:example-paper'), 'paper.example')
   assert.equal(roomHost('paper-workspace:paper.example:8443:example-paper'), 'paper.example:8443')
+  assert.equal(runtimeSyncRoom({ url: '/collab-runtime/paper-workspace%3Apaper.example%3Aexample-paper' }), 'paper-workspace:paper.example:example-paper')
+})
+
+test('runtime source application is atomic, deduplicated, and preserves connected edits', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  const main = new Y.Text()
+  main.insert(0, 'web-edited source')
+  files.set('paper/main.tex', main)
+  const appendix = new Y.Text()
+  appendix.insert(0, 'keep unless explicitly retired')
+  files.set('paper/appendix.tex', appendix)
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+  project.set('serverManagedPaths', ['paper/main.tex', 'paper/appendix.tex'])
+  project.set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('old server source') })
+
+  const payload = {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'new server source' },
+    version: '1'
+  }
+  const first = applyRuntimeSources(document, payload, 1234)
+  assert.equal(first.deduplicated, false)
+  assert.equal(files.get('paper/main.tex').toString(), 'new server source')
+  assert.equal(files.get('paper/appendix.tex').toString(), 'keep unless explicitly retired')
+  assert.equal(first.preserved_paths.length, 1)
+  assert.equal(files.get(first.preserved_paths[0]).toString(), 'web-edited source')
+
+  const second = applyRuntimeSources(document, payload, 5678)
+  assert.equal(second.deduplicated, true)
+  assert.equal(files.get('paper/main.tex').toString(), 'new server source')
+  assert.equal([...files.keys()].filter(name => name.startsWith('paper/drafts/server-before-sync-')).length, 1)
+
+  const stale = applyRuntimeSources(document, { ...payload, previousRuntimeRevision: 'a'.repeat(64), runtimeRevision: 'c'.repeat(64), sources: { 'paper/main.tex': 'stale rollback' } })
+  assert.equal(stale.conflict, true)
+  assert.equal(files.get('paper/main.tex').toString(), 'new server source')
+  document.destroy()
+})
+
+test('runtime source application avoids needless drafts and retires only declared paths', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  for (const [name, value] of [['paper/main.tex', 'old server source'], ['paper/keep.tex', 'keep me'], ['paper/remove.tex', 'retire me']]) {
+    const text = new Y.Text()
+    text.insert(0, value)
+    files.set(name, text)
+  }
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+  project.set('serverManagedPaths', ['paper/main.tex', 'paper/keep.tex', 'paper/remove.tex'])
+  project.set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('old server source') })
+  const result = applyRuntimeSources(document, {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: ['paper/remove.tex'],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'new server source' },
+    version: '1'
+  }, 1234)
+  assert.equal(files.get('paper/main.tex').toString(), 'new server source')
+  assert.equal(files.get('paper/keep.tex').toString(), 'keep me')
+  assert.equal(files.has('paper/remove.tex'), false)
+  assert.equal(result.preserved_paths.length, 1)
+  assert.equal(files.get(result.preserved_paths[0]).toString(), 'retire me')
+  document.destroy()
+})
+
+test('runtime synchronization endpoint verifies staged sources and serializes duplicate requests', async t => {
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-runtime-sync-'))
+  t.after(() => fs.rmSync(runtime, { force: true, recursive: true }))
+  const previousRevision = 'a'.repeat(64)
+  const runtimeRevision = 'b'.repeat(64)
+  writeRuntimeProject(runtime, { revision: runtimeRevision, source: 'new server source' })
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    projectRuntimeDir: runtime
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  const main = new Y.Text()
+  main.insert(0, 'connected web edit')
+  document.getMap('files').set('paper/main.tex', main)
+  document.getMap('project').set('serverRuntimeRevision', previousRevision)
+  document.getMap('project').set('serverManagedPaths', ['paper/main.tex'])
+  document.getMap('project').set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('old server source') })
+  const clientDocument = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { provider.destroy(); clientDocument.destroy() })
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('test collaboration client did not synchronize')), 2000)
+    provider.once('sync', synchronized => {
+      if (!synchronized) return
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
+  const url = `http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}`
+  const signal = { previous_runtime_revision: previousRevision, runtime_revision: runtimeRevision }
+
+  const [first, second] = await Promise.all([postJson(url, signal), postJson(url, signal)])
+  assert.deepEqual([first.status, second.status], [200, 200])
+  assert.equal(document.getMap('files').get('paper/main.tex').toString(), 'new server source')
+  await new Promise(resolve => {
+    const started = Date.now()
+    const poll = () => clientDocument.getMap('files').get('paper/main.tex')?.toString() === 'new server source' || Date.now() - started > 2000 ? resolve() : setTimeout(poll, 10)
+    poll()
+  })
+  assert.equal(clientDocument.getMap('files').get('paper/main.tex').toString(), 'new server source')
+  const drafts = [...document.getMap('files').entries()].filter(([name]) => name.startsWith('paper/drafts/server-before-sync-'))
+  assert.equal(drafts.length, 1)
+  assert.equal(drafts[0][1].toString(), 'connected web edit')
+  assert.equal([first.body.deduplicated, second.body.deduplicated].filter(Boolean).length, 1)
+
+  const stale = await postJson(url, { previous_runtime_revision: previousRevision, runtime_revision: 'c'.repeat(64) })
+  assert.equal(stale.status, 409)
+  assert.equal(document.getMap('files').get('paper/main.tex').toString(), 'new server source')
+})
+
+test('runtime synchronization endpoint rejects unauthenticated, forged, and unopened requests', async t => {
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-runtime-guard-'))
+  t.after(() => fs.rmSync(runtime, { force: true, recursive: true }))
+  const revision = 'b'.repeat(64)
+  writeRuntimeProject(runtime, { revision, source: 'verified source' })
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    projectRuntimeDir: runtime
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const room = 'paper-workspace:paper.example:example-paper'
+  const url = `http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}`
+  const signal = { previous_runtime_revision: 'a'.repeat(64), runtime_revision: revision }
+  const before = docs.size
+  assert.equal((await postJson(url, signal)).status, 409)
+  assert.equal(docs.size, before)
+  assert.equal((await postJson(url, signal, { Origin: 'https://evil.example' })).status, 403)
+  assert.equal((await postJson(url, signal, { 'X-Paper-Actor': '' })).status, 401)
+
+  const document = getYDoc(`collab/${room}`)
+  document.getMap('project').set('serverRuntimeRevision', 'a'.repeat(64))
+  fs.writeFileSync(path.join(runtime, 'projects/example-paper/main.tex'), 'tampered after staging')
+  assert.equal((await postJson(url, signal)).status, 409)
+  assert.equal(document.getMap('files').size, 0)
+  document.destroy()
+  docs.delete(`collab/${room}`)
 })
 
 test('server rejects foreign origins and arbitrary rooms', async t => {

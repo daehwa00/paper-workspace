@@ -80,13 +80,50 @@ def project_files(project_root: Path) -> list[Path]:
     return sorted(paths)
 
 
+def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[str, str]]:
+    revisions: dict[str, str] = {}
+    combined = hashlib.sha256()
+    for relative in paths:
+        source = checked_source(project_root, relative)
+        digest = hashlib.sha256()
+        with source.open("rb") as handle:
+            while chunk := handle.read(64 * 1024):
+                digest.update(chunk)
+        revision = digest.hexdigest()
+        relative_name = relative.as_posix()
+        revisions[relative_name] = revision
+        combined.update(relative_name.encode("utf-8"))
+        combined.update(b"\0")
+        combined.update(revision.encode("ascii"))
+        combined.update(b"\0")
+    return combined.hexdigest(), revisions
+
+
 def copy_project(project_root: Path, destination: Path) -> None:
-    for relative in project_files(project_root):
+    paths = project_files(project_root)
+    for relative in paths:
         source = checked_source(project_root, relative)
         target = destination / relative
         target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copyfile(source, target)
         target.chmod(0o644)
+    # Hash exactly the staged bytes that the workspace will serve. Hashing the
+    # source first and reopening it for copy lets an in-place server edit create
+    # a descriptor/content mismatch between those two reads.
+    runtime_revision, file_revisions = project_revision(destination, paths)
+    # The served manifest contains these revision fields, so it cannot contain
+    # a non-recursive hash of its own final bytes. Source and preview entries are
+    # the cacheable artifacts consumers need to verify independently.
+    file_revisions.pop("project.json", None)
+    runtime_manifest_path = destination / "project.json"
+    runtime_manifest = read_object(runtime_manifest_path)
+    runtime_manifest["runtime_revision"] = runtime_revision
+    runtime_manifest["runtime_file_revisions"] = file_revisions
+    runtime_manifest_path.write_text(
+        json.dumps(runtime_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    runtime_manifest_path.chmod(0o644)
 
 
 def catalog_projects(catalog_path: Path) -> tuple[dict[str, object], list[dict[str, object]]]:

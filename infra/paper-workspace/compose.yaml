@@ -40,9 +40,12 @@ services:
     depends_on:
       collaboration-storage-init:
         condition: service_completed_successfully
+      project-runtime:
+        condition: service_healthy
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     volumes:
       - collaboration_data:/data
+      - project_runtime:/run/project-runtime:ro
       - ${PAPER_PROJECTS_DIR:-../../examples/project-library}/index.json:/run/project-manifests/projects.json:ro
       - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}/project.json:/run/project-manifests/default-project.json:ro
     environment:
@@ -50,6 +53,8 @@ services:
       COLLAB_TRUST_PROXY: "1"
       COLLAB_MAX_PAYLOAD_BYTES: ${COLLAB_MAX_PAYLOAD_BYTES:-4194304}
       COLLAB_MAX_INGRESS_BYTES_PER_MINUTE: ${COLLAB_MAX_INGRESS_BYTES_PER_MINUTE:-16777216}
+      COLLAB_MAX_RUNTIME_SYNC_BYTES: ${COLLAB_MAX_RUNTIME_SYNC_BYTES:-8388608}
+      COLLAB_MAX_RUNTIME_SYNC_REQUESTS_PER_MINUTE: ${COLLAB_MAX_RUNTIME_SYNC_REQUESTS_PER_MINUTE:-60}
       COLLAB_MAX_DOCUMENT_BYTES: ${COLLAB_MAX_DOCUMENT_BYTES:-33554432}
       COLLAB_MAX_CONNECTION_AGE_MS: ${COLLAB_MAX_CONNECTION_AGE_MS:-21600000}
       COLLAB_MAX_CONNECTIONS: ${COLLAB_MAX_CONNECTIONS:-128}
@@ -59,6 +64,7 @@ services:
       COLLAB_MAX_STORAGE_BYTES: ${COLLAB_MAX_STORAGE_BYTES:-536870912}
       COLLAB_PROJECT_CATALOG: /run/project-manifests/projects.json
       COLLAB_DEFAULT_PROJECT_MANIFEST: /run/project-manifests/default-project.json
+      COLLAB_PROJECT_RUNTIME: /run/project-runtime
     read_only: true
     security_opt:
       - no-new-privileges:true

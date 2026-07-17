@@ -175,7 +175,9 @@ Paths must be relative and cannot contain `..`. Any selected `.tex` file can be 
 
 Interactive builds reuse only server-generated reference artifacts behind a short-lived opaque token, so ordinary prose edits usually need one LaTeX pass. Citation, label, or bibliography changes automatically run the additional settling passes. **Build source ZIP** always performs a clean multi-pass compile before packaging.
 
-Server files seed the browser workspace. Increment `version` in `project.json` when a deployed manuscript should replace an older browser seed. When a renamed or obsolete server-managed text file must also disappear from existing collaborative workspaces, list its former relative path in `retired_paths`; the version migration removes only those declared paths and preserves unrecognized local content under `paper/drafts/`.
+Manifest-listed server files are staged atomically every 10 seconds. Open workspaces poll that staged revision and automatically apply changed entrypoint or `managed: true` text through the collaboration server—ordinary manuscript edits do not require an application deployment, browser reload, or manual `version` bump. If connected web edits differ from the previous server snapshot, they are preserved under `paper/drafts/` before the new server text is applied. Duplicate tabs are deduplicated by a server-side compare-and-set revision check. Offline Yjs edits are never discarded; because they have not reached the server at apply time, they merge on reconnect rather than being guaranteed a separate pre-sync draft.
+
+Keep `version` for explicit seed/migration compatibility. When a renamed or obsolete server-managed text file must disappear from existing collaborative workspaces, list its former relative path in `retired_paths`; omission from `files` alone never deletes collaborative content.
 
 ## Everyday workflow
 
@@ -272,7 +274,7 @@ The exporter excludes manuscripts, experiments, data, and results. `.gitignore` 
 | --- | --- |
 | PDF compilation error | Missing `.sty`/`.bst` files, figure path case, and `project.json` entries |
 | Citations show `??` | BibTeX keys, bibliography path, and the compiler log |
-| Server edits do not appear | Browser draft state and `project.json` version |
+| Server edits do not appear | `project-runtime` and collaboration health, manifest membership/`managed`, and staged revision/hash validation |
 | Codex 401/429/timeout | Token, auth-file permissions, UID/GID, and request limits |
 | Collaborator appears offline | Caddy `/collab` proxy and browser WebSocket errors |
 | Backup history is empty | `backup` logs and the backup volume; the first snapshot may take 10 minutes |

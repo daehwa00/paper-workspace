@@ -592,7 +592,7 @@ def test_data_safety_guards_cover_navigation_restore_and_pdf_render_races() -> N
     assert "복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다" in app
     assert "pdfRenderGeneration" in app
     assert "error.name='RenderingCancelledException'" in app
-    assert "clearTimeout(window.saveTimer);if(!activeAsset" in app
+    assert "clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer);if(!activeAsset" in app
     assert "moveServerAssetsSafely" in app
     assert "renameHasCollision" in app
 
