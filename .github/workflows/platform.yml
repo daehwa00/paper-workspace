@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - uses: actions/setup-node@1e60f620b9541d5ca075772af2d646af78c4c4c3 # v4.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@1e60f620b9541d5ca075772af2d646af78c4c4c3 # v4.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
