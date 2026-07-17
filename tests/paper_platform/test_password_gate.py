@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import http.client
 import importlib.util
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
@@ -167,6 +170,18 @@ def test_login_page_is_fully_localized_and_preserves_redirect() -> None:
         assert "lang=ko" in page
         assert 'aria-label="Language"' in page or 'aria-label="언어"' in page
         assert 'role="alert"' in page
+
+
+def test_password_login_theme_bootstrap_is_allowed_by_its_exact_csp_hash() -> None:
+    gate = load_gate()
+    page = gate.render_login_page("en").decode()
+    script = re.search(r"<script>(.*?)</script>", page)
+    assert script is not None
+    digest = base64.b64encode(hashlib.sha256(script.group(1).encode()).digest()).decode()
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+
+    assert f"'sha256-{digest}'" in caddy
+    assert "script-src 'self' 'unsafe-inline'" not in caddy
 
 
 def test_redirect_target_rejects_response_splitting_characters() -> None:

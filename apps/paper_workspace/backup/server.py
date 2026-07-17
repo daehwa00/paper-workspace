@@ -331,7 +331,9 @@ class BackupStore:
         project = validate_project_id(project_id)
         with self._connect() as connection:
             rows = connection.execute(
-                """SELECT * FROM snapshots WHERE project_id = ?
+                """SELECT id, project_id, created_at, checked_at, content_hash,
+                          actor, reason, size_bytes
+                   FROM snapshots WHERE project_id = ?
                    ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?""",
                 (project, self.retention),
             ).fetchall()
