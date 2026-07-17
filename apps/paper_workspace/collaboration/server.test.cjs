@@ -7,7 +7,11 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 const WebSocket = require('ws')
-const { createCollaborationServer, requestRoom } = require('./server.cjs')
+const Y = require('yjs')
+const encoding = require('lib0/encoding')
+const syncProtocol = require('y-protocols/sync')
+const { createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost } = require('./server.cjs')
+const { docs, getYDoc } = require('y-websocket/bin/utils')
 
 const listen = instance => new Promise(resolve => {
   instance.server.listen(0, '127.0.0.1', () => resolve(instance.server.address().port))
@@ -44,10 +48,23 @@ const oversizedWebsocketOutcome = (url, origin, bytes) => new Promise((resolve, 
   socket.once('error', () => {})
 })
 
+const websocketCloseCode = (url, origin, onOpen = () => {}) => new Promise((resolve, reject) => {
+  const socket = new WebSocket(url, { origin })
+  const timeout = setTimeout(() => reject(new Error('websocket was not closed')), 2000)
+  socket.once('open', () => onOpen(socket))
+  socket.once('close', code => {
+    clearTimeout(timeout)
+    resolve(code)
+  })
+  socket.once('error', () => {})
+})
+
 test('room parser accepts only the workspace room namespace', () => {
   assert.equal(requestRoom({ url: '/collab/paper-workspace%3Apaper.example%3Aexample-paper' }), 'paper-workspace:paper.example:example-paper')
   assert.equal(requestRoom({ url: '/collab/arbitrary-room' }), null)
   assert.equal(requestRoom({ url: '/collab/paper-workspace%3Apaper.example%3A..%2Fsecret' }), null)
+  assert.equal(roomHost('paper-workspace:paper.example:example-paper'), 'paper.example')
+  assert.equal(roomHost('paper-workspace:paper.example:8443:example-paper'), 'paper.example:8443')
 })
 
 test('server rejects foreign origins and arbitrary rooms', async t => {
@@ -61,7 +78,70 @@ test('server rejects foreign origins and arbitrary rooms', async t => {
   assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`, 'https://evil.example'), 403)
   assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/arbitrary-room`, 'https://paper.example'), 404)
   assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:unknown-paper`, 'https://paper.example'), 404)
+  assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/paper-workspace:alias.example:example-paper`, 'https://paper.example'), 403)
   assert.equal(await websocketOutcome(`ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`, 'https://paper.example'), 'open')
+})
+
+test('document synchronization waits for persistence readiness', async () => {
+  const docName = `collab/paper-workspace:paper.example:readiness-${Date.now()}`
+  const document = getYDoc(docName)
+  let release
+  document.paperPersistenceReady = new Promise(resolve => { release = resolve })
+  let prepared = false
+  const waiting = prepareCollaborationDocument(docName).then(() => { prepared = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(prepared, false)
+  release()
+  await waiting
+  assert.equal(prepared, true)
+  document.destroy()
+  docs.delete(docName)
+})
+
+test('connections are reauthenticated and ingress is rate limited', async t => {
+  const encoder = encoding.createEncoder()
+  encoding.writeVarUint(encoder, 0)
+  syncProtocol.writeSyncStep1(encoder, new Y.Doc())
+  const syncMessage = Buffer.from(encoding.toUint8Array(encoder))
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    maxConnectionAgeMs: 60,
+    maxIngressBytesPerMinute: syncMessage.length * 2
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const url = `ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`
+  assert.equal(await websocketCloseCode(url, 'https://paper.example'), 4001)
+  assert.equal(await websocketCloseCode(url, 'https://paper.example', socket => {
+    socket.send(syncMessage)
+    socket.send(syncMessage)
+    socket.send(syncMessage)
+  }), 1009)
+})
+
+test('document update growth is bounded before it reaches Yjs persistence', async t => {
+  const updateDocument = new Y.Doc()
+  updateDocument.getText('paper').insert(0, 'bounded update')
+  const encoder = encoding.createEncoder()
+  encoding.writeVarUint(encoder, 0)
+  syncProtocol.writeUpdate(encoder, Y.encodeStateAsUpdate(updateDocument))
+  const updateMessage = Buffer.from(encoding.toUint8Array(encoder))
+  assert.equal(messageDocumentGrowthBytes(updateMessage), updateMessage.length)
+
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    maxDocumentBytes: updateMessage.length + 4,
+    maxIngressBytesPerMinute: 1024
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const url = `ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`
+  assert.equal(await websocketCloseCode(url, 'https://paper.example', socket => {
+    socket.send(updateMessage)
+    socket.send(updateMessage)
+  }), 1009)
 })
 
 test('server fails closed when the persistence quota is exhausted', async t => {

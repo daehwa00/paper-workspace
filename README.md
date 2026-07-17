@@ -9,7 +9,7 @@
 A self-hosted workspace that keeps source, PDF, collaborators, review,<br />
 and optional Codex editing assistance in one focused place.
 
-[Quick start](#quick-start) · [Features](#everything-your-paper-needs) · [Architecture](docs/paper-platform/architecture.md) · [한국어](README.ko.md)
+[Quick start](#quick-start) · [Features](#one-workspace-for-the-whole-paper) · [Architecture](docs/paper-platform/architecture.md) · [Operations](docs/paper-platform/operations.md) · [한국어](README.ko.md)
 
 ![License](https://img.shields.io/badge/license-MIT-2457D6?style=flat-square)
 ![LaTeX](https://img.shields.io/badge/LaTeX-TeX%20Live-2457D6?style=flat-square)
@@ -175,7 +175,7 @@ Paths must be relative and cannot contain `..`. Any selected `.tex` file can be 
 
 Interactive builds reuse only server-generated reference artifacts behind a short-lived opaque token, so ordinary prose edits usually need one LaTeX pass. Citation, label, or bibliography changes automatically run the additional settling passes. **Build source ZIP** always performs a clean multi-pass compile before packaging.
 
-Server files seed the browser workspace. Increment `version` in `project.json` when a deployed manuscript should replace an older browser seed.
+Server files seed the browser workspace. Increment `version` in `project.json` when a deployed manuscript should replace an older browser seed. When a renamed or obsolete server-managed text file must also disappear from existing collaborative workspaces, list its former relative path in `retired_paths`; the version migration removes only those declared paths and preserves unrecognized local content under `paper/drafts/`.
 
 ## Everyday workflow
 
@@ -228,7 +228,7 @@ PAPER_BIND_ADDRESS=0.0.0.0
 
 With DNS pointed at the server and ports 80/443 open, Caddy manages TLS. For Google OAuth, configure `.env.auth` and `.auth/allowed-emails`, then use `compose.auth.yaml`.
 
-For a trusted small lab, copy the password example, set a unique password and a long random session secret, and start the password override.
+For a trusted small lab, copy the password example, set a unique random password of at least 12 characters and an independent random session secret of at least 32 characters, and start the password override. The gate refuses to become healthy with placeholders or weak values.
 
 ```bash
 cp infra/paper-workspace/.env.password.example infra/paper-workspace/.env.password
@@ -237,6 +237,8 @@ docker compose -f infra/paper-workspace/compose.yaml \
 ```
 
 A shared password has no per-user roles, revocation, or audit history. Rotate it immediately if exposed.
+
+Before a production change, follow the [release, backup, smoke-test, and rollback runbook](docs/paper-platform/operations.md). Never use `docker compose down -v` for a routine release or rollback.
 
 ## Repository layout
 
@@ -280,9 +282,12 @@ The exporter excludes manuscripts, experiments, data, and results. `.gitignore` 
 
 ```bash
 pytest -q tests/paper_platform
+node --test apps/paper_workspace/collaboration/server.test.cjs
 node --check apps/paper_workspace/static/app.js
 node --check apps/paper_workspace/collaboration/client.js
-python -m py_compile apps/paper_workspace/compiler/server.py apps/paper_workspace/backup/server.py
+npm --prefix apps/paper_workspace/collaboration run test:e2e:ci
+npm audit --prefix apps/paper_workspace/collaboration --audit-level=high
+python -m compileall -q apps/paper_workspace scripts/paper_platform
 docker compose -f infra/paper-workspace/compose.yaml config --quiet
 ```
 

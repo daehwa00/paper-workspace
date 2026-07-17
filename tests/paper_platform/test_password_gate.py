@@ -29,6 +29,16 @@ def test_signed_session_is_valid_until_expiry(monkeypatch):
     assert not gate.valid_session("paper_session=forged.0", now=100)
 
 
+def test_password_gate_rejects_weak_or_placeholder_configuration() -> None:
+    gate = load_gate()
+
+    assert gate.configuration_errors("short", "s" * 32)
+    assert gate.configuration_errors("replace-with-password", "x" * 32)
+    assert gate.configuration_errors("a-strong-password", "replace-with-a-long-random-secret")
+    assert gate.configuration_errors("same-secret-value-that-is-long-enough", "same-secret-value-that-is-long-enough")
+    assert gate.configuration_errors("a-strong-password", "x" * 32) == []
+
+
 def test_login_limiter_applies_bounded_exponential_cooldowns_and_resets() -> None:
     gate = load_gate()
     limiter = gate.LoginAttemptLimiter(
@@ -157,6 +167,15 @@ def test_login_page_is_fully_localized_and_preserves_redirect() -> None:
         assert "lang=ko" in page
         assert 'aria-label="Language"' in page or 'aria-label="언어"' in page
         assert 'role="alert"' in page
+
+
+def test_redirect_target_rejects_response_splitting_characters() -> None:
+    gate = load_gate()
+
+    assert gate.safe_redirect("/p/example?tab=main") == "/p/example?tab=main"
+    assert gate.safe_redirect("/p/example\r\nX-Injected: yes") == "/"
+    assert gate.safe_redirect("/p/example\x7fhidden") == "/"
+    assert gate.safe_redirect("//attacker.example/path") == "/"
 
 
 def test_accept_language_honors_quality_and_rejects_zero_quality() -> None:
@@ -293,3 +312,34 @@ def test_browser_requests_redirect_but_api_requests_stay_unauthorized() -> None:
     assert '"/_auth/login?" + urlencode' in gate
     assert "safe_redirect" in gate
     assert 'HTTPStatus.UNAUTHORIZED, {"authenticated": False}' in gate
+
+
+def test_logout_clears_the_session_cookie(monkeypatch) -> None:
+    gate = load_gate()
+    monkeypatch.setattr(gate, "PASSWORD", "a-strong-password")
+    monkeypatch.setattr(gate, "SESSION_SECRET", "x" * 32)
+    server = gate.ThreadingHTTPServer(("127.0.0.1", 0), gate.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+    try:
+        connection.request("POST", "/logout")
+        response = connection.getresponse()
+        response.read()
+        assert response.status == 303
+        assert response.getheader("Location") == "/_auth/login"
+        assert "paper_session=; Max-Age=0" in response.getheader("Set-Cookie")
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_edge_rejects_unsafe_requests_with_a_foreign_origin() -> None:
+    for name in ("Caddyfile", "Caddyfile.password"):
+        source = (ROOT / "infra/paper-workspace" / name).read_text(encoding="utf-8")
+        assert "@foreign_unsafe" in source
+        assert "method POST PUT PATCH DELETE" in source
+        assert "not header Origin https://{$PAPER_DOMAIN}" in source
+        assert "respond @foreign_unsafe 403" in source

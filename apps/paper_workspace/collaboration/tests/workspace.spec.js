@@ -89,6 +89,23 @@ test('server manuscript paints before collaboration bootstrap finishes', async (
   await expect(page.locator('#files .file')).toHaveCount(2)
 })
 
+test('an expired API session returns to login with the workspace path preserved', async ({ page }) => {
+  let expire = false
+  await page.route('**/_auth/login**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Login</title>' }))
+  await page.route('**/api/backups/projects/default/assets', async route => {
+    if (!expire) return route.fulfill({ status: 200, contentType: 'application/json', body: '{"assets":[]}' })
+    return route.fulfill({ status: 401, contentType: 'application/json', body: '{"authenticated":false}' })
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  expire = true
+
+  await page.evaluate(() => fetch('/api/backups/projects/default/assets').catch(() => {}))
+
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/_auth/login')
+  expect(new URL(page.url()).searchParams.get('rd')).toBe('/')
+})
+
 test('long mobile project trees scroll within the files panel', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
@@ -182,7 +199,7 @@ test('quota fallback fingerprints server snapshots and retains only recent local
     const originalSetItem = Storage.prototype.setItem
     let rejectedProjectWrite = false
     Storage.prototype.setItem = function (key, value) {
-      if (!rejectedProjectWrite && String(key).startsWith('paper-workspace:')) {
+      if (!rejectedProjectWrite && String(key) === 'paper-workspace:default') {
         rejectedProjectWrite = true
         window.__quotaFallbackTriggered = true
         throw new DOMException('Simulated quota exhaustion', 'QuotaExceededError')
@@ -205,6 +222,7 @@ test('quota fallback fingerprints server snapshots and retains only recent local
 test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.waitForFunction(() => sharedMetadataReady)
   const result = await page.evaluate(async () => {
     state.current = 'paper/main.tex'
     collabSession.document.transact(() => {
@@ -228,7 +246,9 @@ test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
     publishSharedTree()
     const afterProtectedPublish = draftQueuePaths()
     replaceSharedText(collabSession.textFor('paper/drafts/fifo-37.tex'), 'draft 37')
-    await new Promise(resolve => setTimeout(resolve, 0))
+    for (let attempt = 0; attempt < 20 && draftQueuePaths().length > 30; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
     const afterSharedInsert = draftQueuePaths()
     const payload = await compilePayload()
     const result = {
@@ -337,6 +357,34 @@ test('SyncTeX navigation recovers when the compiler cache expires', async ({ pag
   expect(synctexRequests[2].synctex_base64).toBe(synctex.toString('base64'))
 })
 
+test('SyncTeX navigation waits while the visible PDF is stale', async ({ page }) => {
+  const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
+  let synctexRequests = 0
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route('**/api/compile', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ elapsed_ms: 10, cached: false, compile_id: '1234567890abcdef12345678', pdf_audit: { page_count: 1 }, pdf_base64: pdf.toString('base64'), synctex_base64: synctex.toString('base64') }),
+  }))
+  await page.route('**/api/synctex', route => {
+    synctexRequests += 1
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ file: 'main.tex', line: 1, column: 0 }) })
+  })
+
+  await page.goto('/')
+  await expect.poll(() => page.evaluate(() => Boolean(renderedSynctex))).toBe(true)
+  await page.evaluate(() => {
+    setPdfFreshness(true)
+    return syncPdfToSource(1, 10, 10)
+  })
+
+  expect(synctexRequests).toBe(0)
+  await expect(page.locator('#app-toasts')).toContainText('PDF 갱신 대기 중')
+})
+
 test('a superseded compile response cannot replace the latest PDF state', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   let compileRequests = 0
@@ -364,6 +412,7 @@ test('a superseded compile response cannot replace the latest PDF state', async 
   await page.evaluate(() => {
     state.files['paper/main.tex'] = window.__compileRaceOriginal
     replaceSharedText(collabSession.textFor('paper/main.tex'), window.__compileRaceOriginal)
+    setEditorValueWithoutActivity(window.__compileRaceOriginal)
     save()
   })
 })
@@ -396,6 +445,7 @@ test('compile state is reused for edits while final builds stay clean', async ({
   await page.goto('/')
   await expect.poll(() => requests.length).toBe(1)
   await page.evaluate(async () => {
+    window.__compileStateOriginal = editorValue()
     const value = `${editorValue()}\n% incremental edit`
     setEditorValue(value)
     state.files[state.current] = value
@@ -410,6 +460,12 @@ test('compile state is reused for edits while final builds stay clean', async ({
   expect(requests[1].payload.build_mode).toBeUndefined()
   expect(requests[2].state).toBe('22222222222222222222222222222222')
   expect(requests[2].payload.build_mode).toBe('clean')
+  await page.evaluate(() => {
+    state.files['paper/main.tex'] = window.__compileStateOriginal
+    replaceSharedText(collabSession.textFor('paper/main.tex'), window.__compileStateOriginal)
+    setEditorValueWithoutActivity(window.__compileStateOriginal)
+    save()
+  })
 })
 
 test('workspace core normalizes persisted state without DOM dependencies', async ({ page }) => {
@@ -417,7 +473,7 @@ test('workspace core normalizes persisted state without DOM dependencies', async
   const normalized = await page.evaluate(() => {
     const core = window.PaperWorkspaceCore
     const state = core.normalizeState({
-      files: { 'main.tex': 'legacy source' },
+      files: { 'main.tex': 'legacy source', '../escape.tex': 'unsafe', 'bad.tex': { nested: true } },
       assets: [],
       comments: {},
       tasks: [null, { id: 'task-1' }],
@@ -429,6 +485,7 @@ test('workspace core normalizes persisted state without DOM dependencies', async
       files: state.files,
       folders: state.folders,
       taskCount: state.tasks.length,
+      hasUnsafeFile: Object.keys(state.files).some(path => path.includes('..') || typeof state.files[path] !== 'string'),
       extension: core.extensionOf('paper/FIGURE.PDF'),
       parent: core.parentPath('paper/sections/intro.tex')
     }
@@ -438,6 +495,7 @@ test('workspace core normalizes persisted state without DOM dependencies', async
     files: { 'paper/main.tex': 'legacy source' },
     folders: ['paper'],
     taskCount: 1,
+    hasUnsafeFile: false,
     extension: 'pdf',
     parent: 'paper/sections'
   })
@@ -674,7 +732,8 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   if (browserName === 'chromium') {
     await expect(page.locator('body')).toHaveScreenshot('workspace-wide.png', {
       animations: 'disabled',
-      mask: [page.locator('#save-state'), page.locator('#render-state'), page.locator('#collab-status'), page.locator('#collab-label'), page.locator('#collab-name'), page.locator('#app-toasts')]
+      mask: [page.locator('#save-state'), page.locator('#render-state'), page.locator('#collab-status'), page.locator('#collab-label'), page.locator('#collab-name'), page.locator('#app-toasts')],
+      maxDiffPixelRatio: 0.015
     })
   }
 })
@@ -1130,4 +1189,131 @@ test('Yjs merges text and awareness between two browsers', async ({ browser }) =
     return values[0] === values[1] && values[0].includes('A') && values[0].includes('B')
   }).toBe(true)
   await Promise.all([first.close(), second.close()])
+})
+
+test('a fresh browser cannot replace an established shared manuscript with the static seed', async ({ browser }) => {
+  test.slow()
+  const slug = `fresh-client-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const workspaceUrl = `/p/${slug}`
+  const marker = `% shared manuscript survives ${slug}`
+  const contexts = await Promise.all([browser.newContext(), browser.newContext()])
+  const pages = await Promise.all(contexts.map(context => context.newPage()))
+  const routeProjectFiles = page => page.route(`**/p/${slug}/project/**`, async route => {
+    const requestUrl = new URL(route.request().url())
+    const projectPath = requestUrl.pathname.split(`/p/${slug}/project/`)[1]
+    await route.fulfill({ response: await route.fetch({ url: `http://127.0.0.1:18080/project/${projectPath}` }) })
+  })
+  await Promise.all(pages.map(routeProjectFiles))
+
+  await pages[0].goto(workspaceUrl)
+  await pages[0].waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect.poll(() => pages[0].evaluate(() => collabReady)).toBe(true)
+  await pages[0].evaluate(value => {
+    const next = `${editorValue()}\n${value}`
+    state.files[state.current] = next
+    setEditorValue(next)
+    save()
+  }, marker)
+  await expect.poll(() => pages[0].evaluate(value => collabSession.textFor('paper/main.tex').toString().includes(value), marker)).toBe(true)
+
+  await pages[1].goto(workspaceUrl)
+  await pages[1].waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect.poll(() => pages[1].evaluate(() => collabReady), { timeout: 30_000 }).toBe(true)
+  await expect.poll(() => pages[1].evaluate(value => collabSession.textFor('paper/main.tex').toString().includes(value), marker), { timeout: 30_000 }).toBe(true)
+  await expect.poll(() => pages[1].evaluate(value => editorValue().includes(value), marker)).toBe(true)
+  await expect.poll(() => pages[0].evaluate(value => editorValue().includes(value), marker), { timeout: 15_000 }).toBe(true)
+  const migrationDrafts = await pages[1].evaluate(() => [...collabSession.files.keys()].filter(path => path.startsWith('paper/drafts/')).length)
+  expect(migrationDrafts).toBe(0)
+
+  await Promise.all(contexts.map(context => context.close()))
+})
+
+test('compile cancellation identity is isolated per tab and stable across reloads', async ({ browser }) => {
+  const context = await browser.newContext()
+  const first = await context.newPage()
+  await first.goto('/')
+  await first.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const second = await context.newPage()
+  await second.goto('/')
+  await second.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+
+  const firstIdentity = await first.evaluate(() => ({ actor: actor.id, compile: compileClientId }))
+  const secondIdentity = await second.evaluate(() => ({ actor: actor.id, compile: compileClientId }))
+  expect(firstIdentity.actor).toBe(secondIdentity.actor)
+  expect(firstIdentity.compile).not.toBe(secondIdentity.compile)
+
+  await first.reload()
+  await first.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect.poll(() => first.evaluate(() => compileClientId)).toBe(firstIdentity.compile)
+  await context.close()
+})
+
+test('pagehide synchronously preserves the last debounced editor input', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const marker = `% pagehide-${Date.now()}`
+  await page.locator('.cm-content').click()
+  await page.keyboard.type(marker)
+  await expect.poll(() => page.evaluate(value => localStorage.getItem(projectStorageKey)?.includes(value) || false, marker)).toBe(false)
+  const persisted = await page.evaluate(value => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
+    return JSON.parse(localStorage.getItem(projectStorageKey)).files['paper/main.tex'].includes(value)
+  }, marker)
+  expect(persisted).toBe(true)
+})
+
+test('folder rename collision detection refuses to merge two file trees', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const result = await page.evaluate(() => {
+    state.files['paper/source/section.tex'] = 'source'
+    state.files['paper/target/existing.tex'] = 'target'
+    state.folders.push('paper/source', 'paper/target')
+    return renameHasCollision('folder', 'paper/source', 'paper/target')
+  })
+  expect(result).toBe(true)
+})
+
+test('backup restore aborts instead of overwriting edits made while the snapshot loads', async ({ page }) => {
+  let restoreFetchStarted = false
+  let releaseRestoreResponse
+  const restoreResponseGate = new Promise(resolve => { releaseRestoreResponse = resolve })
+  await page.route('**/api/backups/projects/*/snapshots**', async route => {
+    const request = route.request()
+    const pathname = new URL(request.url()).pathname
+    if (request.method() === 'POST') {
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ snapshot: { id: 'protected', created_at: new Date().toISOString() } }) })
+      return
+    }
+    if (pathname.endsWith('/restore-1')) {
+      restoreFetchStarted = true
+      await restoreResponseGate
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ payload: { title: 'Old', files: { 'paper/main.tex': '\\documentclass{article}\\begin{document}old snapshot\\end{document}' }, comments: [], tasks: [] } }) })
+      return
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ snapshots: [] }) })
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await page.waitForFunction(() => backupInitialized && !backupBusy)
+  await page.evaluate(() => {
+    actionDialog = async () => true
+    backupBusy = true
+    backupIdlePromise = new Promise(resolve => setTimeout(() => {
+      backupBusy = false
+      resolve()
+    }, 150))
+    const button = document.createElement('button')
+    window.restoreRegression = restoreServerBackup('restore-1', button)
+  })
+  await expect.poll(() => restoreFetchStarted).toBe(true)
+  const marker = `% concurrent-${Date.now()}`
+  await page.locator('.cm-content').click()
+  await page.keyboard.type(marker)
+  releaseRestoreResponse()
+  await page.evaluate(() => window.restoreRegression)
+  await expect(page.locator('#app-toasts')).toContainText('새 편집 내용이 감지되어')
+  await expect.poll(() => page.evaluate(value => editorValue().includes(value), marker)).toBe(true)
+  await expect.poll(() => page.evaluate(() => editorValue().includes('old snapshot'))).toBe(false)
 })

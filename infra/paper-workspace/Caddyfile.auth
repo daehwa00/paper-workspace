@@ -31,6 +31,12 @@
             copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Groups
             header_up X-Forwarded-For {http.request.remote.host}
         }
+        # The ALPHABET catalog entry is an alias to the single default source.
+        @default_project_asset path_regexp default_project_asset ^/p/aaai27/project/(.*)$
+        handle @default_project_asset {
+            rewrite * /project/{re.default_project_asset.1}
+            reverse_proxy workspace:8080
+        }
         @project_asset path_regexp project_asset ^/p/([A-Za-z0-9][A-Za-z0-9_-]{0,63})/project/(.*)$
         handle @project_asset {
             rewrite * /projects/{re.project_asset.1}/{re.project_asset.2}

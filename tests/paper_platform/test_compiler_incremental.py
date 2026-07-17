@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import gzip
+import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -22,6 +25,9 @@ SPEC.loader.exec_module(compiler)
 @pytest.fixture(autouse=True)
 def clear_build_states() -> None:
     compiler._build_states.clear()
+    compiler._compile_cache.clear()
+    compiler._synctex_cache.clear()
+    compiler._compile_flights.clear()
 
 
 def fake_process_runner(aux_versions: list[str], latex_outputs: list[str] | None = None):
@@ -201,3 +207,82 @@ def test_rejected_replacement_discards_the_previous_build_state(monkeypatch: pyt
 
     assert replacement is None
     assert compiler._build_state_get(previous, binding) is None
+
+
+def test_compile_and_synctex_caches_have_a_combined_byte_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(compiler, "COMPILE_CACHE_MAX_BYTES", 20)
+    compiler._cache_put("first", b"123456", b"abc", 1)
+    compiler._cache_put("second", b"654321", b"xyz", 1)
+
+    total = sum(len(item[1]) + len(item[2]) for item in compiler._compile_cache.values())
+    total += sum(len(item[1]) for item in compiler._synctex_cache.values())
+    assert total <= 20
+    assert len(compiler._compile_cache) + len(compiler._synctex_cache) < 4
+
+
+def test_identical_compile_requests_share_one_flight() -> None:
+    leader, event = compiler._claim_compile_flight("same-payload")
+    follower, follower_event = compiler._claim_compile_flight("same-payload")
+
+    assert leader is True
+    assert follower is False
+    assert follower_event is event
+    assert not event.is_set()
+
+    compiler._finish_compile_flight("same-payload", event)
+    assert event.wait(0.1)
+    assert "same-payload" not in compiler._compile_flights
+    assert compiler._claim_compile_flight("same-payload")[0] is True
+
+
+def test_finishing_stale_compile_flight_does_not_wake_replacement() -> None:
+    _, stale = compiler._claim_compile_flight("payload")
+    with compiler._compile_flight_lock:
+        replacement = threading.Event()
+        compiler._compile_flights["payload"] = replacement
+
+    compiler._finish_compile_flight("payload", stale)
+
+    assert stale.is_set()
+    assert not replacement.is_set()
+    assert compiler._compile_flights["payload"] is replacement
+
+
+def test_synctex_validation_rejects_invalid_and_expanding_payloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="not gzip"):
+        compiler.validated_synctex(b"not a gzip stream")
+
+    monkeypatch.setattr(compiler, "MAX_SYNCTEX_EXPANDED_BYTES", 32)
+    with pytest.raises(ValueError, match="expanded"):
+        compiler.validated_synctex(gzip.compress(b"x" * 33))
+    assert compiler.validated_synctex(gzip.compress(b"valid"))
+
+
+def test_reverse_synctex_keeps_nested_project_paths_and_rejects_escape(tmp_path: Path) -> None:
+    nested = tmp_path / "sections" / "method.tex"
+    nested.parent.mkdir()
+    nested.write_text("method", encoding="utf-8")
+
+    assert compiler.synctex_source_path(str(nested), tmp_path) == "sections/method.tex"
+    with pytest.raises(ValueError, match="outside"):
+        compiler.synctex_source_path(str(tmp_path.parent / "secret.tex"), tmp_path)
+
+
+def test_compiler_health_reflects_required_tex_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(compiler.shutil, "which", lambda name: None if name == "synctex" else f"/usr/bin/{name}")
+
+    assert compiler.compiler_health_errors() == ["synctex"]
+
+
+def test_process_output_is_drained_with_a_bounded_tail(tmp_path: Path) -> None:
+    result = compiler._run_process(
+        [sys.executable, "-c", "import sys; sys.stdout.write('x' * 300000 + 'TAIL')"],
+        tmp_path,
+        dict(os.environ),
+        "",
+        5,
+    )
+
+    assert result.returncode == 0
+    assert len(result.stdout.encode()) <= compiler.MAX_PROCESS_LOG_BYTES
+    assert result.stdout.endswith("TAIL")

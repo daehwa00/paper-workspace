@@ -1,0 +1,58 @@
+name: Platform verification
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-and-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/paper_workspace/collaboration/package-lock.json
+      - name: Install test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          npm ci --prefix apps/paper_workspace/collaboration
+      - name: Verify Python and JavaScript
+        run: |
+          pytest -q tests/paper_platform
+          node --test apps/paper_workspace/collaboration/server.test.cjs
+          node --check apps/paper_workspace/static/app.js
+          node --check apps/paper_workspace/static/workspace-core.js
+          node --check apps/paper_workspace/collaboration/client.js
+          node --check apps/paper_workspace/collaboration/server.cjs
+          node --check apps/paper_workspace/codex_bridge/server.mjs
+          python -m compileall -q apps/paper_workspace scripts/paper_platform
+      - name: Check dependencies and Compose
+        run: |
+          npm audit --prefix apps/paper_workspace/collaboration --audit-level=high
+          docker compose -f infra/paper-workspace/compose.yaml config --quiet
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/paper_workspace/collaboration/package-lock.json
+      - name: Install browser test dependencies
+        run: |
+          npm ci --prefix apps/paper_workspace/collaboration
+          npx --prefix apps/paper_workspace/collaboration playwright install --with-deps chromium
+      - name: Run browser workflows
+        working-directory: apps/paper_workspace/collaboration
+        run: npm run test:e2e:ci

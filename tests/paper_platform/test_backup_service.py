@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -60,6 +62,30 @@ def test_retention_keeps_latest_snapshots_per_project(tmp_path: Path) -> None:
     assert len(store.list("paper-two")) == 1
 
 
+def test_deduplicated_checkpoint_is_recent_and_survives_retention(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    store = backup.BackupStore(tmp_path / "backups.sqlite3", retention=2)
+    first, _ = store.create("paper-one", snapshot_payload("first"), "Dae", "auto")
+    time.sleep(0.002)
+    second, _ = store.create("paper-one", snapshot_payload("second"), "Dae", "auto")
+    time.sleep(0.002)
+    checkpoint, deduplicated = store.create(
+        "paper-one", snapshot_payload("first"), "KDH", "checkpoint:submission"
+    )
+
+    assert deduplicated is True
+    assert checkpoint["id"] == first["id"]
+    assert checkpoint["actor"] == "KDH"
+    assert checkpoint["reason"] == "checkpoint:submission"
+    assert [item["id"] for item in store.list("paper-one")] == [first["id"], second["id"]]
+
+    time.sleep(0.002)
+    third, _ = store.create("paper-one", snapshot_payload("third"), "Dae", "auto")
+    assert [item["id"] for item in store.list("paper-one")] == [third["id"], first["id"]]
+    with pytest.raises(backup.SnapshotNotFound):
+        store.get("paper-one", second["id"])
+
+
 @pytest.mark.parametrize("project_id", ["", "../paper", "paper/name", "a" * 65, "space name"])
 def test_project_id_validation_rejects_unsafe_values(project_id: str) -> None:
     backup = load_backup_module()
@@ -95,6 +121,23 @@ def test_database_contains_canonical_json_not_pickle(tmp_path: Path) -> None:
     assert json.dumps(restored["payload"], sort_keys=True)
 
 
+def test_corrupt_or_expanding_stored_snapshots_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    backup = load_backup_module()
+    monkeypatch.setattr(backup, "MAX_SNAPSHOT_BYTES", 32)
+    with pytest.raises(backup.ValidationError, match="expands"):
+        backup.decompress_snapshot_payload(backup.zlib.compress(b"x" * 33))
+    with pytest.raises(backup.ValidationError, match="compression"):
+        backup.decompress_snapshot_payload(b"not-zlib")
+
+    monkeypatch.setattr(backup, "MAX_SNAPSHOT_BYTES", 10_000_000)
+    store = backup.BackupStore(tmp_path / "backups.sqlite3")
+    metadata, _ = store.create("paper-one", snapshot_payload(), None, None)
+    with store._connect() as connection:
+        connection.execute("UPDATE snapshots SET content_hash = ? WHERE id = ?", ("0" * 64, metadata["id"]))
+    with pytest.raises(backup.ValidationError, match="integrity"):
+        store.get("paper-one", metadata["id"])
+
+
 def test_project_activity_tracks_latest_server_time_and_actor(tmp_path: Path) -> None:
     backup = load_backup_module()
     store = backup.BackupStore(tmp_path / "backups.sqlite3")
@@ -110,6 +153,37 @@ def test_project_activity_tracks_latest_server_time_and_actor(tmp_path: Path) ->
     assert activity["paper-with-snapshot"]["actor"] == "Snapshot Author"
     with pytest.raises(backup.ValidationError, match="actor"):
         store.record_activity("paper-one", "", "edit")
+
+
+def test_runtime_catalog_bounds_backup_project_namespaces(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    runtime = tmp_path / "runtime"
+    (runtime / "project").mkdir(parents=True)
+    (runtime / "projects/paper-two").mkdir(parents=True)
+    (runtime / "project/project.json").write_text(
+        json.dumps({"id": "default-id"}), encoding="utf-8"
+    )
+    (runtime / "projects/paper-two/project.json").write_text(
+        json.dumps({"id": "paper-two-id"}), encoding="utf-8"
+    )
+    (runtime / "projects/index.json").write_text(
+        json.dumps(
+            {
+                "projects": [
+                    {"slug": "default-card", "source": "default", "activity_id": "default-id"},
+                    {"slug": "paper-two", "activity_id": "paper-two-id"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert backup.allowed_project_ids(runtime) == {
+        "default-id",
+        "default-card",
+        "paper-two",
+        "paper-two-id",
+    }
 
 
 def test_snapshot_export_is_written_for_external_copy(tmp_path: Path) -> None:
@@ -138,6 +212,43 @@ def test_asset_store_round_trip_quota_and_paths(tmp_path: Path) -> None:
     store.delete("paper-one", "figures/a.png")
     with pytest.raises(backup.SnapshotNotFound):
         store.get("paper-one", "figures/a.png")
+
+
+def test_asset_store_does_not_follow_symbolic_links(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    root = tmp_path / "assets"
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(PNG_BYTES)
+    (root / "paper-one").mkdir(parents=True)
+    (root / "paper-one" / "linked.png").symlink_to(outside)
+    store = backup.AssetStore(root)
+
+    with pytest.raises(backup.ValidationError, match="escapes|symbolic"):
+        store.get("paper-one", "linked.png")
+    assert outside.read_bytes() == PNG_BYTES
+
+
+def test_parallel_asset_uploads_cannot_bypass_project_quota(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    content = PNG_BYTES + b"x" * (1024 * 1024 - len(PNG_BYTES))
+    store = backup.AssetStore(
+        tmp_path / "assets",
+        max_file_bytes=len(content),
+        max_project_bytes=2 * len(content),
+    )
+
+    def upload(index: int) -> bool:
+        try:
+            store.put("paper-one", f"figures/{index}.png", content)
+            return True
+        except backup.ValidationError:
+            return False
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        accepted = list(pool.map(upload, range(12)))
+
+    assert sum(accepted) == 2
+    assert sum(item["size_bytes"] for item in store.list("paper-one")) == 2 * len(content)
 
 
 @pytest.mark.parametrize(

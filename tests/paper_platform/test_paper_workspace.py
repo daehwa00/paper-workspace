@@ -12,6 +12,32 @@ def workspace_markup() -> str:
     )
 
 
+def test_default_paper_has_one_catalog_entry_with_an_explicit_source() -> None:
+    private_deployment = (ROOT / "paper/project.json").is_file()
+    default_root = ROOT / ("paper" if private_deployment else "examples/paper-workspace-project")
+    library_root = ROOT / ("project-library" if private_deployment else "examples/project-library")
+    default = json.loads((default_root / "project.json").read_text(encoding="utf-8"))
+    catalog = json.loads((library_root / "index.json").read_text(encoding="utf-8"))
+    aliases = [
+        project
+        for project in catalog["projects"]
+        if project.get("activity_id", project["slug"]) == default["id"]
+    ]
+
+    assert len(aliases) == 1
+    if aliases[0].get("source") == "default":
+        assert not (library_root / aliases[0]["slug"]).exists()
+    else:
+        assert (library_root / aliases[0]["slug"] / "project.json").is_file()
+
+
+def test_default_paper_catalog_alias_routes_to_the_canonical_mount() -> None:
+    for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password"):
+        caddy = (ROOT / f"infra/paper-workspace/{name}").read_text(encoding="utf-8")
+        assert "^/p/aaai27/project/(.*)$" in caddy
+        assert "rewrite * /project/{re.default_project_asset.1}" in caddy
+
+
 def test_custom_workspace_has_no_texlyre_brand_or_login() -> None:
     html = workspace_markup()
     assert "Paper Workspace" in html
@@ -54,6 +80,8 @@ def test_workspace_state_and_path_helpers_have_a_testable_module_boundary() -> N
 
     assert "window.PaperWorkspaceCore" in core
     assert "normalizeState" in core
+    assert "validProjectPath" in core
+    assert "stringRecord" in core
     assert "const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson}" in app
     assert "function storedJson" not in app
     assert "const parentPath=" not in app
@@ -161,9 +189,12 @@ def test_project_hub_uses_safe_first_page_thumbnails() -> None:
     assert "data-project-fallback" in hub
     assert "`/projects/${encodeURIComponent(project.slug)}/thumbnail.png`" in hub
     assert "project-thumbnail-wrap" in css
-    assert "public_thumbnail" in caddy
+    assert "project_thumbnail" in caddy
+    assert caddy.index("forward_auth password-gate:8079") < caddy.index("project_thumbnail")
     assert "project-thumbnails:" in compose
     assert "project-thumbnail-storage-init:" in compose
+    assert "project-runtime:" in compose
+    assert "sync_project_runtime.py" in compose
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     assert "project_thumbnails:/usr/share/nginx/html/generated-thumbnails:ro" in compose
     assert "/generated-thumbnails/$1/thumbnail.png" in nginx
@@ -547,6 +578,25 @@ def test_typing_does_not_replace_the_rendered_pdf_with_placeholder() -> None:
     assert "setTimeout(()=>{save();render()},250)" not in app
 
 
+def test_compile_cancellation_identity_is_scoped_to_the_browser_tab() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    assert "sessionStorage.getItem(compileClientStorageKey)" in app
+    assert "'X-Compile-Client':compileClientId" in app
+    assert "'X-Compile-Client':actor.id" not in app
+
+
+def test_data_safety_guards_cover_navigation_restore_and_pdf_render_races() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    assert "const collabBootstrapReady=collabSession.whenReady" in app
+    assert "Promise.race([collabSession.whenReady" not in app
+    assert "복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다" in app
+    assert "pdfRenderGeneration" in app
+    assert "error.name='RenderingCancelledException'" in app
+    assert "clearTimeout(window.saveTimer);if(!activeAsset" in app
+    assert "moveServerAssetsSafely" in app
+    assert "renameHasCollision" in app
+
+
 def test_editor_shortcuts_support_mac_and_control_key_workflows() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     editor = (ROOT / "apps/paper_workspace/collaboration/editor.js").read_text(encoding="utf-8")
@@ -753,6 +803,8 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
     assert "if(remoteMain){" in app
     assert "if(!isLatexDocument(localMain))" in app
     assert "preservedDraftPath=`paper/drafts/${previousVersion}.tex`" in app
+    assert "split('/').map(encodeURIComponent).join('/')" in app
+    assert "encodeURI(projectManifest" not in app
     assert "state.files['paper/main.tex']=remoteMain" in app
     assert "def _needs_rerun" in compiler
     assert "def _run_latex_build" in compiler
@@ -760,6 +812,7 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
     assert '"build_state_id"' in compiler
     assert '"compile_id"' in compiler
     assert '"-synctex=1"' in compiler
+    assert '"-file-line-error"' in compiler
     assert '"-jobname=preview"' in compiler
     assert 'payload.get("entrypoint", "main.tex")' in compiler
     assert 'payload.get("preview_mode", "document")' in compiler
@@ -836,14 +889,23 @@ def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:
     assert "detached: true" in bridge
     assert "process.kill(-child.pid, 'SIGKILL')" in bridge
     assert "await rm(outputPath, { force: true })" in bridge
+    assert "MAX_RATE_CLIENTS" in bridge
+    assert "calls.size >= MAX_RATE_CLIENTS" in bridge
+    assert "calls.delete(client)" in bridge
     assert "bootstrapReady && isBootstrapLeader()" in collaboration
+    collaboration_server = (ROOT / "apps/paper_workspace/collaboration/server.cjs").read_text(encoding="utf-8")
+    assert "persistence.provider.flushDocument" in collaboration_server
+    assert "process.once('SIGTERM'" in collaboration_server
 
 
-def test_server_paper_sources_are_live_mounted_and_versioned() -> None:
+def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert "PAPER_PROJECT_DIR" in compose
-    assert ":/usr/share/nginx/html/project:ro" in compose
+    workspace_config = compose[compose.index("  workspace:"):compose.index("  caddy-storage-init:")]
+    assert "project_runtime:/usr/share/nginx/html/project-runtime:ro" in workspace_config
+    assert "${PAPER_PROJECT_DIR" not in workspace_config
+    assert "try_files /project-runtime$uri" in (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     assert "../../paper/" not in compose
     assert "serverMainSnapshot" in app
@@ -871,8 +933,34 @@ def test_canonical_references_are_merged_by_bibtex_key() -> None:
 def test_project_manifest_controls_server_managed_files() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert "projectManifest.files.filter(item=>item.managed)" in app
-    assert "state.projectVersion!==projectManifest.version" in app
+    assert "sharedProject.get('manifestVersion')" in app
+    assert "canCoordinateProjectUpgrade" in app
     assert "browser-before-server-sync" in app
+    assert "never replace or delete shared content during startup" in app
+
+
+def test_project_version_prunes_only_manifest_retired_paths_from_shared_tree() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    private_manifest = ROOT / "paper/project.json"
+    if private_manifest.is_file():
+        retired = set(json.loads(private_manifest.read_text(encoding="utf-8"))["retired_paths"])
+        assert {
+            "README.md",
+            "PAPER_CLAIM_EVIDENCE_MAP.md",
+            "SUBMISSION_READINESS_AUDIT.md",
+            "appendix_experiments.tex",
+            "appendix_seed_results.tex",
+            "ood_comparison_summary.tex",
+            "ood_low_data_table.tex",
+            "q1_stage1.tex",
+            "table_30_task_results.tex",
+            "table_34_task_results.tex",
+            "table_integrated_ranks.tex",
+        } <= retired
+    assert "projectManifest.retired_paths" in app
+    assert "collabSession.files.delete(path)" in app
+    assert "delete state.serverSourceSnapshots[path]" in app
 
 
 def test_archived_drafts_are_bounded_by_a_shared_fifo_queue() -> None:
@@ -887,10 +975,13 @@ def test_archived_drafts_are_bounded_by_a_shared_fifo_queue() -> None:
 
 def test_project_version_replaces_stale_collaboration_main() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    reconciliation = app[app.index("let preservedDraftPath=''"):app.index("state.projectVersion=projectManifest.version")]
+    start = app.index("let preservedDraftPath=''")
+    reconciliation = app[start:app.index("for(const [name,value] of Object.entries(remoteSources))", start)]
     version_branch = "if(projectVersionChanged&&isLatexDocument(sharedMainValue)&&sharedMainValue!==remoteMain)"
     shared_branch = "else if(isLatexDocument(sharedMainValue))"
 
+    assert "sharedProjectVersion" in app
+    assert "collabSession.isBootstrapLeader" in app
     assert reconciliation.index(version_branch) < reconciliation.index(shared_branch)
     assert "state.files[preservedDraftPath]=sharedMainValue" in reconciliation
     assert "replaceSharedText(collabSession.textFor('paper/main.tex'),remoteMain)" in reconciliation
@@ -979,7 +1070,8 @@ def test_appearance_mode_is_shared_across_hub_workspace_and_login() -> None:
     assert ".pdf-page" in css and "background:#fff" in css
     assert "paper-workspace-theme" in gate
     assert "replace_hash index.html __THEME_CSS_HASH__" in dockerfile
-    assert "/theme.css /theme.js" in caddy
+    assert caddy.index("forward_auth password-gate:8079") < caddy.index("@hub expression")
+    assert "/theme.css" not in caddy[:caddy.index("forward_auth password-gate:8079")]
 
 
 def test_uploaded_binary_assets_are_shared_through_the_server_store() -> None:
@@ -993,8 +1085,8 @@ def test_uploaded_binary_assets_are_shared_through_the_server_store() -> None:
     assert "await uploadServerAsset(destination,file" in app
     assert "asset.server?serverAssetUrl(path)" in app
     assert "await loadServerAssets()" in app
-    assert "await moveServerAsset" in app
-    assert "serverPaths.map(deleteServerAsset)" in app
+    assert "await moveServerAssetsSafely" in app
+    assert "for(const serverPath of serverPaths)await deleteServerAsset(serverPath)" in app
     assert "asset?.server&&!sharedPaths.has(path)" in app
 
 

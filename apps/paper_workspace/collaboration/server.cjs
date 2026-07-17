@@ -6,9 +6,29 @@ const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const WebSocket = require('ws')
-const { docs, setupWSConnection } = require('y-websocket/bin/utils')
+const Y = require('yjs')
+const decoding = require('lib0/decoding')
+const { docs, getPersistence, getYDoc, setupWSConnection } = require('y-websocket/bin/utils')
 
 const DEFAULT_ROOM_PATTERN = /^paper-workspace:[A-Za-z0-9.-]+(?::[0-9]{1,5})?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const PERSISTENCE_READINESS = Symbol.for('paper-workspace.persistence-readiness')
+
+const persistence = getPersistence()
+if (persistence && !persistence[PERSISTENCE_READINESS]) {
+  const bindState = persistence.bindState.bind(persistence)
+  persistence.bindState = (docName, document) => {
+    const ready = Promise.resolve().then(() => bindState(docName, document))
+    document.paperPersistenceReady = ready
+    return ready
+  }
+  persistence[PERSISTENCE_READINESS] = true
+}
+
+const prepareCollaborationDocument = async docName => {
+  const document = getYDoc(docName)
+  await (document.paperPersistenceReady || Promise.resolve())
+  return document
+}
 
 const positiveInteger = (value, fallback) => {
   const parsed = Number.parseInt(String(value ?? ''), 10)
@@ -55,6 +75,26 @@ const requestRoom = request => {
     return DEFAULT_ROOM_PATTERN.test(room) ? room : null
   } catch {
     return null
+  }
+}
+
+const roomHost = room => {
+  const prefix = 'paper-workspace:'
+  const slugSeparator = room.lastIndexOf(':')
+  return room.startsWith(prefix) && slugSeparator > prefix.length
+    ? room.slice(prefix.length, slugSeparator)
+    : ''
+}
+
+const messageDocumentGrowthBytes = message => {
+  try {
+    const bytes = new Uint8Array(message)
+    const decoder = decoding.createDecoder(bytes)
+    if (decoding.readVarUint(decoder) !== 0) return 0
+    const syncMessageType = decoding.readVarUint(decoder)
+    return syncMessageType === 1 || syncMessageType === 2 ? bytes.byteLength : 0
+  } catch {
+    return 0
   }
 }
 
@@ -122,6 +162,9 @@ function createCollaborationServer (overrides = {}) {
     maxConnections: positiveInteger(overrides.maxConnections ?? process.env.COLLAB_MAX_CONNECTIONS, 128),
     maxConnectionsPerIp: positiveInteger(overrides.maxConnectionsPerIp ?? process.env.COLLAB_MAX_CONNECTIONS_PER_IP, 16),
     maxConnectionsPerRoom: positiveInteger(overrides.maxConnectionsPerRoom ?? process.env.COLLAB_MAX_CONNECTIONS_PER_ROOM, 32),
+    maxConnectionAgeMs: positiveInteger(overrides.maxConnectionAgeMs ?? process.env.COLLAB_MAX_CONNECTION_AGE_MS, 6 * 60 * 60 * 1000),
+    maxIngressBytesPerMinute: positiveInteger(overrides.maxIngressBytesPerMinute ?? process.env.COLLAB_MAX_INGRESS_BYTES_PER_MINUTE, 16 * 1024 * 1024),
+    maxDocumentBytes: positiveInteger(overrides.maxDocumentBytes ?? process.env.COLLAB_MAX_DOCUMENT_BYTES, 32 * 1024 * 1024),
     maxRooms: positiveInteger(overrides.maxRooms ?? process.env.COLLAB_MAX_ROOMS, 64),
     persistenceDir: overrides.persistenceDir ?? process.env.YPERSISTENCE ?? '',
     maxStorageBytes: positiveInteger(overrides.maxStorageBytes ?? process.env.COLLAB_MAX_STORAGE_BYTES, 512 * 1024 * 1024),
@@ -160,12 +203,17 @@ function createCollaborationServer (overrides = {}) {
     perMessageDeflate: false
   })
 
-  wss.on('connection', (socket, request, connection) => {
+  wss.on('connection', async (socket, request, connection) => {
     const { address, docName, room } = connection
     ownedDocNames.add(docName)
     countsByIp.set(address, (countsByIp.get(address) || 0) + 1)
     countsByRoom.set(room, (countsByRoom.get(room) || 0) + 1)
+    const reauthenticationTimer = setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN) socket.close(4001, 'reauthentication required')
+    }, config.maxConnectionAgeMs)
+    reauthenticationTimer.unref()
     socket.on('close', () => {
+      clearTimeout(reauthenticationTimer)
       const nextIp = (countsByIp.get(address) || 1) - 1
       const nextRoom = (countsByRoom.get(room) || 1) - 1
       if (nextIp > 0) countsByIp.set(address, nextIp); else countsByIp.delete(address)
@@ -177,7 +225,51 @@ function createCollaborationServer (overrides = {}) {
       // entire collaboration service, disconnecting every healthy room.
       console.warn(`collaboration socket closed (${room}): ${error.code || error.message}`)
     })
-    setupWSConnection(socket, request, { docName })
+    try {
+      const document = await prepareCollaborationDocument(docName)
+      if (socket.readyState !== WebSocket.OPEN) return
+      if (!Number.isSafeInteger(document.paperDocumentBytes)) document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
+      if (document.paperDocumentBytes > config.maxDocumentBytes) {
+        socket.close(1009, 'document size limit exceeded')
+        return
+      }
+      const existingMessageListeners = new Set(socket.listeners('message'))
+      setupWSConnection(socket, request, { docName })
+      const protocolListener = socket.listeners('message').find(listener => !existingMessageListeners.has(listener))
+      if (!protocolListener) throw new Error('collaboration protocol listener was not installed')
+      socket.removeListener('message', protocolListener)
+      let ingressWindowStarted = Date.now()
+      let ingressBytes = 0
+      socket.on('message', (message, ...args) => {
+        const now = Date.now()
+        if (now - ingressWindowStarted >= 60_000) {
+          ingressWindowStarted = now
+          ingressBytes = 0
+        }
+        ingressBytes += Number(message?.byteLength ?? message?.length ?? 0)
+        if (ingressBytes > config.maxIngressBytesPerMinute) {
+          socket.close(1009, 'message rate limit exceeded')
+          return
+        }
+        const growthBytes = messageDocumentGrowthBytes(message)
+        if (growthBytes && document.paperDocumentBytes + growthBytes > config.maxDocumentBytes) {
+          socket.close(1009, 'document size limit exceeded')
+          return
+        }
+        protocolListener(message, ...args)
+        if (growthBytes) {
+          document.paperDocumentBytes += growthBytes
+          document.paperPendingGrowthBytes = (document.paperPendingGrowthBytes || 0) + growthBytes
+          if (document.paperPendingGrowthBytes >= 256 * 1024) {
+            document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
+            document.paperPendingGrowthBytes = 0
+          }
+        }
+      })
+    } catch (error) {
+      console.error(`collaboration persistence unavailable (${room}): ${error.message}`)
+      socket.close(1011, 'collaboration state unavailable')
+    }
   })
 
   server.on('upgrade', (request, socket, head) => {
@@ -189,6 +281,12 @@ function createCollaborationServer (overrides = {}) {
     const room = requestRoom(request)
     if (!room) {
       rejectUpgrade(socket, '404 Not Found', 'room not allowed')
+      return
+    }
+    let originHost = ''
+    try { originHost = new URL(origin).host } catch {}
+    if (!originHost || roomHost(room) !== originHost) {
+      rejectUpgrade(socket, '403 Forbidden', 'room host does not match origin')
       return
     }
     const slug = room.slice(room.lastIndexOf(':') + 1)
@@ -247,6 +345,9 @@ function createCollaborationServer (overrides = {}) {
       server.close(error => error ? reject(error) : resolve())
     })
     await Promise.all([websocketClosed, httpClosed])
+    if (persistence?.provider?.flushDocument) {
+      await Promise.all([...ownedDocNames].map(docName => persistence.provider.flushDocument(docName)))
+    }
     for (const docName of ownedDocNames) {
       const doc = docs.get(docName)
       if (doc) doc.destroy()
@@ -260,6 +361,20 @@ function createCollaborationServer (overrides = {}) {
 
 if (require.main === module) {
   const instance = createCollaborationServer()
+  let shuttingDown = false
+  const shutdown = signal => {
+    if (shuttingDown) return
+    shuttingDown = true
+    console.log(`collaboration server stopping (${signal})`)
+    instance.close()
+      .then(() => process.exit(0))
+      .catch(error => {
+        console.error('collaboration shutdown failed:', error)
+        process.exit(1)
+      })
+  }
+  process.once('SIGTERM', () => shutdown('SIGTERM'))
+  process.once('SIGINT', () => shutdown('SIGINT'))
   instance.server.listen(instance.config.port, instance.config.host, () => {
     console.log(`collaboration server listening on ${instance.config.host}:${instance.config.port}`)
   })
@@ -270,6 +385,9 @@ module.exports = {
   createCollaborationServer,
   directoryBytes,
   projectSlugs,
+  prepareCollaborationDocument,
+  messageDocumentGrowthBytes,
   requestAddress,
-  requestRoom
+  requestRoom,
+  roomHost
 }
