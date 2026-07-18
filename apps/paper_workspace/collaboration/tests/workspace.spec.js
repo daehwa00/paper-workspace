@@ -789,6 +789,34 @@ test('CodeMirror provides a professional LaTeX editing surface', async ({ page }
   await expect.poll(() => page.evaluate(() => document.getElementById('editor').value)).toContain('% codemirror-e2e')
 })
 
+test('LaTeX search uses a compact accessible toolbar above the manuscript', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const editor = page.locator('#editor-view .cm-editor')
+  await editor.locator('.cm-content').click()
+  await page.keyboard.press('Control+f')
+
+  const panel = editor.locator('.paper-search-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('searchbox', { name: '찾기' })).toBeFocused()
+  await expect(panel.getByRole('button', { name: '이전 결과' })).toBeVisible()
+  await expect(panel.getByRole('button', { name: '다음 결과' })).toBeVisible()
+  await expect(panel.getByRole('button', { name: '검색 닫기' })).toBeVisible()
+  await expect(panel.getByRole('checkbox', { name: '대소문자 구분' })).toBeVisible()
+
+  const [editorBox, panelBox] = await Promise.all([editor.boundingBox(), panel.boundingBox()])
+  expect(panelBox?.y).toBeGreaterThanOrEqual(editorBox?.y ?? 0)
+  expect(panelBox?.y).toBeLessThan((editorBox?.y ?? 0) + 120)
+  expect(panelBox?.width).toBeLessThanOrEqual(editorBox?.width ?? Infinity)
+
+  await panel.getByRole('searchbox', { name: '찾기' }).fill('document')
+  await page.keyboard.press('Enter')
+  await expect(editor.locator('.cm-searchMatch')).not.toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(editor).toHaveClass(/cm-focused/)
+})
+
 test('a stalled compile becomes a timeout instead of permanent processing', async ({ page }) => {
   await page.addInitScript(() => { window.__paperCompileRequestTimeoutMs = 100 })
   await page.route('**/api/compile', () => new Promise(() => {}))
