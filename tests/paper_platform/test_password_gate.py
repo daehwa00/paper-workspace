@@ -172,6 +172,26 @@ def test_login_page_is_fully_localized_and_preserves_redirect() -> None:
         assert 'role="alert"' in page
 
 
+def test_login_page_uses_an_inline_character_icon_when_packaged(tmp_path, monkeypatch) -> None:
+    gate = load_gate()
+    icon = tmp_path / "favicon.png"
+    icon.write_bytes(b"\x89PNG\r\n\x1a\ncharacter-icon")
+    data_url = gate.favicon_data_url(icon)
+    monkeypatch.setattr(gate, "FAVICON_DATA_URL", data_url)
+
+    page = gate.render_login_page("en").decode()
+
+    assert data_url.startswith("data:image/png;base64,")
+    assert 'href="/assets/paper-workspace-icon.png"' in page
+    assert f'href="{data_url}"' in page
+
+
+def test_password_gate_image_packages_the_character_icon() -> None:
+    dockerfile = (ROOT / "apps/paper_workspace/password_gate/Dockerfile").read_text(encoding="utf-8")
+
+    assert "apps/paper_workspace/static/assets/favicon-64.png /app/favicon-64.png" in dockerfile
+
+
 def test_password_login_theme_bootstrap_is_allowed_by_its_exact_csp_hash() -> None:
     gate = load_gate()
     page = gate.render_login_page("en").decode()

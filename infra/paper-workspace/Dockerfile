@@ -9,12 +9,17 @@ COPY --chmod=644 infra/paper-workspace/nginx-main.conf /etc/nginx/nginx.conf
 RUN set -eu; \
     cd /usr/share/nginx/html; \
     replace_hash() { html="$1"; token="$2"; asset="$3"; hash="$(sha256sum "$asset" | cut -c1-16)"; sed -i "s/${token}/${hash}/g" "$html"; }; \
+    replace_data() { html="$1"; token="$2"; asset="$3"; data="$(base64 "$asset" | tr -d '\n')"; sed -i "s|${token}|${data}|g" "$html"; }; \
     replace_hash site.webmanifest __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
     replace_hash site.webmanifest __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    cp assets/favicon-64.png assets/paper-workspace-icon.png; \
+    cp apple-touch-icon.png assets/paper-workspace-touch.png; \
+    cp site.webmanifest assets/paper-workspace.webmanifest; \
     replace_hash index.html __FAVICON_ICO_HASH__ favicon.ico; \
     replace_hash index.html __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    replace_data index.html __FAVICON_DATA__ assets/favicon-64.png; \
     replace_hash index.html __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
-    replace_hash index.html __WEBMANIFEST_HASH__ site.webmanifest; \
+    replace_hash index.html __WEBMANIFEST_HASH__ assets/paper-workspace.webmanifest; \
     replace_hash index.html __APP_CSS_HASH__ app.css; \
     replace_hash index.html __BOOTSTRAP_JS_HASH__ bootstrap.js; \
     replace_hash index.html __COMPONENTS_CSS_HASH__ components.css; \
@@ -37,9 +42,11 @@ RUN set -eu; \
     replace_hash hub.html __HUB_JS_HASH__ hub.js; \
     replace_hash hub.html __FAVICON_ICO_HASH__ favicon.ico; \
     replace_hash hub.html __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    replace_data hub.html __FAVICON_DATA__ assets/favicon-64.png; \
     replace_hash hub.html __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
-    replace_hash hub.html __WEBMANIFEST_HASH__ site.webmanifest; \
+    replace_hash hub.html __WEBMANIFEST_HASH__ assets/paper-workspace.webmanifest; \
     ! grep -R '__[A-Z_]*_HASH__' index.html hub.html site.webmanifest; \
+    ! grep -R '__FAVICON_DATA__' index.html hub.html; \
     find /usr/share/nginx/html -type d -exec chmod 755 {} +
 USER nginx
 

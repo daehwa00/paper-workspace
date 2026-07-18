@@ -273,7 +273,14 @@ def test_browser_error_reports_are_redacted_post_bodies() -> None:
 def test_brand_icons_are_public_before_authentication() -> None:
     password_caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
     oauth_caddy = (ROOT / "infra/paper-workspace/Caddyfile.auth").read_text(encoding="utf-8")
-    icon_paths = ("/favicon.ico", "/apple-touch-icon.png", "/site.webmanifest")
+    icon_paths = (
+        "/favicon.ico",
+        "/apple-touch-icon.png",
+        "/site.webmanifest",
+        "/assets/paper-workspace-icon.png",
+        "/assets/paper-workspace-touch.png",
+        "/assets/paper-workspace.webmanifest",
+    )
 
     for path in icon_paths:
         assert path in password_caddy
