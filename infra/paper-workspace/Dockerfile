@@ -9,6 +9,12 @@ COPY --chmod=644 infra/paper-workspace/nginx-main.conf /etc/nginx/nginx.conf
 RUN set -eu; \
     cd /usr/share/nginx/html; \
     replace_hash() { html="$1"; token="$2"; asset="$3"; hash="$(sha256sum "$asset" | cut -c1-16)"; sed -i "s/${token}/${hash}/g" "$html"; }; \
+    replace_hash site.webmanifest __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
+    replace_hash site.webmanifest __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    replace_hash index.html __FAVICON_ICO_HASH__ favicon.ico; \
+    replace_hash index.html __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    replace_hash index.html __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
+    replace_hash index.html __WEBMANIFEST_HASH__ site.webmanifest; \
     replace_hash index.html __APP_CSS_HASH__ app.css; \
     replace_hash index.html __BOOTSTRAP_JS_HASH__ bootstrap.js; \
     replace_hash index.html __COMPONENTS_CSS_HASH__ components.css; \
@@ -29,7 +35,11 @@ RUN set -eu; \
     replace_hash hub.html __THEME_JS_HASH__ theme.js; \
     replace_hash hub.html __I18N_JS_HASH__ i18n.js; \
     replace_hash hub.html __HUB_JS_HASH__ hub.js; \
-    ! grep -R '__[A-Z_]*_HASH__' index.html hub.html; \
+    replace_hash hub.html __FAVICON_ICO_HASH__ favicon.ico; \
+    replace_hash hub.html __FAVICON_PNG_HASH__ assets/favicon-64.png; \
+    replace_hash hub.html __APPLE_TOUCH_ICON_HASH__ apple-touch-icon.png; \
+    replace_hash hub.html __WEBMANIFEST_HASH__ site.webmanifest; \
+    ! grep -R '__[A-Z_]*_HASH__' index.html hub.html site.webmanifest; \
     find /usr/share/nginx/html -type d -exec chmod 755 {} +
 USER nginx
 

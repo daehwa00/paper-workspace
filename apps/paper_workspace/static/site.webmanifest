@@ -9,13 +9,13 @@
   "theme_color": "#172b4d",
   "icons": [
     {
-      "src": "/apple-touch-icon.png?v=2",
+      "src": "/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_HASH__",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/favicon-64.png?v=2",
+      "src": "/assets/favicon-64.png?v=__FAVICON_PNG_HASH__",
       "sizes": "64x64",
       "type": "image/png",
       "purpose": "any"

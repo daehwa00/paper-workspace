@@ -103,12 +103,16 @@ def test_dynamic_workspace_messages_use_semantic_translation_keys() -> None:
 def test_workspace_and_hub_use_the_character_favicon() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
     favicon = ROOT / "apps/paper_workspace/static/favicon.ico"
     touch_icon = ROOT / "apps/paper_workspace/static/apple-touch-icon.png"
-    assert '/favicon.ico?v=2' in workspace
-    assert '/favicon.ico?v=2' in hub
-    assert '/apple-touch-icon.png?v=2' in workspace
-    assert '/apple-touch-icon.png?v=2' in hub
+    assert '/favicon.ico?v=__FAVICON_ICO_HASH__' in workspace
+    assert '/favicon.ico?v=__FAVICON_ICO_HASH__' in hub
+    assert '/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_HASH__' in workspace
+    assert '/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_HASH__' in hub
+    assert "replace_hash index.html __FAVICON_ICO_HASH__ favicon.ico" in dockerfile
+    assert "replace_hash hub.html __FAVICON_ICO_HASH__ favicon.ico" in dockerfile
+    assert "replace_hash site.webmanifest __FAVICON_PNG_HASH__ assets/favicon-64.png" in dockerfile
     assert favicon.is_file() and favicon.stat().st_size > 500
     assert touch_icon.is_file() and touch_icon.stat().st_size > 500
 
@@ -1037,15 +1041,19 @@ def test_workspace_exposes_safari_and_manifest_icons() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     manifest = (ROOT / "apps/paper_workspace/static/site.webmanifest").read_text(encoding="utf-8")
+    nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     for html in (workspace, hub):
         assert 'rel="apple-touch-icon" sizes="180x180"' in html
-        assert 'href="/apple-touch-icon.png?v=2"' in html
-        assert 'rel="manifest" href="/site.webmanifest?v=2"' in html
-        assert 'href="/favicon.ico?v=2"' in html
+        assert 'href="/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_HASH__"' in html
+        assert 'rel="manifest" href="/site.webmanifest?v=__WEBMANIFEST_HASH__"' in html
+        assert 'href="/favicon.ico?v=__FAVICON_ICO_HASH__"' in html
     assert (ROOT / "apps/paper_workspace/static/apple-touch-icon.png").is_file()
     assert (ROOT / "apps/paper_workspace/static/favicon.ico").is_file()
     assert '"name": "Paper Workspace"' in manifest
     assert '"background_color": "#172b4d"' in manifest
+    assert '"src": "/apple-touch-icon.png?v=__APPLE_TOUCH_ICON_HASH__"' in manifest
+    assert '"src": "/assets/favicon-64.png?v=__FAVICON_PNG_HASH__"' in manifest
+    assert "default_type application/manifest+json" in nginx
 
 
 def test_appearance_mode_is_shared_across_hub_workspace_and_login() -> None:
