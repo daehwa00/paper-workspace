@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -15,9 +17,13 @@ from pathlib import Path
 
 
 SLUG_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-THUMBNAIL_PATTERN = re.compile(r"/projects/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/thumbnail\.(?:png|jpe?g|webp)")
+THUMBNAIL_PATTERN = re.compile(
+    r"/projects/(?P<slug>[A-Za-z0-9][A-Za-z0-9_-]{0,63})/"
+    r"(?P<filename>thumbnail\.(?P<extension>png|jpe?g|webp))"
+)
 MAX_PDF_BYTES = 64 * 1024 * 1024
-RENDER_VERSION = "2"
+MAX_THUMBNAIL_BYTES = 16 * 1024 * 1024
+RENDER_VERSION = "3"
 
 
 def _safe_relative(value: object) -> Path | None:
@@ -73,8 +79,13 @@ def resolve_project_pdf(project_root: Path) -> Path | None:
     return None
 
 
+def _ensure_output_directory(path: Path) -> None:
+    path.mkdir(mode=0o755, parents=True, exist_ok=True)
+    path.chmod(0o755)
+
+
 def render_pdf_thumbnail(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    _ensure_output_directory(destination.parent)
     with tempfile.TemporaryDirectory(prefix="thumbnail-", dir=destination.parent) as temporary:
         output_prefix = Path(temporary) / "first-page"
         result = subprocess.run(
@@ -106,11 +117,53 @@ def render_pdf_thumbnail(source: Path, destination: Path) -> None:
 
 
 def _write_atomic(path: Path, value: str) -> None:
-    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    _ensure_output_directory(path.parent)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(value, encoding="utf-8")
     temporary.chmod(0o644)
     os.replace(temporary, path)
+
+
+def _static_thumbnail_fingerprint(source: Path, extension: str) -> str | None:
+    try:
+        if source.is_symlink() or not source.is_file():
+            return None
+        size = source.stat().st_size
+        if size <= 0 or size > MAX_THUMBNAIL_BYTES:
+            return None
+        digest = hashlib.sha256()
+        with source.open("rb") as handle:
+            header = handle.read(12)
+            digest.update(header)
+            while chunk := handle.read(64 * 1024):
+                digest.update(chunk)
+    except OSError:
+        return None
+    valid_signature = (
+        extension == "png" and header.startswith(b"\x89PNG\r\n\x1a\n")
+        or extension in {"jpg", "jpeg"} and header.startswith(b"\xff\xd8\xff")
+        or extension == "webp" and header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+    )
+    if not valid_signature:
+        return None
+    return f"{RENDER_VERSION}:static:{extension}:{digest.hexdigest()}\n"
+
+
+def _publish_static_thumbnail(source: Path, destination: Path) -> None:
+    _ensure_output_directory(destination.parent)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent, delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            with source.open("rb") as source_handle:
+                shutil.copyfileobj(source_handle, handle, length=64 * 1024)
+        temporary.chmod(0o644)
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def scan_projects(
@@ -132,20 +185,37 @@ def scan_projects(
         slug = project.get("slug")
         if not isinstance(slug, str) or not SLUG_PATTERN.fullmatch(slug):
             continue
-        thumbnail = project.get("thumbnail")
-        if isinstance(thumbnail, str) and THUMBNAIL_PATTERN.fullmatch(thumbnail):
-            continue
         try:
             project_root = default_project_root if project.get("source") == "default" else projects_root / slug
+            thumbnail = project.get("thumbnail")
+            thumbnail_match = THUMBNAIL_PATTERN.fullmatch(thumbnail) if isinstance(thumbnail, str) else None
+            destination_root = output_root / slug
+            _ensure_output_directory(destination_root)
+            fingerprint_path = destination_root / ".fingerprint"
+            if thumbnail_match and thumbnail_match.group("slug") == slug:
+                filename = thumbnail_match.group("filename")
+                extension = thumbnail_match.group("extension")
+                static_source = project_root / filename
+                static_fingerprint = _static_thumbnail_fingerprint(static_source, extension)
+                if static_fingerprint is not None:
+                    destination = destination_root / filename
+                    if destination.is_file() and fingerprint_path.is_file():
+                        if fingerprint_path.read_text(encoding="utf-8") == static_fingerprint:
+                            continue
+                    _publish_static_thumbnail(static_source, destination)
+                    _write_atomic(fingerprint_path, static_fingerprint)
+                    updated.append(slug)
+                    continue
+                if extension != "png":
+                    continue
+
             source = resolve_project_pdf(project_root)
             if source is None:
                 continue
 
             stat = source.stat()
-            fingerprint = f"{RENDER_VERSION}:{stat.st_size}:{stat.st_mtime_ns}\n"
-            destination_root = output_root / slug
+            fingerprint = f"{RENDER_VERSION}:pdf:{stat.st_size}:{stat.st_mtime_ns}\n"
             destination = destination_root / "thumbnail.png"
-            fingerprint_path = destination_root / ".fingerprint"
             if destination.is_file() and fingerprint_path.is_file():
                 if fingerprint_path.read_text(encoding="utf-8") == fingerprint:
                     continue

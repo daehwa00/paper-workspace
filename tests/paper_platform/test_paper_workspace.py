@@ -210,7 +210,7 @@ def test_project_hub_uses_safe_first_page_thumbnails() -> None:
     assert "sync_project_runtime.py" in compose
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     assert "project_thumbnails:/usr/share/nginx/html/generated-thumbnails:ro" in compose
-    assert "/generated-thumbnails/$1/thumbnail.png" in nginx
+    assert "/generated-thumbnails/$1/thumbnail.$2" in nginx
 
 
 def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:

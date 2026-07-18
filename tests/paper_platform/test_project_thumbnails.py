@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import stat
 from pathlib import Path
 
 
@@ -44,7 +45,7 @@ def test_missing_catalog_thumbnail_is_generated_from_default_project_pdf(tmp_pat
     assert THUMBNAILS.scan_projects(catalog, default_project, catalog.parent, output, render) == ["default-paper"]
 
 
-def test_explicit_static_thumbnail_is_left_untouched(tmp_path: Path) -> None:
+def test_explicit_static_thumbnail_is_published_without_rendering(tmp_path: Path) -> None:
     catalog = tmp_path / "projects/index.json"
     project = tmp_path / "projects/example-paper"
     write_json(catalog, {"projects": [{
@@ -53,11 +54,58 @@ def test_explicit_static_thumbnail_is_left_untouched(tmp_path: Path) -> None:
     }]})
     write_json(project / "project.json", {"entrypoint": "main.tex"})
     (project / "main.pdf").write_bytes(b"%PDF-1.4\n")
+    thumbnail = b"\x89PNG\r\n\x1a\nstatic-thumbnail"
+    (project / "thumbnail.png").write_bytes(thumbnail)
 
     def fail_if_called(_source: Path, _destination: Path) -> None:
-        raise AssertionError("explicit thumbnails must not be regenerated")
+        raise AssertionError("explicit thumbnails must not be rendered from PDF")
 
-    assert THUMBNAILS.scan_projects(catalog, tmp_path / "paper", catalog.parent, tmp_path / "output", fail_if_called) == []
+    output = tmp_path / "output"
+    assert THUMBNAILS.scan_projects(catalog, tmp_path / "paper", catalog.parent, output, fail_if_called) == ["example-paper"]
+    assert (output / "example-paper/thumbnail.png").read_bytes() == thumbnail
+    assert stat.S_IMODE((output / "example-paper").stat().st_mode) == 0o755
+    assert THUMBNAILS.scan_projects(catalog, tmp_path / "paper", catalog.parent, output, fail_if_called) == []
+
+
+def test_missing_explicit_png_thumbnail_falls_back_to_project_pdf(tmp_path: Path) -> None:
+    catalog = tmp_path / "projects/index.json"
+    project = tmp_path / "projects/example-paper"
+    output = tmp_path / "output"
+    write_json(catalog, {"projects": [{
+        "slug": "example-paper",
+        "thumbnail": "/projects/example-paper/thumbnail.png",
+    }]})
+    write_json(project / "project.json", {"entrypoint": "main.tex"})
+    pdf = project / "main.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    def render(source: Path, destination: Path) -> None:
+        assert source == pdf
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"\x89PNG\r\n\x1a\ngenerated-thumbnail")
+
+    assert THUMBNAILS.scan_projects(catalog, tmp_path / "paper", catalog.parent, output, render) == ["example-paper"]
+    assert (output / "example-paper/thumbnail.png").read_bytes().endswith(b"generated-thumbnail")
+
+
+def test_active_content_named_as_png_is_replaced_from_the_pdf(tmp_path: Path) -> None:
+    catalog = tmp_path / "projects/index.json"
+    project = tmp_path / "projects/example-paper"
+    output = tmp_path / "output"
+    write_json(catalog, {"projects": [{
+        "slug": "example-paper",
+        "thumbnail": "/projects/example-paper/thumbnail.png",
+    }]})
+    write_json(project / "project.json", {"entrypoint": "main.tex"})
+    (project / "main.pdf").write_bytes(b"%PDF-1.4\n")
+    (project / "thumbnail.png").write_bytes(b"<svg onload='alert(1)'></svg>")
+
+    def render(_source: Path, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"\x89PNG\r\n\x1a\ngenerated-thumbnail")
+
+    assert THUMBNAILS.scan_projects(catalog, tmp_path / "paper", catalog.parent, output, render) == ["example-paper"]
+    assert (output / "example-paper/thumbnail.png").read_bytes().startswith(b"\x89PNG")
 
 
 def test_standard_submission_pdf_is_preferred_to_a_stale_main_preview(tmp_path: Path) -> None:
