@@ -553,7 +553,9 @@ class BackupHandler(BaseHTTPRequestHandler):
             try:
                 payload = self._request_json()
                 activity = self.store.record_activity(
-                    self._project_id(activity_match.group(1)), self._request_actor(), payload.get("reason")
+                    self._project_id(activity_match.group(1)),
+                    self._request_actor(payload.get("actor")),
+                    payload.get("reason"),
                 )
                 self._json(HTTPStatus.OK, {"activity": activity})
             except ValidationError as error:
@@ -570,7 +572,7 @@ class BackupHandler(BaseHTTPRequestHandler):
             metadata, deduplicated = self.store.create(
                 self._project_id(match.group(1)),
                 payload.get("snapshot"),
-                self._request_actor(),
+                self._request_actor(payload.get("actor")),
                 payload.get("reason"),
             )
             self._json(
@@ -638,9 +640,11 @@ class BackupHandler(BaseHTTPRequestHandler):
             raise ValidationError("request body must be an object")
         return payload
 
-    def _request_actor(self) -> str:
+    def _request_actor(self, browser_actor: object = None) -> str:
         if self.actor_mode == "shared":
             actor = validate_optional_text(self.shared_actor, "shared actor", 120)
+        elif self.actor_mode == "display":
+            actor = validate_optional_text(browser_actor, "display actor", 120)
         elif self.actor_mode == "proxy":
             actor = validate_optional_text(
                 self.headers.get(TRUSTED_ACTOR_HEADER), "trusted actor", 120
@@ -688,8 +692,8 @@ def create_server() -> ThreadingHTTPServer:
         int(os.environ.get("BACKUP_MAX_PROJECT_ASSET_BYTES", str(DEFAULT_MAX_PROJECT_ASSET_BYTES))),
     )
     BackupHandler.actor_mode = os.environ.get("BACKUP_ACTOR_MODE", "shared").strip().lower()
-    if BackupHandler.actor_mode not in {"shared", "proxy"}:
-        raise ValueError("BACKUP_ACTOR_MODE must be shared or proxy")
+    if BackupHandler.actor_mode not in {"shared", "display", "proxy"}:
+        raise ValueError("BACKUP_ACTOR_MODE must be shared, display, or proxy")
     BackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
     runtime_root = os.environ.get("BACKUP_PROJECT_RUNTIME", "").strip()
     BackupHandler.allowed_projects = allowed_project_ids(runtime_root) if runtime_root else None

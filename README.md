@@ -75,7 +75,7 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 - Keep local edits available while collaboration reconnects, then merge queued work before claiming it is shared.
 - Attach comments to a selected passage and revision, show inline comment anchors, jump back to context, and resolve completed threads.
 - Turn selected text into shared tasks with completion state, assignee context, file location, and direct source navigation.
-- Track the latest editor and activity time at project level so “recently active” reflects server activity rather than one browser's history.
+- Track the latest editor and activity time at project level so “recently active” reflects server activity rather than one browser's history. Shared-password deployments use the browser profile name as convenient, unverified display metadata; OAuth deployments use the authenticated email.
 - Inspect collaboration, save, PDF, and backup freshness together in the workspace health center.
 
 ### Codex revision workflow

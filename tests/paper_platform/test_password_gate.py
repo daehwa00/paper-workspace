@@ -326,6 +326,7 @@ def test_password_gate_files_configure_session_cookie_and_private_env() -> None:
     assert "HttpOnly; Secure; SameSite=Lax" in (ROOT / "apps/paper_workspace/password_gate/server.py").read_text(encoding="utf-8")
     assert "forward_auth password-gate:8079" in caddy
     assert "PAPER_ACCESS_PASSWORD" in env
+    assert "BACKUP_ACTOR_MODE: display" in compose
 
 
 def test_password_gate_login_is_mobile_safe_and_touch_accessible() -> None:

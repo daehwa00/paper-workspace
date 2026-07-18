@@ -439,3 +439,37 @@ def test_proxy_actor_mode_requires_trusted_header_and_ignores_body_actor(tmp_pat
         server.server_close()
         thread.join(timeout=2)
         backup.BackupHandler.actor_mode = "shared"
+
+
+def test_display_actor_mode_records_the_browser_profile_name(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    backup.BackupHandler.store = backup.BackupStore(tmp_path / "backups.sqlite3")
+    backup.BackupHandler.assets = backup.AssetStore(tmp_path / "assets")
+    backup.BackupHandler.actor_mode = "display"
+    server = ThreadingHTTPServer(("127.0.0.1", 0), backup.BackupHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        activity = urllib.request.Request(
+            f"{base}/projects/paper-one/activity",
+            data=json.dumps({"actor": "KDH", "reason": "edit"}).encode(),
+            headers={"Content-Type": "application/json", "X-Paper-Actor": "shared-password-user"},
+            method="POST",
+        )
+        with urllib.request.urlopen(activity) as response:
+            assert json.load(response)["activity"]["actor"] == "KDH"
+
+        snapshot = urllib.request.Request(
+            f"{base}/projects/paper-one/snapshots",
+            data=json.dumps({"snapshot": snapshot_payload(), "actor": "KDH", "reason": "interval"}).encode(),
+            headers={"Content-Type": "application/json", "X-Paper-Actor": "shared-password-user"},
+            method="POST",
+        )
+        with urllib.request.urlopen(snapshot) as response:
+            assert json.load(response)["snapshot"]["actor"] == "KDH"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        backup.BackupHandler.actor_mode = "shared"
