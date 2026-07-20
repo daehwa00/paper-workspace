@@ -82,7 +82,8 @@ def test_workspace_state_and_path_helpers_have_a_testable_module_boundary() -> N
     assert "normalizeState" in core
     assert "validProjectPath" in core
     assert "stringRecord" in core
-    assert "const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson}" in app
+    assert "const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson,workspaceStateStore}" in app
+    assert "workspaceStateStore" in core
     assert "function storedJson" not in app
     assert "const parentPath=" not in app
 
@@ -1057,7 +1058,8 @@ def test_collaboration_registers_initial_sync_before_connecting() -> None:
 def test_manifest_text_files_cannot_be_dropped_as_binary_assets() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
 
-    assert "function manifestItemIsAsset(item){return item.type==='asset'&&!textExtensions.has(extensionOf(item.path))}" in app
+    assert "const manifestSourceExtensions=new Set(['tex','bib','sty','bst','cls'])" in app
+    assert "function manifestItemIsAsset(item){return item.type==='asset'&&!manifestSourceExtensions.has(extensionOf(item.path))}" in app
 
 
 def test_compile_and_save_paths_use_the_rich_editor_as_source_of_truth() -> None:

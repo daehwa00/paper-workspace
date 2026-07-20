@@ -1,5 +1,5 @@
 const initial = '';
-const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson}=window.PaperWorkspaceCore;
+const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson,workspaceStateStore}=window.PaperWorkspaceCore;
 const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
 const projectSlug=projectRouteMatch?.[1]||'default';
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;
@@ -13,8 +13,38 @@ try{const storedCompileState=sessionStorage.getItem(compileStateStorageKey)||'';
 function setCompileStateId(value){compileStateId=/^[0-9a-f]{32}$/.test(String(value||''))?String(value):'';try{if(compileStateId)sessionStorage.setItem(compileStateStorageKey,compileStateId);else sessionStorage.removeItem(compileStateStorageKey)}catch{}}
 const legacyState=storedJson('paper-workspace',storedJson('aaai-workspace',{}));
 const parsedState=storedJson(projectStorageKey,projectSlug==='aaai27'?legacyState:{});
+const localStateHadFiles=Boolean(parsedState?.files&&typeof parsedState.files==='object'&&Object.values(parsedState.files).some(value=>typeof value==='string'&&value.length));
 const state=normalizeState(parsedState,initial);
-if(state.fileTreePreferencesVersion!==1){if(!state.collapsedFolders.includes('paper/drafts'))state.collapsedFolders.push('paper/drafts');state.fileTreePreferencesVersion=1}
+function ensureFileTreePreferences(){if(state.fileTreePreferencesVersion!==1){if(!state.collapsedFolders.includes('paper/drafts'))state.collapsedFolders.push('paper/drafts');state.fileTreePreferencesVersion=1}}
+ensureFileTreePreferences();
+const indexedWorkspaceStore=workspaceStateStore();
+const localRecoveryCharacterLimit=512*1024;
+let indexedWorkspaceAvailable=false,indexedWorkspaceSavedAt=0,indexedWorkspaceSaveGeneration=0,indexedWorkspaceSaveQueue=Promise.resolve();
+function replaceWorkspaceState(next){for(const key of Object.keys(state))delete state[key];Object.assign(state,normalizeState(next,initial));ensureFileTreePreferences()}
+function validLocalRecovery(value){return value&&typeof value==='object'&&typeof value.path==='string'&&typeof value.content==='string'&&Number.isFinite(Number(value.savedAt))&&value.content.length<=localRecoveryCharacterLimit}
+function localWorkspaceMetadata(snapshot,savedAt){const current=snapshot.current&&snapshot.files?.[snapshot.current]!==undefined?snapshot.current:'paper/main.tex',content=String(snapshot.files?.[current]??'');return {browserStateVersion:2,indexedSavedAt:savedAt,fileTreeVersion:snapshot.fileTreeVersion||1,fileTreePreferencesVersion:snapshot.fileTreePreferencesVersion||1,current,activeFolder:snapshot.activeFolder||'paper',folders:Array.isArray(snapshot.folders)?snapshot.folders:[],collapsedFolders:Array.isArray(snapshot.collapsedFolders)?snapshot.collapsedFolders:[],projectTitle:snapshot.projectTitle||'',projectVersion:snapshot.projectVersion||'',serverMainSnapshot:compactSourceSnapshot(snapshot.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(snapshot.serverSourceSnapshots||{}).map(([path,value])=>[path,compactSourceSnapshot(value)])),recovery:content.length<=localRecoveryCharacterLimit?{path:current,content,savedAt}:null}}
+function clearMigratedLegacyState(){if(projectSlug!=='aaai27')return;localStorage.removeItem('paper-workspace');localStorage.removeItem('aaai-workspace')}
+function persistLocalWorkspaceMetadata(snapshot,savedAt){const metadata=JSON.stringify(localWorkspaceMetadata(snapshot,savedAt));clearMigratedLegacyState();try{localStorage.setItem(projectStorageKey,metadata)}catch{localStorage.removeItem(projectStorageKey);localStorage.setItem(projectStorageKey,metadata)}}
+async function initializeIndexedWorkspaceState(){
+  try{
+    const record=await indexedWorkspaceStore.get(projectSlug);
+    if(record?.state&&typeof record.state==='object'){
+      const restored=normalizeState(structuredClone(record.state),initial),recovery=parsedState?.recovery;
+      if(validLocalRecovery(recovery)&&Number(recovery.savedAt)>Number(record.savedAt||0))restored.files[recovery.path]=recovery.content;
+      replaceWorkspaceState(restored);indexedWorkspaceSavedAt=Number(record.savedAt)||0
+    }else if(localStateHadFiles||validLocalRecovery(parsedState?.recovery)){
+      if(!localStateHadFiles&&validLocalRecovery(parsedState.recovery)){state.files[parsedState.recovery.path]=parsedState.recovery.content;state.current=parsedState.recovery.path}
+      const savedAt=Date.now(),snapshot=persistedState();await indexedWorkspaceStore.put(projectSlug,snapshot,savedAt);indexedWorkspaceSavedAt=savedAt
+    }
+    indexedWorkspaceAvailable=true;
+    try{persistLocalWorkspaceMetadata(persistedState(),indexedWorkspaceSavedAt||Date.now())}catch(error){reportClientError(error,'persistLocalWorkspaceMetadata')}
+    return true
+  }catch(error){
+    indexedWorkspaceAvailable=false;
+    if(validLocalRecovery(parsedState?.recovery)){state.files[parsedState.recovery.path]=parsedState.recovery.content;state.current=parsedState.recovery.path}
+    console.error('Indexed workspace storage unavailable; retaining localStorage fallback.',error);return false
+  }
+}
 const assetDatabase=new Promise((resolve,reject)=>{const request=indexedDB.open('paper-workspace-assets',1);request.onupgradeneeded=()=>{const store=request.result.createObjectStore('assets',{keyPath:'key'});store.createIndex('project','project')};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
 const assetRecordKey=path=>`${projectSlug}:${path}`;
 async function storeLocalAsset(path,asset){const database=await assetDatabase;await new Promise((resolve,reject)=>{const transaction=database.transaction('assets','readwrite');transaction.objectStore('assets').put({key:assetRecordKey(path),project:projectSlug,path,asset:{type:asset.type,size:asset.size,data:asset.data}});transaction.oncomplete=resolve;transaction.onerror=()=>reject(transaction.error)})}
@@ -373,8 +403,16 @@ function sourceFingerprint(value){let first=2166136261,second=2246822507;const s
 function compactSourceSnapshot(value){if(typeof value!=='string'||!value)return'';return value.startsWith('fp1:')?value:sourceFingerprint(value)}
 function sourceSnapshotMatches(snapshot,source){return snapshot===source||snapshot===sourceFingerprint(source)}
 function persistedFiles({compactDrafts=false}={}){if(!compactDrafts)return {...state.files};const entries=Object.entries(state.files),drafts=entries.filter(([path])=>path.startsWith('paper/drafts/'));const retainedDrafts=new Set(drafts.slice(-3).map(([path])=>path));if(state.current?.startsWith('paper/drafts/'))retainedDrafts.add(state.current);return Object.fromEntries(entries.filter(([path])=>!path.startsWith('paper/drafts/')||retainedDrafts.has(path)))}
-function persistedState(options={}){return {...state,files:persistedFiles(options),assets:{},serverMainSnapshot:compactSourceSnapshot(state.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(state.serverSourceSnapshots||{}).map(([path,snapshot])=>[path,compactSourceSnapshot(snapshot)]))};}
-const save = () => { syncCurrentFileToShared();try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState()));$('save-state').textContent=collabReady?'저장됨 · 공동 편집 동기화':'로컬 저장됨 · 동기화 대기';return true}catch{try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState({compactDrafts:true})));$('save-state').textContent='로컬 저장됨 · 오래된 초안 제외';return true}catch{$('save-state').textContent='저장 공간 부족';return false}} };
+function persistedState(options={}){const {recovery,browserStateVersion,indexedSavedAt,...durableState}=state;return {...durableState,files:persistedFiles(options),assets:{},serverMainSnapshot:compactSourceSnapshot(state.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(state.serverSourceSnapshots||{}).map(([path,snapshot])=>[path,compactSourceSnapshot(snapshot)]))};}
+function saveToLocalStorageFallback(){try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState()));$('save-state').textContent=collabReady?'저장됨 · 공동 편집 동기화':'로컬 저장됨 · 동기화 대기';return true}catch{try{localStorage.setItem(projectStorageKey,JSON.stringify(persistedState({compactDrafts:true})));$('save-state').textContent='로컬 저장됨 · 오래된 초안 제외';return true}catch{$('save-state').textContent='저장 공간 부족';return false}}}
+function queueIndexedWorkspaceSave(snapshot){
+  const generation=++indexedWorkspaceSaveGeneration,savedAt=Date.now(),stableSnapshot=structuredClone(snapshot);
+  try{persistLocalWorkspaceMetadata(stableSnapshot,savedAt)}catch(error){reportClientError(error,'persistLocalWorkspaceMetadata')}
+  $('save-state').textContent='브라우저 저장 중…';
+  indexedWorkspaceSaveQueue=indexedWorkspaceSaveQueue.catch(()=>{}).then(()=>indexedWorkspaceStore.put(projectSlug,stableSnapshot,savedAt)).then(()=>{indexedWorkspaceSavedAt=savedAt;if(generation===indexedWorkspaceSaveGeneration)$('save-state').textContent=collabReady?'저장됨 · 공동 편집 동기화':'로컬 저장됨 · 동기화 대기';return true}).catch(error=>{if(generation===indexedWorkspaceSaveGeneration)$('save-state').textContent='브라우저 저장 오류';reportClientError(error,'persistIndexedWorkspaceState');return false});
+  return true
+}
+const save=()=>{syncCurrentFileToShared();return indexedWorkspaceAvailable?queueIndexedWorkspaceSave(persistedState()):saveToLocalStorageFallback()};
 const backupIntervalMs=10*60*1000;
 let backupInitialized=false;
 let backupBusy=false;
@@ -603,6 +641,7 @@ function pdfErrorMarkup(diagnostic={message:'검사 탭에서 오류 위치를 �
 function render(){resetPdfPageIndicator();$('paper-preview').innerHTML=pdfWaitMarkup('PDF 준비 중','PDF 렌더링을 실행하면 여기에 표시됩니다');$('render-state').textContent='PDF 대기';$('download-pdf').disabled=!renderedPdfUrl;}
 const textExtensions=new Set(['tex','bib','sty','bst','cls','md','txt','csv','tsv','json','yaml','yml','js','mjs','py','sh','log','dat']);
 const compileTextExtensions=new Set(['tex','bib','sty','bst','cls','csv','txt','json','dat']);
+const manifestSourceExtensions=new Set(['tex','bib','sty','bst','cls']);
 const compileAssetExtensions=new Set(['png','jpg','jpeg','pdf','eps']);
 const imageExtensions=new Set(['png','jpg','jpeg','gif','webp','svg','bmp','avif']);
 let activeAsset='',assetZoom=1;
@@ -835,7 +874,7 @@ $('ask').onclick=()=>{const instruction=$('instruction').value.trim();if(!instru
 $('add-comment').onclick=()=>{const selection=selectedEditorRange();const body=$('comment-body').value.trim();if(!selection||!body){alert('본문에서 문장을 드래그하고 댓글을 입력해 주세요.');return;}addCommentForSelection(selection,body);$('comment-body').value='';activeSelection=null;};
 function validManifestPath(path){return typeof path==='string'&&path.length>0&&path.length<=240&&!path.startsWith('/')&&!path.split('/').some(part=>!part||part==='.'||part==='..')}
 function validRuntimeFileRevisions(value){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,revision])=>validManifestPath(path)&&/^[0-9a-f]{64}$/.test(String(revision||'')))}
-function manifestItemIsAsset(item){return item.type==='asset'&&!textExtensions.has(extensionOf(item.path))}
+function manifestItemIsAsset(item){return item.type==='asset'&&!manifestSourceExtensions.has(extensionOf(item.path))}
 function serverManagedManifestItems(manifest){const entrypoint=manifest.entrypoint||'main.tex';return manifest.files.filter(item=>!manifestItemIsAsset(item)&&(item.managed||item.path===entrypoint))}
 function syncRemoteManifestAssets(manifest,previous=projectManifest){
   const previousItems=new Map((previous.files||[]).filter(manifestItemIsAsset).map(item=>[`paper/${item.path}`,item]));
@@ -857,6 +896,7 @@ function syncRemoteManifestAssets(manifest,previous=projectManifest){
 }
 async function loadProjectManifest(){const response=await fetch(`${projectBase}/project/project.json`,{cache:'no-store'});if(!response.ok)throw new Error('project.json을 찾지 못했습니다.');const manifest=await response.json();const previewEntrypointList=manifest.preview_entrypoints??[manifest.entrypoint||'main.tex'];const retiredPaths=manifest.retired_paths??[],runtimeRevision=manifest.runtime_revision??'',runtimeFileRevisions=manifest.runtime_file_revisions??{};if(!Array.isArray(manifest.files)||!validManifestPath(manifest.entrypoint||'main.tex')||!Array.isArray(previewEntrypointList)||previewEntrypointList.some(path=>!validManifestPath(path)||!path.endsWith('.tex'))||!Array.isArray(retiredPaths)||retiredPaths.some(path=>!validManifestPath(path))||(manifest.preview_pdf&&!validManifestPath(manifest.preview_pdf))||(manifest.preview_synctex&&!validManifestPath(manifest.preview_synctex))||(runtimeRevision&&!/^[0-9a-f]{64}$/.test(String(runtimeRevision)))||(runtimeRevision&&!validRuntimeFileRevisions(runtimeFileRevisions)))throw new Error('project.json 형식이 올바르지 않습니다.');for(const item of manifest.files)if(!item||!validManifestPath(item.path)||(item.source&&!validManifestPath(item.source)))throw new Error('project.json에 잘못된 파일 경로가 있습니다.');return {...manifest,entrypoint:manifest.entrypoint||'main.tex',preview_entrypoints:previewEntrypointList,retired_paths:retiredPaths,version:String(manifest.version||'unversioned'),runtime_revision:String(runtimeRevision),runtime_file_revisions:runtimeFileRevisions}}
 async function loadProject(){
+  await initializeIndexedWorkspaceState();
   try{projectManifest=await loadProjectManifest()}catch(error){$('render-state').textContent='프로젝트 설정 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>프로젝트를 불러오지 못했습니다.</strong><br>${esc(error.message)}</div>`;return}
   for(const path of state.uploads)if(state.assets[path]?.data)await storeLocalAsset(path,state.assets[path]).catch(()=>{});
   state.assets={};
@@ -865,9 +905,11 @@ async function loadProject(){
   const previewPromise=fetchPreviewArtifact();
   const persistedPreviewPromise=fetchPersistedPdfPreview().catch(error=>{reportClientError(error,'fetchPersistedPdfPreview');return null});
   const remoteSources={};
+  const manifestAssetPaths=new Set(projectManifest.files.filter(manifestItemIsAsset).map(item=>`paper/${item.path}`));
   remoteAssetPaths.clear();
   remoteAssetSources.clear();
   syncRemoteManifestAssets(projectManifest,{files:[],runtime_file_revisions:{}});
+  for(const path of manifestAssetPaths)delete state.files[path];
   await Promise.all(projectManifest.files.map(async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
@@ -903,6 +945,7 @@ async function loadProject(){
   const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,localMain))||(!state.serverMainSnapshot&&projectVersionChanged)));
   const serverManagedProjectFiles=new Set(projectManifest.files.filter(item=>item.managed).map(item=>`paper/${item.path}`));
   const retiredProjectFiles=new Set(projectManifest.retired_paths.map(path=>`paper/${path}`));
+  collabSession.document.transact(()=>{for(const path of manifestAssetPaths)collabSession.files.delete(path)},actor.id);
 
   if(projectVersionChanged&&retiredProjectFiles.size){
     let retiredIndex=0;
@@ -984,7 +1027,7 @@ async function loadProject(){
   if(canCoordinateProjectUpgrade&&projectVersionChanged)sharedProject.set('manifestVersion',projectManifest.version);
   const synchronizedProjectVersion=sharedProject.get('manifestVersion');
   if(typeof synchronizedProjectVersion==='string'&&synchronizedProjectVersion)state.projectVersion=synchronizedProjectVersion;
-  for(const [path,text] of collabSession.files){if(projectVersionChanged&&serverManagedProjectFiles.has(path))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
+  for(const [path,text] of collabSession.files){if(manifestAssetPaths.has(path)||(projectVersionChanged&&serverManagedProjectFiles.has(path)))continue;const value=text?.toString?.();if(typeof value==='string'&&value)state.files[path]=value}
   pruneDraftQueue();
   initializeServerRuntimeState(remoteSources);
   initializeSharedMetadata();setEditor();syncProjectTitleFromTex(true);if(!renderedPdfUrl)render();listFiles();save();initializeServerBackups();initializeServerSourceRefresh();

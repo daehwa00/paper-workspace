@@ -47,6 +47,32 @@
     return state
   }
 
+  function workspaceStateStore(name = 'paper-workspace-state') {
+    const database = new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1)
+      request.onupgradeneeded = () => request.result.createObjectStore('states', { keyPath: 'project' })
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      request.onblocked = () => reject(new Error('workspace state database upgrade blocked'))
+    })
+    const transaction = async (mode, operation) => {
+      const db = await database
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('states', mode)
+        const request = operation(tx.objectStore('states'))
+        let result = null
+        request.onsuccess = () => { result = request.result ?? null }
+        request.onerror = () => reject(request.error)
+        tx.oncomplete = () => resolve(result)
+        tx.onabort = () => reject(tx.error || new Error('workspace state transaction aborted'))
+      })
+    }
+    return Object.freeze({
+      get: project => transaction('readonly', store => store.get(project)),
+      put: (project, state, savedAt = Date.now()) => transaction('readwrite', store => store.put({ project, state, savedAt }))
+    })
+  }
+
   window.PaperWorkspaceCore = Object.freeze({
     baseName,
     cleanSegment,
@@ -54,6 +80,7 @@
     extensionOf,
     normalizeState,
     parentPath,
-    storedJson
+    storedJson,
+    workspaceStateStore
   })
 })()

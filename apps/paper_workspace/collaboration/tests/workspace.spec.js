@@ -181,7 +181,7 @@ test('malformed browser state cannot block the server manuscript', async ({ page
   await expect(page.locator('#project-title')).not.toHaveValue('Untitled Paper')
 })
 
-test('quota fallback fingerprints server snapshots and retains only recent local drafts', async ({ page }) => {
+test('legacy localStorage manuscripts migrate transactionally into IndexedDB', async ({ page }) => {
   await page.route('**/vendor/paper-collab.js*', route => route.abort())
   await page.addInitScript(() => {
     const source = '\\documentclass{article}\\begin{document}draft\\end{document}'
@@ -210,13 +210,124 @@ test('quota fallback fingerprints server snapshots and retains only recent local
   await page.goto('/')
   await page.waitForFunction(() => {
     const stored = JSON.parse(localStorage.getItem('paper-workspace:default') || '{}')
-    return window.__quotaFallbackTriggered && stored.serverMainSnapshot?.startsWith('fp1:')
+    return window.__quotaFallbackTriggered && stored.browserStateVersion === 2
   })
-  const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('paper-workspace:default')))
-  expect(persisted.serverMainSnapshot).toMatch(/^fp1:/)
-  expect(persisted.serverSourceSnapshots['paper/references.bib']).toMatch(/^fp1:/)
-  expect(Object.keys(persisted.files).filter(path => path.startsWith('paper/drafts/')).length).toBeLessThanOrEqual(3)
-  expect(persisted.files['paper/main.tex']).toContain('\\documentclass')
+  const persisted = await page.evaluate(async () => {
+    const local = JSON.parse(localStorage.getItem('paper-workspace:default'))
+    const indexed = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('paper-workspace-state', 1)
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const get = request.result.transaction('states').objectStore('states').get('default')
+        get.onerror = () => reject(get.error)
+        get.onsuccess = () => resolve(get.result)
+      }
+    })
+    return { local, indexed, localBytes: new Blob([JSON.stringify(local)]).size }
+  })
+  expect(persisted.local.files).toBeUndefined()
+  expect(persisted.local.recovery.content).toContain('\\documentclass')
+  expect(persisted.localBytes).toBeLessThan(200_000)
+  expect(persisted.indexed.state.serverMainSnapshot).toMatch(/^fp1:/)
+  expect(persisted.indexed.state.serverSourceSnapshots['paper/references.bib']).toMatch(/^fp1:/)
+  expect(Object.keys(persisted.indexed.state.files).filter(path => path.startsWith('paper/drafts/')).length).toBeGreaterThanOrEqual(7)
+  expect(persisted.indexed.state.files['paper/main.tex']).toContain('\\documentclass')
+})
+
+test('bounded local recovery remains usable when IndexedDB is unavailable', async ({ page }) => {
+  const recovery = '\\documentclass{article}\\begin{document}offline recovery marker\\end{document}'
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(source => {
+    localStorage.setItem('paper-workspace:default', JSON.stringify({
+      browserStateVersion: 2,
+      current: 'paper/main.tex',
+      recovery: { path: 'paper/main.tex', content: source, savedAt: Date.now() }
+    }))
+    Object.defineProperty(window, 'indexedDB', {
+      configurable: true,
+      value: { open: () => { throw new DOMException('IndexedDB disabled', 'InvalidStateError') } }
+    })
+  }, recovery)
+
+  await page.goto('/')
+  await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || '')).toContain('offline recovery marker')
+  await expect(page.locator('#save-state')).not.toHaveText('저장 공간 부족')
+})
+
+test('workspace IndexedDB state store resolves only committed snapshots', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const store = window.PaperWorkspaceCore.workspaceStateStore('paper-workspace-state-e2e')
+    await store.put('paper', { files: { 'paper/main.tex': 'committed' } }, 17)
+    return store.get('paper')
+  })
+  expect(result).toEqual({ project: 'paper', state: { files: { 'paper/main.tex': 'committed' } }, savedAt: 17 })
+})
+
+test('manifest data assets stay out of durable manuscript state', async ({ page }) => {
+  const slug = `manifest-assets-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const source = '\\documentclass{article}\n\\begin{document}asset boundary\\end{document}\n'
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.route(`**/p/${slug}/project/**`, async route => {
+    const path = new URL(route.request().url()).pathname.split(`/p/${slug}/project/`)[1]
+    if (path === 'project.json') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slug,
+          version: '1',
+          entrypoint: 'main.tex',
+          files: [
+            { path: 'main.tex', managed: true },
+            { path: 'references.bib', managed: true },
+            { path: 'generated/report.json', type: 'asset', managed: true, size: 500_000 },
+            { path: 'generated/claims.tex', type: 'asset', managed: true }
+          ]
+        })
+      })
+      return
+    }
+    if (path === 'main.tex') return route.fulfill({ contentType: 'text/plain', body: source })
+    if (path === 'references.bib') return route.fulfill({ contentType: 'text/plain', body: '@article{asset-boundary,title={Boundary}}\n' })
+    if (path === 'generated/claims.tex') return route.fulfill({ contentType: 'text/plain', body: '\\newcommand{\\AssetBoundary}{verified}\n' })
+    if (path === 'generated/report.json') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ payload: 'x'.repeat(500_000) }) })
+    await route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+
+  await page.goto(`/p/${slug}`)
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('asset boundary'))
+  await expect.poll(() => page.evaluate(async project => {
+    const request = indexedDB.open('paper-workspace-state', 1)
+    const database = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const record = await new Promise((resolve, reject) => {
+      const get = database.transaction('states').objectStore('states').get(project)
+      get.onsuccess = () => resolve(get.result)
+      get.onerror = () => reject(get.error)
+    })
+    return Boolean(record?.state?.files?.['paper/generated/claims.tex'])
+  }, slug)).toBe(true)
+
+  const persisted = await page.evaluate(async project => {
+    const local = JSON.parse(localStorage.getItem(`paper-workspace:${project}`) || '{}')
+    const request = indexedDB.open('paper-workspace-state', 1)
+    const database = await new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const indexed = await new Promise((resolve, reject) => {
+      const get = database.transaction('states').objectStore('states').get(project)
+      get.onsuccess = () => resolve(get.result)
+      get.onerror = () => reject(get.error)
+    })
+    return { local, indexed, localBytes: new Blob([JSON.stringify(local)]).size }
+  }, slug)
+  expect(persisted.local.files).toBeUndefined()
+  expect(persisted.localBytes).toBeLessThan(200_000)
+  expect(persisted.indexed.state.files['paper/generated/report.json']).toBeUndefined()
+  expect(persisted.indexed.state.files['paper/generated/claims.tex']).toContain('AssetBoundary')
 })
 
 test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
@@ -1392,7 +1503,7 @@ test('compile cancellation identity is isolated per tab and stable across reload
   await context.close()
 })
 
-test('pagehide synchronously preserves the last debounced editor input', async ({ page }) => {
+test('pagehide synchronously preserves the last debounced editor input in bounded recovery state', async ({ page }) => {
   await page.route('**/vendor/paper-collab.js*', route => route.abort())
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
@@ -1402,7 +1513,8 @@ test('pagehide synchronously preserves the last debounced editor input', async (
   await expect.poll(() => page.evaluate(value => localStorage.getItem(projectStorageKey)?.includes(value) || false, marker)).toBe(false)
   const persisted = await page.evaluate(value => {
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
-    return JSON.parse(localStorage.getItem(projectStorageKey)).files['paper/main.tex'].includes(value)
+    const stored = JSON.parse(localStorage.getItem(projectStorageKey))
+    return stored.recovery?.path === 'paper/main.tex' && stored.recovery.content.includes(value)
   }, marker)
   expect(persisted).toBe(true)
 })

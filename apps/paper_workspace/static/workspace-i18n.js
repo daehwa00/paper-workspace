@@ -56,6 +56,7 @@
     '공유 자산 연결 지연': 'Shared asset connection delayed', '서버 원고 표시됨 · 공동 편집 병합 중': 'Server source shown · merging collaboration updates', 'PDF 미리보기 로드됨': 'PDF preview loaded',
     '원고 로드 오류': 'Source loading error', '원고를 불러오지 못했습니다.': 'Could not load the source.', '일부 기능 호환 모드': 'Limited compatibility mode',
     '저장됨': 'Saved', '저장됨 · 공동 편집 동기화': 'Saved · collaboration synced', '공동 편집 전송 중…': 'Sending collaboration update…', '로컬 저장 중…': 'Saving locally…', '로컬 저장됨 · 동기화 대기': 'Saved locally · waiting to sync',
+    '브라우저 저장 중…': 'Saving in the browser…', '브라우저 저장 오류': 'Browser storage error',
     '로컬 저장됨 · 큰 자료 제외': 'Saved locally · large assets excluded', '로컬 저장됨 · 오래된 초안 제외': 'Saved locally · older drafts excluded', '저장 공간 부족': 'Storage is full', '시간 정보 없음': 'Time unavailable', '백업 기록이 없습니다.': 'No backup history.',
     '등록된 작업이 없습니다.': 'No tasks yet.', '담당자 없음': 'Unassigned', '프로젝트': 'Project', '깨끗한 컴파일 확인 중…': 'Checking a clean compile…', '패키지 생성 중…': 'Building package…',
     '패키지 생성 실패': 'Package creation failed', '컴파일 실패': 'Compile failed', '검사 탭에서 오류 위치를 확인하세요': 'Open Checks to inspect the error location.',
