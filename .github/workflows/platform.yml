@@ -32,9 +32,6 @@ jobs:
           node --check apps/paper_workspace/static/app.js
           node --check apps/paper_workspace/static/workspace-core.js
           node --check apps/paper_workspace/static/workspace-storage.js
-          node --check apps/paper_workspace/static/workspace-project.js
-          node --check apps/paper_workspace/static/workspace-compile.js
-          node --check apps/paper_workspace/static/workspace-backup.js
           node --check apps/paper_workspace/collaboration/client.js
           node --check apps/paper_workspace/collaboration/server.cjs
           node --check apps/paper_workspace/codex_bridge/server.mjs

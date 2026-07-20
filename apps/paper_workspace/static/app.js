@@ -1,9 +1,6 @@
 const initial = '';
-const {baseName,cleanSegment,compactSourceSnapshot,constrain,extensionOf,normalizeState,parentPath,sourceFingerprint,sourceSnapshotMatches,storedJson}=window.PaperWorkspaceCore;
+const {backupItems,backupProjectId:backupManifestId,baseName,buildCompilePayload,cleanSegment,compactSourceSnapshot,compareBackupFiles,compilePayloadFingerprint,constrain,extensionOf,extractBackupSnapshot,manifestItemIsAsset,normalizeManifest,normalizeState,parentPath,parseLatexDiagnostics:parseCompileDiagnostics,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems,sourceFingerprint,sourceSnapshotMatches,storedJson,validateBackupSnapshot}=window.PaperWorkspaceCore;
 const {createWorkspacePersistence,workspaceAssetStore}=window.PaperWorkspaceStorage;
-const {manifestItemIsAsset,normalizeManifest,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems}=window.PaperWorkspaceProject;
-const {buildCompilePayload,compilePayloadFingerprint,parseLatexDiagnostics:parseCompileDiagnostics}=window.PaperWorkspaceCompile;
-const {compareFiles:compareBackupFiles,extractSnapshot:extractBackupSnapshot,projectId:backupManifestId,snapshotItems:backupItems,validateSnapshot:validateBackupSnapshot}=window.PaperWorkspaceBackup;
 const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
 const projectSlug=projectRouteMatch?.[1]||'default';
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;

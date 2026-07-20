@@ -23,7 +23,7 @@ const assetTokens = {
   __APP_CSS_HASH__: 'app.css', __BOOTSTRAP_JS_HASH__: 'bootstrap.js', __COMPONENTS_CSS_HASH__: 'components.css', __UX_CSS_HASH__: 'ux.css',
   __THEME_CSS_HASH__: 'theme.css', __THEME_JS_HASH__: 'theme.js', __PAPER_COLLAB_HASH__: 'vendor/paper-collab.js',
   __I18N_JS_HASH__: 'i18n.js', __WORKSPACE_I18N_JS_HASH__: 'workspace-i18n.js',
-  __WORKSPACE_CORE_JS_HASH__: 'workspace-core.js', __WORKSPACE_STORAGE_JS_HASH__: 'workspace-storage.js', __WORKSPACE_PROJECT_JS_HASH__: 'workspace-project.js', __WORKSPACE_COMPILE_JS_HASH__: 'workspace-compile.js', __WORKSPACE_BACKUP_JS_HASH__: 'workspace-backup.js', __PDF_VIEWPORT_JS_HASH__: 'pdf-viewport.js',
+  __WORKSPACE_CORE_JS_HASH__: 'workspace-core.js', __WORKSPACE_STORAGE_JS_HASH__: 'workspace-storage.js', __PDF_VIEWPORT_JS_HASH__: 'pdf-viewport.js',
   __PAPER_EDITOR_HASH__: 'vendor/paper-editor.js', __APP_JS_HASH__: 'app.js'
 }
 let renderedIndex = readFileSync(join(staticRoot, 'index.html'), 'utf8')

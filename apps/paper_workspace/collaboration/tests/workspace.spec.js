@@ -330,7 +330,7 @@ test('workspace persistence coalesces superseded pending snapshots', async ({ pa
 test('project manifest boundary normalizes valid data and rejects traversal', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(() => {
-    const project = window.PaperWorkspaceProject
+    const project = window.PaperWorkspaceCore
     const normalized = project.normalizeManifest({
       id: 'paper',
       files: [
@@ -366,7 +366,9 @@ test('project manifest boundary normalizes valid data and rejects traversal', as
 test('backup boundary rejects malformed and out-of-project snapshot files', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(() => {
-    const backup = window.PaperWorkspaceBackup
+    const backup = {
+      validateSnapshot: window.PaperWorkspaceCore.validateBackupSnapshot
+    }
     const valid = backup.validateSnapshot({
       title: 'Paper',
       files: { 'paper/main.tex': '\\documentclass{article}' },
