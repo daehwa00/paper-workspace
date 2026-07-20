@@ -62,6 +62,10 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert "/i18n.js?v=__I18N_JS_HASH__" in html
     assert "/workspace-i18n.js?v=__WORKSPACE_I18N_JS_HASH__" in html
     assert "/workspace-core.js?v=__WORKSPACE_CORE_JS_HASH__" in html
+    assert "/workspace-storage.js?v=__WORKSPACE_STORAGE_JS_HASH__" in html
+    assert "/workspace-project.js?v=__WORKSPACE_PROJECT_JS_HASH__" in html
+    assert "/workspace-compile.js?v=__WORKSPACE_COMPILE_JS_HASH__" in html
+    assert "/workspace-backup.js?v=__WORKSPACE_BACKUP_JS_HASH__" in html
     assert "/pdf-viewport.js?v=__PDF_VIEWPORT_JS_HASH__" in html
     assert "?lang=en|ko" not in engine
     assert "queryLanguage() || storedLanguage() || browserLanguage() || 'en'" in engine
@@ -71,19 +75,27 @@ def test_workspace_supports_persisted_english_and_korean_locales() -> None:
     assert "__I18N_JS_HASH__" in dockerfile
     assert "__WORKSPACE_I18N_JS_HASH__" in dockerfile
     assert "__WORKSPACE_CORE_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_STORAGE_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_PROJECT_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_COMPILE_JS_HASH__" in dockerfile
+    assert "__WORKSPACE_BACKUP_JS_HASH__" in dockerfile
     assert "__PDF_VIEWPORT_JS_HASH__" in dockerfile
 
 
 def test_workspace_state_and_path_helpers_have_a_testable_module_boundary() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
+    storage = (ROOT / "apps/paper_workspace/static/workspace-storage.js").read_text(encoding="utf-8")
 
     assert "window.PaperWorkspaceCore" in core
     assert "normalizeState" in core
     assert "validProjectPath" in core
     assert "stringRecord" in core
-    assert "const {baseName,cleanSegment,constrain,extensionOf,normalizeState,parentPath,storedJson,workspaceStateStore}" in app
-    assert "workspaceStateStore" in core
+    assert "sourceFingerprint" in core
+    assert "sourceSnapshotMatches" in core
+    assert "const {createWorkspacePersistence,workspaceAssetStore}=window.PaperWorkspaceStorage" in app
+    assert "workspaceStateStore" in storage
+    assert "createLatestWriteQueue" in storage
     assert "function storedJson" not in app
     assert "const parentPath=" not in app
 
@@ -148,6 +160,8 @@ def test_shared_links_use_a_high_contrast_character_preview() -> None:
 def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    project = (ROOT / "apps/paper_workspace/static/workspace-project.js").read_text(encoding="utf-8")
+    compile_client = (ROOT / "apps/paper_workspace/static/workspace-compile.js").read_text(encoding="utf-8")
     for identifier in ("editor", "paper-preview", "upload", "suggestion", "refresh-pdf", "download-pdf"):
         assert f'id="{identifier}"' in html
     assert "localStorage" in app
@@ -155,14 +169,15 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "loadProject" in app
     assert "/project/project.json" in app
     assert "loadProjectManifest" in app
-    assert "validManifestPath" in app
+    assert "validManifestPath" in project
     assert "/api/compile" in app
     assert "compileAfterSave" in app
     assert "preview_entrypoints" in app
     assert "selectedEntrypoint" in app
     assert "const entrypoint=selectedEntrypoint()" in app
     assert "selectedPreviewMode" in app
-    assert "preview_mode:selectedPreviewMode(entrypoint)" in app
+    assert "previewMode:selectedPreviewMode(entrypoint)" in app
+    assert "preview_mode: previewMode" in compile_client
     assert "자동 갱신 10" not in app
     assert "renderPdfPreview" in app
     assert "syncPdfToSource" in app
@@ -837,15 +852,19 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
 
 def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    storage = (ROOT / "apps/paper_workspace/static/workspace-storage.js").read_text(encoding="utf-8")
+    compile_client = (ROOT / "apps/paper_workspace/static/workspace-compile.js").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     backup = (ROOT / "apps/paper_workspace/backup/server.py").read_text(encoding="utf-8")
     collaboration = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
     nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
 
-    assert "indexedDB.open('paper-workspace-assets'" in app
+    assert "workspaceAssetStore(projectSlug" in app
+    assert "paper-workspace-assets" in storage
+    assert "withTimeout" in storage
     assert "remoteAssetSources" in app
-    assert "parallelLimit(paths,4" in app
+    assert "parallelLimit(paths, 4" in compile_client
     assert "const autoSaveDelayMs=1000" in app
     assert "trimEditorHistory" in app
     assert "layoutAnimationFrame=requestAnimationFrame" in app
@@ -856,7 +875,7 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "persistPdfPreview" in app
     assert "compileRequestGeneration" in app
     assert "persistedPreview?.fingerprint===fingerprint" in app
-    assert "relative.startsWith('drafts/')&&relative!==entrypoint" in app
+    assert "relative.startsWith('drafts/') && relative !== entrypoint" in compile_client
     assert "const pdfPreRenderZoom=2" in app
     assert "pdfMaxCanvasPixels=16_000_000" in app
     assert "const releasePage=entry=>" in app
@@ -865,7 +884,8 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "_snapshot_build_artifacts" in compiler
     assert "_restore_build_artifacts" in compiler
     assert "BUILD_STATE_MAX_BYTES" in compiler
-    assert "workspace_id:projectSlug" in app
+    assert "workspaceId:projectSlug" in app
+    assert "workspace_id: workspaceId" in compile_client
     assert "X-Compile-State" in app
     assert "runUpdate({fullBuild:true})" in app
     assert "PAPER_PROJECTS_ROOT" not in compose
@@ -1004,6 +1024,7 @@ def test_project_version_replaces_stale_collaboration_main() -> None:
 def test_project_backups_are_verified_on_open_and_every_ten_minutes() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    backup_client = (ROOT / "apps/paper_workspace/static/workspace-backup.js").read_text(encoding="utf-8")
     css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
 
     assert 'id="backup-status"' in html
@@ -1016,7 +1037,7 @@ def test_project_backups_are_verified_on_open_and_every_ten_minutes() -> None:
     assert "setInterval(()=>createServerBackup('auto'" in app
     backup_payload = app[app.index("function backupPayload"):app.index("function setBackupStatus")]
     assert "state.assets" not in backup_payload
-    assert ".replace(/[^A-Za-z0-9_-]+/g,'-')" in app
+    assert ".replace(/[^A-Za-z0-9_-]+/g, '-')" in backup_client
     assert "#create-checkpoint{border-color:#2457d6;background:#2457d6;color:#fff" in css
     assert ".backup-card>.tool-row{gap:0;padding:1px;border:1px solid #dbe7ff" in css
     assert ".backup-card>.tool-row .backup-restore+.backup-restore{border-left:1px solid #dbe7ff!important" in css
@@ -1057,9 +1078,11 @@ def test_collaboration_registers_initial_sync_before_connecting() -> None:
 
 def test_manifest_text_files_cannot_be_dropped_as_binary_assets() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    project = (ROOT / "apps/paper_workspace/static/workspace-project.js").read_text(encoding="utf-8")
 
-    assert "const manifestSourceExtensions=new Set(['tex','bib','sty','bst','cls'])" in app
-    assert "function manifestItemIsAsset(item){return item.type==='asset'&&!manifestSourceExtensions.has(extensionOf(item.path))}" in app
+    assert "const sourceExtensions = new Set(['tex', 'bib', 'sty', 'bst', 'cls'])" in project
+    assert "!sourceExtensions.has(extensionOf(item.path))" in project
+    assert "manifestItemIsAsset" in app
 
 
 def test_compile_and_save_paths_use_the_rich_editor_as_source_of_truth() -> None:

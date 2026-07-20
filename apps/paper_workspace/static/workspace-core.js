@@ -20,6 +20,23 @@
   const validProjectPath = value => typeof value === 'string' && value.length > 0 && value.length <= 240 && !value.startsWith('/') && !value.includes('\\') && value.split('/').every(part => part && part !== '.' && part !== '..' && ![...part].some(character => character.charCodeAt(0) < 32))
   const stringRecord = value => Object.fromEntries(Object.entries(record(value)).filter(([path, content]) => validProjectPath(path) && typeof content === 'string'))
 
+  function sourceFingerprint(value) {
+    let first = 2166136261
+    let second = 2246822507
+    const source = String(value ?? '')
+    for (let index = 0; index < source.length; index += 1) {
+      const code = source.charCodeAt(index)
+      first = Math.imul(first ^ code, 16777619)
+      second = Math.imul(second ^ code, 3266489917)
+    }
+    return `fp1:${source.length}:${(first >>> 0).toString(16)}:${(second >>> 0).toString(16)}`
+  }
+
+  const compactSourceSnapshot = value => typeof value !== 'string' || !value
+    ? ''
+    : value.startsWith('fp1:') ? value : sourceFingerprint(value)
+  const sourceSnapshotMatches = (snapshot, source) => snapshot === source || snapshot === sourceFingerprint(source)
+
   function normalizeState(value, initial = '') {
     const state = record(value)
     state.files = stringRecord(state.files)
@@ -47,40 +64,17 @@
     return state
   }
 
-  function workspaceStateStore(name = 'paper-workspace-state') {
-    const database = new Promise((resolve, reject) => {
-      const request = indexedDB.open(name, 1)
-      request.onupgradeneeded = () => request.result.createObjectStore('states', { keyPath: 'project' })
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-      request.onblocked = () => reject(new Error('workspace state database upgrade blocked'))
-    })
-    const transaction = async (mode, operation) => {
-      const db = await database
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction('states', mode)
-        const request = operation(tx.objectStore('states'))
-        let result = null
-        request.onsuccess = () => { result = request.result ?? null }
-        request.onerror = () => reject(request.error)
-        tx.oncomplete = () => resolve(result)
-        tx.onabort = () => reject(tx.error || new Error('workspace state transaction aborted'))
-      })
-    }
-    return Object.freeze({
-      get: project => transaction('readonly', store => store.get(project)),
-      put: (project, state, savedAt = Date.now()) => transaction('readwrite', store => store.put({ project, state, savedAt }))
-    })
-  }
-
   window.PaperWorkspaceCore = Object.freeze({
     baseName,
     cleanSegment,
+    compactSourceSnapshot,
     constrain,
     extensionOf,
     normalizeState,
     parentPath,
+    sourceFingerprint,
+    sourceSnapshotMatches,
     storedJson,
-    workspaceStateStore
+    validProjectPath
   })
 })()

@@ -254,14 +254,135 @@ test('bounded local recovery remains usable when IndexedDB is unavailable', asyn
   await expect(page.locator('#save-state')).not.toHaveText('저장 공간 부족')
 })
 
+test('stalled browser databases cannot block the server manuscript', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(() => {
+    window.__paperWorkspaceStorageTimeoutMs = 50
+    Object.defineProperty(window, 'indexedDB', {
+      configurable: true,
+      value: { open: () => ({}) }
+    })
+  })
+
+  await page.goto('/')
+  await expect.poll(
+    () => page.evaluate(() => document.getElementById('editor')?.value || ''),
+    { timeout: 1500 }
+  ).toContain('\\documentclass')
+})
+
+test('a malformed emergency recovery path cannot enter manuscript state', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-workspace:default', JSON.stringify({
+      browserStateVersion: 2,
+      current: '../outside.tex',
+      recovery: {
+        path: '../outside.tex',
+        content: '\\documentclass{article}\\begin{document}invalid recovery\\end{document}',
+        savedAt: Date.now()
+      }
+    }))
+  })
+
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  const recoveryState = await page.evaluate(() => ({
+    current: state.current,
+    invalidFilePresent: Object.hasOwn(state.files, '../outside.tex'),
+    source: editorValue()
+  }))
+  expect(recoveryState.current).toBe('paper/main.tex')
+  expect(recoveryState.invalidFilePresent).toBe(false)
+  expect(recoveryState.source).not.toContain('invalid recovery')
+})
+
 test('workspace IndexedDB state store resolves only committed snapshots', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(async () => {
-    const store = window.PaperWorkspaceCore.workspaceStateStore('paper-workspace-state-e2e')
+    const store = window.PaperWorkspaceStorage.workspaceStateStore('paper-workspace-state-e2e')
     await store.put('paper', { files: { 'paper/main.tex': 'committed' } }, 17)
     return store.get('paper')
   })
   expect(result).toEqual({ project: 'paper', state: { files: { 'paper/main.tex': 'committed' } }, savedAt: 17 })
+})
+
+test('workspace persistence coalesces superseded pending snapshots', async ({ page }) => {
+  await page.goto('/')
+  const writes = await page.evaluate(async () => {
+    const committed = []
+    let releaseFirst
+    const firstBlocked = new Promise(resolve => { releaseFirst = resolve })
+    const queue = window.PaperWorkspaceStorage.createLatestWriteQueue(async value => {
+      committed.push(value)
+      if (value === 1) await firstBlocked
+    })
+    queue.push(1)
+    queue.push(2)
+    queue.push(3)
+    releaseFirst()
+    await queue.drain()
+    return committed
+  })
+  expect(writes).toEqual([1, 3])
+})
+
+test('project manifest boundary normalizes valid data and rejects traversal', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(() => {
+    const project = window.PaperWorkspaceProject
+    const normalized = project.normalizeManifest({
+      id: 'paper',
+      files: [
+        { path: 'main.tex', managed: true },
+        { path: 'generated/report.json', type: 'asset' },
+        { path: 'generated/claims.tex', type: 'asset' }
+      ],
+      runtime_file_revisions: {}
+    })
+    let traversalRejected = false
+    try {
+      project.normalizeManifest({ entrypoint: '../outside.tex', files: [] })
+    } catch {
+      traversalRejected = true
+    }
+    return {
+      entrypoint: normalized.entrypoint,
+      previews: normalized.preview_entrypoints,
+      reportAsset: project.manifestItemIsAsset(normalized.files[1]),
+      generatedTexAsset: project.manifestItemIsAsset(normalized.files[2]),
+      traversalRejected
+    }
+  })
+  expect(result).toEqual({
+    entrypoint: 'main.tex',
+    previews: ['main.tex'],
+    reportAsset: true,
+    generatedTexAsset: false,
+    traversalRejected: true
+  })
+})
+
+test('backup boundary rejects malformed and out-of-project snapshot files', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(() => {
+    const backup = window.PaperWorkspaceBackup
+    const valid = backup.validateSnapshot({
+      title: 'Paper',
+      files: { 'paper/main.tex': '\\documentclass{article}' },
+      comments: [],
+      tasks: []
+    })
+    const invalid = [
+      { files: { '../outside.tex': 'secret' } },
+      { files: { 'paper/main.tex': { source: 'wrong type' } } },
+      { files: [] }
+    ].map(snapshot => {
+      try { backup.validateSnapshot(snapshot); return false } catch { return true }
+    })
+    return { title: valid.title, invalid }
+  })
+  expect(result).toEqual({ title: 'Paper', invalid: [true, true, true] })
 })
 
 test('manifest data assets stay out of durable manuscript state', async ({ page }) => {

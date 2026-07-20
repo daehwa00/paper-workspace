@@ -29,6 +29,10 @@ RUN set -eu; \
     replace_hash index.html __I18N_JS_HASH__ i18n.js; \
     replace_hash index.html __WORKSPACE_I18N_JS_HASH__ workspace-i18n.js; \
     replace_hash index.html __WORKSPACE_CORE_JS_HASH__ workspace-core.js; \
+    replace_hash index.html __WORKSPACE_STORAGE_JS_HASH__ workspace-storage.js; \
+    replace_hash index.html __WORKSPACE_PROJECT_JS_HASH__ workspace-project.js; \
+    replace_hash index.html __WORKSPACE_COMPILE_JS_HASH__ workspace-compile.js; \
+    replace_hash index.html __WORKSPACE_BACKUP_JS_HASH__ workspace-backup.js; \
     replace_hash index.html __PDF_VIEWPORT_JS_HASH__ pdf-viewport.js; \
     replace_hash index.html __PAPER_COLLAB_HASH__ vendor/paper-collab.js; \
     replace_hash index.html __PAPER_EDITOR_HASH__ vendor/paper-editor.js; \
