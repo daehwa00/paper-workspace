@@ -14,15 +14,23 @@ const fromBase64 = value => Uint8Array.from(atob(value), character => character.
 export function createSession({ url, room, actor, onStatus, onPeers }) {
   const document = new Y.Doc()
   const persistence = new IndexeddbPersistence(`paper-workspace-crdt:${room}`, document)
-  const provider = new WebsocketProvider(url, room, document, { connect: true })
+  // Register the initial sync waiter before opening the socket. A fast local or
+  // resumed connection can otherwise emit `sync` before `whenReady` subscribes,
+  // leaving workspace bootstrap pending even though the provider is synced.
+  const provider = new WebsocketProvider(url, room, document, { connect: false })
   const files = document.getMap('files')
   const awareness = provider.awareness
   let bootstrapReady = false
   const bootstrapSettleMs = 400
   awareness.setLocalStateField('user', actor)
 
+  let resolveInitialServerSync
+  const initialServerSync = new Promise(resolve => { resolveInitialServerSync = resolve })
   provider.on('status', event => onStatus?.(event.status))
-  provider.on('sync', synced => onStatus?.(synced ? 'synced' : 'connecting'))
+  provider.on('sync', synced => {
+    onStatus?.(synced ? 'synced' : 'connecting')
+    if (synced) resolveInitialServerSync()
+  })
   const publishPeers = () => {
     const peers = []
     awareness.getStates().forEach((state, clientId) => {
@@ -31,6 +39,7 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
     onPeers?.(peers)
   }
   awareness.on('change', publishPeers)
+  provider.connect()
 
   const isBootstrapLeader = () => Math.min(...awareness.getStates().keys()) === document.clientID
   const textFor = (path, initial = '') => {
@@ -106,7 +115,7 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
     updateActor,
     whenReady: Promise.all([
       persistence.whenSynced,
-      new Promise(resolve => provider.once('sync', resolve))
+      initialServerSync
     ]).then(() => new Promise(resolve => setTimeout(resolve, bootstrapSettleMs))).then(() => { bootstrapReady = true }),
     destroy() {
       awareness.off('change', publishPeers)

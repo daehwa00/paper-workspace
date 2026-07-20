@@ -1046,6 +1046,20 @@ def test_workspace_pending_operations_have_deadlines_and_precise_detection() -> 
     assert "workspace.compile.timeout" in translations
 
 
+def test_collaboration_registers_initial_sync_before_connecting() -> None:
+    client = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
+
+    assert "{ connect: false }" in client
+    assert client.index("provider.on('sync'") < client.index("provider.connect()")
+    assert "initialServerSync" in client
+
+
+def test_manifest_text_files_cannot_be_dropped_as_binary_assets() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    assert "function manifestItemIsAsset(item){return item.type==='asset'&&!textExtensions.has(extensionOf(item.path))}" in app
+
+
 def test_workspace_exposes_safari_and_manifest_icons() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")

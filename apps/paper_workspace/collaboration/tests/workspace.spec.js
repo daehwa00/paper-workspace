@@ -563,6 +563,21 @@ test('collaboration watchdog leaves pending state when synchronization never com
   await expect(page.locator('#collab-label')).not.toHaveText('처리 중')
 })
 
+test('collaboration reconnect action retries the socket without reloading the workspace', async ({ page }) => {
+  await page.addInitScript(() => { window.__paperCollaborationWatchdogMs = 50 })
+  await page.route('**/vendor/paper-collab.js*', async route => {
+    const response = await route.fetch()
+    const body = `${await response.text()}\n;(() => { const create = PaperCollab.createSession; window.PaperCollab = { ...PaperCollab, createSession: options => { const session = create({ ...options, onStatus: status => options.onStatus(status === 'synced' ? 'connected' : status) }); let attempts = 0; return { ...session, provider: { get synced() { return attempts > 1 }, disconnect() {}, connect() { attempts += 1; if (attempts > 1) options.onStatus('synced') } } } } } })();`
+    await route.fulfill({ response, body, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.goto('/')
+  await expect(page.locator('#health-collab')).toHaveText('동기화 지연', { timeout: 1500 })
+  await page.locator('#status-center-toggle').click()
+  await page.locator('#health-collab-action').click()
+  await expect(page.locator('#health-collab')).toHaveText('동기화됨', { timeout: 1500 })
+  await expect(page).toHaveURL(/\/$/)
+})
+
 test('startup watchdog paints the manuscript when the app script fails', async ({ page }) => {
   await page.route('**/app.js*', route => route.abort())
   await page.goto('/')

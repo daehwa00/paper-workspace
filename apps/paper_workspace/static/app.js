@@ -209,6 +209,14 @@ function handleCollaborationStatus(status){
   armCollaborationWatchdog()
 }
 collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+function retryCollaboration(){
+  if(!collabSession?.provider)return;
+  collaborationWatchdogFailed=false;collaborationReconnectAttempted=true;clearCollaborationWatchdog();
+  setCollaborationStatus('connecting','공동 편집 다시 연결 중');
+  collabSession.provider.disconnect?.();collabSession.provider.connect?.();armCollaborationWatchdog()
+}
+window.addEventListener('online',retryCollaboration);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&collaborationWatchdogFailed)retryCollaboration()});
 armCollaborationWatchdog();
 // Never publish the local tree before both IndexedDB and the collaboration
 // server have supplied their authoritative state. The manuscript is painted
@@ -351,7 +359,7 @@ function installStatusCenter(){
   const open=()=>{clearTimeout(hideTimer);panel.hidden=false;toggle.setAttribute('aria-expanded','true');restoreFocus=true;requestAnimationFrame(()=>{panel.classList.add('open');closeButton.focus()})};
   toggle.onclick=event=>{event.stopPropagation();toggle.getAttribute('aria-expanded')==='true'?close():open()};
   closeButton.onclick=event=>{event.stopPropagation();close()};
-  collabAction.onclick=()=>location.reload();
+  collabAction.onclick=()=>{retryCollaboration();close({returnFocus:false})};
   pdfAction.onclick=()=>{close({returnFocus:false});activateAssistantTab('checks',{handoff:true})};
   backupAction.onclick=()=>{close({returnFocus:false});activateAssistantTab('sources',{handoff:true});createServerBackup('manual')};
   document.addEventListener('click',event=>{if(toggle.getAttribute('aria-expanded')==='true'&&!panel.contains(event.target)&&!toggle.contains(event.target))close({returnFocus:false})});
@@ -827,10 +835,11 @@ $('ask').onclick=()=>{const instruction=$('instruction').value.trim();if(!instru
 $('add-comment').onclick=()=>{const selection=selectedEditorRange();const body=$('comment-body').value.trim();if(!selection||!body){alert('본문에서 문장을 드래그하고 댓글을 입력해 주세요.');return;}addCommentForSelection(selection,body);$('comment-body').value='';activeSelection=null;};
 function validManifestPath(path){return typeof path==='string'&&path.length>0&&path.length<=240&&!path.startsWith('/')&&!path.split('/').some(part=>!part||part==='.'||part==='..')}
 function validRuntimeFileRevisions(value){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,revision])=>validManifestPath(path)&&/^[0-9a-f]{64}$/.test(String(revision||'')))}
-function serverManagedManifestItems(manifest){const entrypoint=manifest.entrypoint||'main.tex';return manifest.files.filter(item=>item.type!=='asset'&&(item.managed||item.path===entrypoint))}
+function manifestItemIsAsset(item){return item.type==='asset'&&!textExtensions.has(extensionOf(item.path))}
+function serverManagedManifestItems(manifest){const entrypoint=manifest.entrypoint||'main.tex';return manifest.files.filter(item=>!manifestItemIsAsset(item)&&(item.managed||item.path===entrypoint))}
 function syncRemoteManifestAssets(manifest,previous=projectManifest){
-  const previousItems=new Map((previous.files||[]).filter(item=>item.type==='asset').map(item=>[`paper/${item.path}`,item]));
-  const nextItems=(manifest.files||[]).filter(item=>item.type==='asset'),nextPaths=new Set(nextItems.map(item=>`paper/${item.path}`));
+  const previousItems=new Map((previous.files||[]).filter(manifestItemIsAsset).map(item=>[`paper/${item.path}`,item]));
+  const nextItems=(manifest.files||[]).filter(manifestItemIsAsset),nextPaths=new Set(nextItems.map(item=>`paper/${item.path}`));
   for(const path of [...remoteAssetPaths]){
     if(nextPaths.has(path))continue;
     remoteAssetPaths.delete(path);remoteAssetSources.delete(path);
@@ -862,7 +871,7 @@ async function loadProject(){
   await Promise.all(projectManifest.files.map(async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
-    if(item.type!=='asset'){
+    if(!manifestItemIsAsset(item)){
       const value=await fetchProjectSource(name,projectFileUrl(source));
       if(value)remoteSources[name]=value;
     }
