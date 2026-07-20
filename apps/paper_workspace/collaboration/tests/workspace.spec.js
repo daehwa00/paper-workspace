@@ -804,6 +804,17 @@ test('CodeMirror provides a professional LaTeX editing surface', async ({ page }
   await expect.poll(() => page.evaluate(() => document.getElementById('editor').value)).toContain('% codemirror-e2e')
 })
 
+test('compile reads CodeMirror when the legacy textarea is stale', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.querySelector('#editor-view .cm-content')?.textContent.includes('documentclass'))
+  await page.waitForFunction(() => /오류/.test(document.getElementById('render-state')?.textContent || ''))
+  await page.locator('#editor').evaluate(element => { element.value = '' })
+  const requestPromise = page.waitForRequest(request => request.url().endsWith('/api/compile'))
+  await page.locator('#refresh-pdf').click()
+  const payload = (await requestPromise).postDataJSON()
+  expect(payload.files['main.tex']).toContain('\\documentclass')
+})
+
 test('LaTeX search uses a compact accessible toolbar above the manuscript', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))

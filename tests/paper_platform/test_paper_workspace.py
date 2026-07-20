@@ -1060,6 +1060,12 @@ def test_manifest_text_files_cannot_be_dropped_as_binary_assets() -> None:
     assert "function manifestItemIsAsset(item){return item.type==='asset'&&!textExtensions.has(extensionOf(item.path))}" in app
 
 
+def test_compile_and_save_paths_use_the_rich_editor_as_source_of_truth() -> None:
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+
+    assert "state.files[state.current]=$('editor').value" not in app
+
+
 def test_workspace_exposes_safari_and_manifest_icons() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
