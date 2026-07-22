@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test'
 
-function onePagePdf() {
+function pagePdf(pageCount = 1) {
+  const contentId = pageCount + 3
+  const pages = Array.from({ length: pageCount }, (_, index) => `${index + 3} 0 R`)
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>',
+    `<< /Type /Pages /Kids [${pages.join(' ')}] /Count ${pageCount} >>`,
+    ...pages.map(() => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents ${contentId} 0 R >>`),
     '<< /Length 0 >>\nstream\n\nendstream'
   ]
   let body = '%PDF-1.4\n', offsets = [0]
@@ -12,6 +14,10 @@ function onePagePdf() {
   const xref = Buffer.byteLength(body)
   body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
   return Buffer.from(body)
+}
+
+function onePagePdf() {
+  return pagePdf()
 }
 
 test.beforeEach(async ({ page }) => {
@@ -894,6 +900,46 @@ test('PDF viewport restoration keeps the visible page and position after rerende
   expect(restored.before.pageNumber).toBe(3)
   expect(restored.after.pageNumber).toBe(3)
   expect(Math.abs(restored.after.pageProgress - restored.before.pageProgress)).toBeLessThan(0.02)
+})
+
+test('lazy PDF pages keep one fit width after the preview panel is resized', async ({ page }) => {
+  const pdf = pagePdf(8)
+  let synctexPoint = null
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await page.addInitScript(() => localStorage.removeItem('paper-workspace-layout'))
+  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    const response = await route.fetch()
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
+  })
+  await page.route('**/api/compile', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ elapsed_ms: 12, cached: false, compile_id: '1234567890abcdef12345678', pdf_audit: { page_count: 8 }, pdf_base64: pdf.toString('base64'), synctex_base64: '' }),
+  }))
+  await page.route('**/api/synctex', route => {
+    synctexPoint = route.request().postDataJSON()
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ file: 'main.tex', line: 2, column: 0 }) })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.pdf-page[data-page="1"] canvas')).toHaveCSS('visibility', 'visible')
+  const originalPanelWidth = await page.locator('.preview-panel').evaluate(element => element.clientWidth)
+  const separator = page.locator('[data-resize="editor-preview"]')
+  await separator.focus()
+  for (let index = 0; index < 12; index += 1) await page.keyboard.press('ArrowLeft')
+  await expect.poll(() => page.locator('.preview-panel').evaluate(element => element.clientWidth)).toBeGreaterThan(originalPanelWidth + 100)
+  await page.locator('.pdf-page[data-page="6"]').evaluate(element => element.scrollIntoView({ block: 'center' }))
+  await expect(page.locator('.pdf-page[data-page="6"] canvas')).toHaveCSS('visibility', 'visible')
+
+  const widths = await page.locator('.pdf-page').evaluateAll(pages => pages.map(page => Math.round(page.getBoundingClientRect().width)))
+  expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1)
+  const sixthCanvas = page.locator('.pdf-page[data-page="6"] canvas')
+  const canvasBox = await sixthCanvas.boundingBox()
+  await sixthCanvas.click({ position: { x: canvasBox.width / 2, y: canvasBox.height / 2 } })
+  await expect.poll(() => synctexPoint).not.toBeNull()
+  expect(synctexPoint.page).toBe(6)
+  expect(synctexPoint.x).toBeCloseTo(100, 0)
+  expect(synctexPoint.y).toBeCloseTo(100, 0)
 })
 
 test('dark project tree keeps resting rows flat', async ({ page }) => {

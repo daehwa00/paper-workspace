@@ -439,11 +439,11 @@ let renderedSynctex='';
 let renderedSynctexFallback='';
 let renderedPdfBytes=null;
 let lastPdfAudit=null;
-let activePdfDocument=null,activePdfObserver=null,pdfRenderGeneration=0;
+let activePdfDocument=null,activePdfObserver=null,activePdfResizeObserver=null,pdfRenderGeneration=0;
 const activePdfRenderTasks=new Set();
 const pdfPreRenderZoom=2,pdfMaxDevicePixelRatio=2,pdfMaxCanvasPixels=16_000_000;
 let pdfPageIndicatorFrame=0;
-function disposePdfPreview(){activePdfObserver?.disconnect();activePdfObserver=null;for(const task of activePdfRenderTasks)task.cancel?.();activePdfRenderTasks.clear();activePdfDocument?.destroy?.();activePdfDocument=null}
+function disposePdfPreview(){activePdfObserver?.disconnect();activePdfObserver=null;activePdfResizeObserver?.disconnect();activePdfResizeObserver=null;for(const task of activePdfRenderTasks)task.cancel?.();activePdfRenderTasks.clear();activePdfDocument?.destroy?.();activePdfDocument=null}
 function resetPdfPageIndicator(){const indicator=$('pdf-page-indicator');indicator.hidden=true;indicator.textContent=''}
 function updatePdfPageIndicator(){pdfPageIndicatorFrame=0;const indicator=$('pdf-page-indicator');const panel=document.querySelector('.preview-panel');const pages=Array.from(document.querySelectorAll('.pdf-page'));if(!panel||!pages.length){resetPdfPageIndicator();return}const current=window.PaperPdfViewport.currentPage(panel,pages);const pageNumber=Number(current?.dataset.page)||1;indicator.textContent=`${pageNumber} / ${pages.length}`;indicator.setAttribute('aria-label',`현재 PDF ${pageNumber}페이지, 전체 ${pages.length}페이지`);indicator.hidden=false}
 function schedulePdfPageIndicatorUpdate(){if(pdfPageIndicatorFrame)return;pdfPageIndicatorFrame=requestAnimationFrame(updatePdfPageIndicator)}
@@ -533,7 +533,8 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
   const firstPage=await pdfDocument.getPage(1);
   ensureCurrent(pdfDocument);
   const firstBase=firstPage.getViewport({scale:1});
-  const firstScale=Math.max(.35,(preview.clientWidth-36)/firstBase.width);
+  let fitWidth=Math.max(1,preview.clientWidth-36);
+  const firstScale=Math.max(.35,fitWidth/firstBase.width);
   const firstViewport=firstPage.getViewport({scale:firstScale});
   const entries=Array.from({length:pdfDocument.numPages},(_,index)=>{
     const pageNumber=index+1;
@@ -552,8 +553,28 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
     canvas.setAttribute('aria-label',`PDF ${pageNumber}페이지 — 클릭하거나 Enter 키를 누르면 LaTeX 원문으로 이동`);
     wrapper.append(canvas);
     viewer.append(wrapper);
-    return {pageNumber,canvas,wrapper,promise:null,task:null,rendered:false,scale:firstScale};
+    return {pageNumber,canvas,wrapper,promise:null,task:null,rendered:false,scale:firstScale,base:firstBase};
   });
+  const layoutEntry=entry=>{
+    entry.scale=Math.max(.35,fitWidth/entry.base.width);
+    entry.wrapper.dataset.scale=String(entry.scale);
+    const width=entry.base.width*entry.scale,height=entry.base.height*entry.scale;
+    entry.wrapper.style.width=`${width}px`;
+    entry.wrapper.style.minHeight=`${height}px`;
+    entry.canvas.style.width=`${width}px`;
+    entry.canvas.style.height=`${height}px`;
+  };
+  activePdfResizeObserver=new ResizeObserver(()=>{
+    if(activePdfDocument!==pdfDocument)return;
+    const nextFitWidth=Math.max(1,preview.clientWidth-36);
+    if(Math.abs(nextFitWidth-fitWidth)<1)return;
+    const snapshot=window.PaperPdfViewport.capture(panel,entries.map(entry=>entry.wrapper));
+    fitWidth=nextFitWidth;
+    entries.forEach(layoutEntry);
+    window.PaperPdfViewport.restore(panel,entries.map(entry=>entry.wrapper),snapshot);
+    schedulePdfPageIndicatorUpdate();
+  });
+  activePdfResizeObserver.observe(preview);
   const renderPage=entry=>{
     if(entry.rendered)return Promise.resolve();
     if(entry.promise)return entry.promise;
@@ -561,19 +582,15 @@ async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
       ensureCurrent(pdfDocument);
       if(activePdfDocument!==pdfDocument)return;
       const base=page.getViewport({scale:1});
-      entry.scale=Math.max(.35,(preview.clientWidth-36)/base.width);
-      entry.wrapper.dataset.scale=String(entry.scale);
+      entry.base=base;
+      layoutEntry(entry);
       const viewport=page.getViewport({scale:entry.scale});
-      entry.wrapper.style.width=`${viewport.width}px`;
-      entry.wrapper.style.minHeight=`${viewport.height}px`;
-      entry.canvas.style.width=`${viewport.width}px`;
-      entry.canvas.style.height=`${viewport.height}px`;
       const desiredRatio=Math.min(devicePixelRatio||1,pdfMaxDevicePixelRatio)*pdfPreRenderZoom;
       const pixelBudgetRatio=Math.sqrt(pdfMaxCanvasPixels/(viewport.width*viewport.height));
       const renderRatio=Math.max(1,Math.min(desiredRatio,pixelBudgetRatio));
       entry.canvas.width=Math.floor(viewport.width*renderRatio);
       entry.canvas.height=Math.floor(viewport.height*renderRatio);
-      const syncFromPoint=(clientX,clientY)=>{const rect=entry.canvas.getBoundingClientRect();const displayScale=entry.scale*layout.pdfZoom;syncPdfToSource(entry.pageNumber,(clientX-rect.left)/displayScale,(clientY-rect.top)/displayScale)};
+      const syncFromPoint=(clientX,clientY)=>{const rect=entry.canvas.getBoundingClientRect();syncPdfToSource(entry.pageNumber,(clientX-rect.left)*entry.base.width/rect.width,(clientY-rect.top)*entry.base.height/rect.height)};
       entry.canvas.onclick=event=>syncFromPoint(event.clientX,event.clientY);
       entry.canvas.onkeydown=event=>{if(event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();const rect=entry.canvas.getBoundingClientRect();syncFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)};
       const task=page.render({canvasContext:entry.canvas.getContext('2d'),viewport,transform:renderRatio===1?null:[renderRatio,0,0,renderRatio,0,0]});

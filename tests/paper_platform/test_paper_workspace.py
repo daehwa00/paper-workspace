@@ -301,7 +301,8 @@ def test_editor_and_pdf_have_independent_persistent_zoom_controls() -> None:
     assert "editorZoom:1,pdfZoom:1" in app
     assert "installZoomControls" in app
     assert "viewer.style.zoom=String(layout.pdfZoom)" in app
-    assert "displayScale=entry.scale*layout.pdfZoom" in app
+    assert "*entry.base.width/rect.width" in app
+    assert "*entry.base.height/rect.height" in app
     assert ".pdf-canvas-viewer{width:max-content;min-width:100%" in html
 
 
