@@ -1259,7 +1259,7 @@ test('compile failure presents a normalized cause and direct source jump', async
   await page.route('**/api/compile', route => route.fulfill({
     status: 422,
     contentType: 'application/json',
-    body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! Package pdftex.def Error\nl.5 \\includegraphics{missing-figure.pdf}" })
+    body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\nLaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! Package pdftex.def Error\nl.5 \\includegraphics{missing-figure.pdf}" })
   }))
   await page.route('**/api/codex', route => {
     codexRequest = route.request().postDataJSON()
@@ -1275,6 +1275,7 @@ test('compile failure presents a normalized cause and direct source jump', async
   await page.goto('/')
   const error = page.locator('.pdf-error-state')
   await expect(error).toContainText('필요한 파일이 프로젝트에 없습니다: missing-figure.pdf')
+  await expect(page.locator('#compile-diagnostic-list .diagnostic-item')).toHaveCount(1)
   await expect(page.locator('#status-center-toggle')).toHaveAttribute('data-health', 'error')
   await expect(page.locator('#collab-status')).toHaveClass(/error/)
   await expect(page.locator('#collab-status')).toHaveCSS('background-color', 'rgb(240, 68, 56)')

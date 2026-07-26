@@ -135,7 +135,13 @@
     for (const match of text.matchAll(/LaTeX Error:\s*([^\n]+)/g)) diagnostics.push({file: `paper/${entrypoint}`, line: Number(lines.at(-1)?.[1]) || 1, message: match[1].trim()})
     if (!diagnostics.length) diagnostics.push(...lines.slice(-8).map(match => ({file: `paper/${entrypoint}`, line: Number(match[1]), message: (match[2] || 'LaTeX 오류가 발생했습니다.').trim()})))
     if (!diagnostics.length) diagnostics.push({file: `paper/${entrypoint}`, line: 1, message: text.split('\n').filter(Boolean).at(-1) || '컴파일 오류'})
-    return diagnostics.slice(-10)
+    const seen = new Set()
+    return diagnostics.filter(item => {
+      const key = `${item.file}\0${item.line}\0${item.message}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).slice(-10)
   }
 
   function backupProjectId(manifest) {
