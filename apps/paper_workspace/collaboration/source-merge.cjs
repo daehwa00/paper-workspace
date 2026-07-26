@@ -20,39 +20,32 @@ const sequenceEdits = (base, variant) => {
   let leftIndex = 0
   let rightIndex = 0
   let pending = null
-  const flush = () => {
-    if (!pending) return
-    edits.push(pending)
-    pending = null
-  }
   while (leftIndex < left.length || rightIndex < right.length) {
     if (leftIndex < left.length && rightIndex < right.length && left[leftIndex] === right[rightIndex]) {
-      flush()
+      if (pending) edits.push(pending)
+      pending = null
       leftIndex += 1
       rightIndex += 1
       continue
     }
-    pending ||= { end: leftIndex, lines: [], start: leftIndex }
+    pending ||= { end: leftIndex, start: leftIndex, value: '' }
     if (
       rightIndex < right.length &&
       (leftIndex === left.length || table[leftIndex][rightIndex + 1] >= table[leftIndex + 1][rightIndex])
     ) {
-      pending.lines.push(right[rightIndex])
+      pending.value += right[rightIndex]
       rightIndex += 1
     } else {
       leftIndex += 1
       pending.end = leftIndex
     }
   }
-  flush()
-  const cost = edits.reduce((total, edit) => total + (edit.end - edit.start) + edit.lines.length, 0)
+  if (pending) edits.push(pending)
+  const cost = edits.reduce((total, edit) => total + (edit.end - edit.start) + linesOf(edit.value).length, 0)
   return { baseLines: left, cost, edits }
 }
 
-const equalEdit = (left, right) => left.start === right.start &&
-  left.end === right.end &&
-  left.lines.length === right.lines.length &&
-  left.lines.every((line, index) => line === right.lines[index])
+const equalEdit = (left, right) => left.start === right.start && left.end === right.end && left.value === right.value
 
 const editsConflict = (left, right) => {
   if (equalEdit(left, right)) return false
@@ -73,22 +66,19 @@ const characterSpan = (base, variant) => {
     suffix < variant.length - start &&
     base[base.length - 1 - suffix] === variant[variant.length - 1 - suffix]
   ) suffix += 1
-  return {
-    end: base.length - suffix,
-    lines: [variant.slice(start, variant.length - suffix)],
-    start
-  }
+  return { end: base.length - suffix, start, value: variant.slice(start, variant.length - suffix) }
 }
 
-const mergeCharacterSpans = (base, web, server) => {
+const mergeCharacterEdits = (base, web, server) => {
   const webEdit = characterSpan(base, web)
   const serverEdit = characterSpan(base, server)
   if (editsConflict(webEdit, serverEdit)) return null
   const edits = equalEdit(webEdit, serverEdit) ? [webEdit] : [webEdit, serverEdit]
   edits.sort((left, right) => right.start - left.start || right.end - left.end)
-  let merged = base
-  for (const edit of edits) merged = merged.slice(0, edit.start) + edit.lines[0] + merged.slice(edit.end)
-  return merged
+  return edits.reduce(
+    (merged, edit) => merged.slice(0, edit.start) + edit.value + merged.slice(edit.end),
+    base
+  )
 }
 
 const mergeTextVersions = (base, web, server) => {
@@ -98,15 +88,12 @@ const mergeTextVersions = (base, web, server) => {
   const webDiff = sequenceEdits(base, web)
   const serverDiff = sequenceEdits(base, server)
   if (!webDiff || !serverDiff) return { conflict: true, reason: 'document-too-large' }
-  for (const webEdit of webDiff.edits) {
-    for (const serverEdit of serverDiff.edits) {
-      if (editsConflict(webEdit, serverEdit)) {
-        const characterMerge = mergeCharacterSpans(base, web, server)
-        return characterMerge === null
-          ? { conflict: true, reason: 'overlapping-edits' }
-          : { conflict: false, value: characterMerge }
-      }
-    }
+  const overlaps = webDiff.edits.some(webEdit => serverDiff.edits.some(serverEdit => editsConflict(webEdit, serverEdit)))
+  if (overlaps) {
+    const characterMerge = mergeCharacterEdits(base, web, server)
+    return characterMerge === null
+      ? { conflict: true, reason: 'overlapping-edits' }
+      : { conflict: false, value: characterMerge }
   }
   const combined = [...webDiff.edits]
   for (const serverEdit of serverDiff.edits) {
@@ -114,7 +101,7 @@ const mergeTextVersions = (base, web, server) => {
   }
   combined.sort((left, right) => right.start - left.start || right.end - left.end)
   const merged = [...webDiff.baseLines]
-  for (const edit of combined) merged.splice(edit.start, edit.end - edit.start, ...edit.lines)
+  for (const edit of combined) merged.splice(edit.start, edit.end - edit.start, ...linesOf(edit.value))
   return { conflict: false, value: merged.join('') }
 }
 
@@ -139,6 +126,5 @@ const mergeTextHistory = (history, web, server) => {
 
 module.exports = {
   mergeTextHistory,
-  mergeTextVersions,
-  sequenceEdits
+  mergeTextVersions
 }
