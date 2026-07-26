@@ -12,7 +12,8 @@ const Y = require('yjs')
 const { WebsocketProvider } = require('y-websocket')
 const encoding = require('lib0/encoding')
 const syncProtocol = require('y-protocols/sync')
-const { applyRuntimeSources, createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
+const { applyRuntimeSources, createCollaborationServer, loadSourceHistories, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
+const { mergeTextHistory, mergeTextVersions } = require('./source-merge.cjs')
 const { docs, getYDoc } = require('y-websocket/bin/utils')
 
 const listen = instance => new Promise(resolve => {
@@ -190,6 +191,82 @@ test('runtime source application avoids needless drafts and retires only declare
   document.destroy()
 })
 
+test('three-way text merge combines independent web and server edits', () => {
+  const base = 'title: old\nabstract: old\nmethod: stable\n'
+  const web = 'title: old\nabstract: edited in browser\nmethod: stable\n'
+  const server = 'title: edited locally\nabstract: old\nmethod: stable\n'
+  assert.deepEqual(mergeTextVersions(base, web, server), {
+    conflict: false,
+    value: 'title: edited locally\nabstract: edited in browser\nmethod: stable\n'
+  })
+})
+
+test('three-way text merge refuses overlapping edits', () => {
+  const base = 'abstract: old\n'
+  const web = 'abstract: edited in browser\n'
+  const server = 'abstract: edited locally\n'
+  assert.equal(mergeTextVersions(base, web, server).conflict, true)
+})
+
+test('history merge does not bless a stale local overwrite when base costs tie', () => {
+  const base = 'abstract: old\n'
+  const web = 'abstract: edited in browser\n'
+  const server = 'abstract: edited locally\n'
+  const result = mergeTextHistory([base, web], web, server)
+  assert.equal(result.conflict, true)
+  assert.equal(result.base, base)
+})
+
+test('runtime source conflicts keep the web manuscript active and preserve the local proposal', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  const main = new Y.Text()
+  main.insert(0, 'abstract: edited in browser\n')
+  files.set('paper/main.tex', main)
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+  project.set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('abstract: old\n') })
+
+  const result = applyRuntimeSources(document, {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'abstract: edited locally\n' },
+    version: '1'
+  }, 1234, null, {
+    'paper/main.tex': ['abstract: old\n']
+  })
+
+  assert.equal(files.get('paper/main.tex').toString(), 'abstract: edited in browser\n')
+  assert.deepEqual(result.protected_paths, ['paper/main.tex'])
+  assert.deepEqual(result.conflict_paths, ['paper/main.tex'])
+  assert.equal(result.preserved_paths.length, 1)
+  assert.equal(files.get(result.preserved_paths[0]).toString(), 'abstract: edited locally\n')
+  document.destroy()
+})
+
+test('runtime source application reports automatically merged paths separately', () => {
+  const document = new Y.Doc()
+  const main = new Y.Text()
+  main.insert(0, 'title: old\nabstract: edited in browser\n')
+  document.getMap('files').set('paper/main.tex', main)
+  document.getMap('project').set('serverRuntimeRevision', 'a'.repeat(64))
+  const result = applyRuntimeSources(document, {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'title: edited locally\nabstract: old\n' },
+    version: '1'
+  }, 1234, null, {
+    'paper/main.tex': ['title: old\nabstract: old\n']
+  })
+  assert.deepEqual(result.merged_paths, ['paper/main.tex'])
+  assert.deepEqual(result.conflict_paths, [])
+  assert.deepEqual(result.preserved_paths, [])
+  assert.equal(main.toString(), 'title: edited locally\nabstract: edited in browser\n')
+  document.destroy()
+})
+
 test('managed source writeback follows web edits but refuses to overwrite an external edit', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-writeback-'))
   try {
@@ -309,6 +386,7 @@ test('runtime synchronization endpoint verifies staged sources and serializes du
 
 test('connected Yjs edits are written back to the authoritative project source', async t => {
   const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-connected-writeback-'))
+  const sourceHistoryDir = path.join(sourceRoot, '.source-history')
   t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
   writeSourceProject(sourceRoot, 'server baseline')
   const room = 'paper-workspace:paper.example:example-paper'
@@ -325,6 +403,7 @@ test('connected Yjs edits are written back to the authoritative project source',
     allowedProjectSlugs: new Set(['example-paper']),
     defaultProjectSlugs: new Set(['example-paper']),
     defaultProjectSourceDir: sourceRoot,
+    sourceHistoryDir,
     sourceWritebackDebounceMs: 10
   })
   t.after(() => instance.close())
@@ -365,6 +444,98 @@ test('connected Yjs edits are written back to the authoritative project source',
     }
     poll()
   })
+  assert.deepEqual(document.getMap('project').get('sourceWritebackStatus'), {
+    paths: ['paper/main.tex'],
+    state: 'synced',
+    timestamp: document.getMap('project').get('sourceWritebackStatus').timestamp
+  })
+  const persistedHistory = loadSourceHistories(sourceHistoryDir, docName)
+  assert.equal(persistedHistory['paper/main.tex'].at(-1), 'server baseline\nexisting web edit\nnew web edit')
+})
+
+test('a stale local save cannot replace the active web manuscript', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-stale-local-source-'))
+  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-stale-local-runtime-'))
+  const sourceHistoryDir = path.join(sourceRoot, '.source-history')
+  t.after(() => {
+    fs.rmSync(sourceRoot, { force: true, recursive: true })
+    fs.rmSync(runtimeRoot, { force: true, recursive: true })
+  })
+  const base = 'abstract: old\n'
+  const web = 'abstract: edited in browser\n'
+  const staleLocal = 'abstract: edited by stale local tool\n'
+  writeSourceProject(sourceRoot, base)
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  const main = new Y.Text()
+  main.insert(0, web)
+  document.getMap('files').set('paper/main.tex', main)
+  document.getMap('project').set('serverRuntimeRevision', 'a'.repeat(64))
+  document.getMap('project').set('serverSourceFingerprints', {
+    'paper/main.tex': sourceFingerprint(base)
+  })
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']),
+    defaultProjectSourceDir: sourceRoot,
+    projectRuntimeDir: runtimeRoot,
+    sourceHistoryDir,
+    sourceWritebackDebounceMs: 10
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const clientDocument = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { provider.destroy(); clientDocument.destroy() })
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('test collaboration client did not synchronize')), 2000)
+    provider.once('sync', synchronized => {
+      if (!synchronized) return
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
+  await new Promise((resolve, reject) => {
+    const started = Date.now()
+    const poll = () => {
+      if (fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === web) return resolve()
+      if (Date.now() - started > 2000) return reject(new Error('web baseline was not written back'))
+      setTimeout(poll, 10)
+    }
+    poll()
+  })
+
+  fs.writeFileSync(path.join(sourceRoot, 'main.tex'), staleLocal)
+  const runtimeRevision = 'b'.repeat(64)
+  writeRuntimeProject(runtimeRoot, { revision: runtimeRevision, source: staleLocal })
+  fs.renameSync(path.join(runtimeRoot, 'projects/example-paper'), path.join(runtimeRoot, 'project'))
+  const response = await postJson(
+    `http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}`,
+    { previous_runtime_revision: 'a'.repeat(64), runtime_revision: runtimeRevision }
+  )
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body.protected_paths, ['paper/main.tex'])
+  assert.deepEqual(response.body.conflict_paths, ['paper/main.tex'])
+  assert.equal(document.getMap('files').get('paper/main.tex').toString(), web)
+  const conflictDrafts = [...document.getMap('files').entries()]
+    .filter(([name]) => name.startsWith('paper/drafts/server-conflict-'))
+  assert.equal(conflictDrafts.length, 1)
+  assert.equal(conflictDrafts[0][1].toString(), staleLocal)
+  await new Promise((resolve, reject) => {
+    const started = Date.now()
+    const poll = () => {
+      if (fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === web) return resolve()
+      if (Date.now() - started > 2000) return reject(new Error('active web manuscript did not win the conflict'))
+      setTimeout(poll, 10)
+    }
+    poll()
+  })
+  assert.equal(document.getMap('project').get('sourceWritebackStatus').state, 'synced')
 })
 
 test('runtime synchronization endpoint rejects unauthenticated, forged, and unopened requests', async t => {

@@ -946,6 +946,10 @@ def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     assert "writeBackManagedSources" in collaboration
     assert "atomicReplaceSource" in collaboration
     assert "liveSource !== source" in collaboration
+    assert "mergeTextHistory" in collaboration
+    assert "sourceWritebackStatus" in collaboration
+    collaboration_image = (ROOT / "apps/paper_workspace/collaboration/Dockerfile").read_text(encoding="utf-8")
+    assert "source-merge.cjs" in collaboration_image
 
 
 def test_private_author_kit_is_not_bundled_in_public_runtime() -> None:

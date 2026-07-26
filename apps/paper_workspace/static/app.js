@@ -254,7 +254,15 @@ function initializeSharedMetadata(){
   sharedTasks.observe(onMetadataChange);
   sharedFolders.observe(onMetadataChange);
   sharedAssets.observe(onMetadataChange);
-  sharedProject.observe(()=>{const version=sharedProject.get('manifestVersion');if(typeof version==='string'&&version&&state.projectVersion!==version){state.projectVersion=version;save()}});
+  sharedProject.observe(()=>{
+    const version=sharedProject.get('manifestVersion');if(typeof version==='string'&&version&&state.projectVersion!==version){state.projectVersion=version;save()}
+    const writeback=sharedProject.get('sourceWritebackStatus');
+    if(!writeback||typeof writeback!=='object'||Array.isArray(writeback))return;
+    const status=String(writeback.state||''),saveState=$('save-state');
+    if(status==='synced')saveState.textContent='원본 파일 반영됨 · 공동 편집 동기화됨';
+    else if(status==='conflict')saveState.textContent='동시 변경 보존됨 · 병합 확인 필요';
+    else if(status==='error')saveState.textContent='원본 파일 반영 지연 · 재시도 중';
+  });
   collabSession.files.observeDeep((events,transaction)=>{
     let changed=false;
     for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string'&&state.files[path]!==value){state.files[path]=value;changed=true}}
@@ -279,7 +287,7 @@ function changedManifestPaths(previous,next){
   const before=describe(previous),after=describe(next),paths=new Set([...before.keys(),...after.keys()]);
   return [...paths].filter(path=>before.get(path)!==after.get(path))
 }
-function adoptServerManifest(manifest,sources={}, {changedPaths=[],preservedPaths=[],scheduleCompile=false}={}){
+function adoptServerManifest(manifest,sources={}, {changedPaths=[],conflictPaths=[],preservedPaths=[],scheduleCompile=false}={}){
   const previous=projectManifest,currentPath=state.current,selection=editorSelection();
   projectManifest=manifest;syncRemoteManifestAssets(manifest,previous);
   for(const [path,value] of Object.entries(sources)){if(path==='paper/main.tex')state.serverMainSnapshot=sourceFingerprint(value);else state.serverSourceSnapshots[path]=sourceFingerprint(value)}
@@ -291,7 +299,7 @@ function adoptServerManifest(manifest,sources={}, {changedPaths=[],preservedPath
   if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];
   if(state.current&&(!activeAsset||!state.assets[activeAsset])){setEditor();if(state.current===currentPath)setEditorSelection(Math.min(selection.start,editorValue().length),Math.min(selection.end,editorValue().length))}
   listFiles();syncProjectTitleFromTex(true);renderReferenceInventory();save();
-  if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
+  if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=conflictPaths.length?`동시에 바뀐 서버 원고 ${conflictPaths.length}개를 drafts에 보존하고 웹 편집본을 유지했습니다.`:`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
   if(scheduleCompile&&changedPaths.some(path=>compileTextExtensions.has(extensionOf(path))||compileAssetExtensions.has(extensionOf(path))))markCompileInputsChanged()
 }
 function waitForServerRuntimeRevision(revision,timeoutMs=5000){
@@ -305,7 +313,7 @@ async function submitServerRuntimeUpdate(manifest,previousRevision){
   if(!response.ok)throw new Error(result.error||'서버 원고를 공동 작업공간에 반영하지 못했습니다.');
   const synchronized=await waitForServerRuntimeRevision(manifest.runtime_revision);
   if(!synchronized)throw new Error('서버 원고는 저장되었지만 공동 편집 화면 반영을 기다리고 있습니다.');
-  return {applied:!result.deduplicated,preservedPaths:Array.isArray(result.preserved_paths)?result.preserved_paths:[]}
+  return {applied:!result.deduplicated,conflictPaths:Array.isArray(result.conflict_paths)?result.conflict_paths:[],mergedPaths:Array.isArray(result.merged_paths)?result.merged_paths:[],preservedPaths:Array.isArray(result.preserved_paths)?result.preserved_paths:[]}
 }
 let serverSourceRefreshTimer=0,serverSourceRefreshBusy=false,lastServerSourceRefreshError='';
 async function refreshServerSources(){
@@ -319,8 +327,8 @@ async function refreshServerSources(){
     if(!collabReady||!/^[0-9a-f]{64}$/.test(String(appliedRevision||'')))return false;
     const changedPaths=changedManifestPaths(projectManifest,manifest),result=await submitServerRuntimeUpdate(manifest,appliedRevision);
     if(result.conflict)return false;
-    adoptServerManifest(manifest,{}, {changedPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(path=>compileAssetExtensions.has(extensionOf(path)))});pruneDraftQueue({sync:true});markProjectActivity('server-sync');lastServerSourceRefreshError='';
-    if(result.applied)notify(result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영'});
+    adoptServerManifest(manifest,{}, {changedPaths,conflictPaths:result.conflictPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(path=>compileAssetExtensions.has(extensionOf(path)))});pruneDraftQueue({sync:true});markProjectActivity('server-sync');lastServerSourceRefreshError='';
+    if(result.applied)notify(result.conflictPaths.length?`동시에 바뀐 서버 원고 ${result.conflictPaths.length}개를 초안으로 보존하고 웹 편집본을 유지했습니다.`:result.mergedPaths.length?`웹과 서버의 서로 다른 변경 ${result.mergedPaths.length}개를 자동으로 병합했습니다.`:result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영',tone:result.conflictPaths.length?'warning':undefined});
     return true
   }catch(error){const message=String(error?.message||error);if(lastServerSourceRefreshError!==message){lastServerSourceRefreshError=message;notify(message,{title:'서버 원고 확인 지연',tone:'warning'})}return false}
   finally{serverSourceRefreshBusy=false}

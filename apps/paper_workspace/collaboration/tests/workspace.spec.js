@@ -1652,6 +1652,29 @@ test('staged server source changes reach an open workspace without reload and pr
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
 })
 
+test('overlapping server changes are presented as drafts without replacing the web manuscript', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect.poll(() => page.evaluate(() => collabReady)).toBe(true)
+  await expect.poll(() => page.evaluate(() => collabSession.textFor('paper/main.tex').toString())).toContain('\\documentclass')
+  const activeBefore = await page.evaluate(() => editorValue())
+  await page.evaluate(() => {
+    const draftPath = 'paper/drafts/server-conflict-e2e-main.tex'
+    const draft = collabSession.textFor(draftPath)
+    draft.insert(0, 'stale local proposal')
+    adoptServerManifest(projectManifest, {}, {
+      conflictPaths: ['paper/main.tex'],
+      preservedPaths: [draftPath],
+    })
+  })
+  await expect(page.locator('#source-conflict')).toBeVisible()
+  await expect(page.locator('#source-conflict-copy')).toContainText('웹 편집본을 유지')
+  expect(await page.evaluate(() => editorValue())).toBe(activeBefore)
+  await page.locator('#open-preserved-draft').click()
+  expect(await page.evaluate(() => state.current)).toBe('paper/drafts/server-conflict-e2e-main.tex')
+  expect(await page.evaluate(() => editorValue())).toBe('stale local proposal')
+})
+
 test('compile cancellation identity is isolated per tab and stable across reloads', async ({ browser }) => {
   const context = await browser.newContext()
   const first = await context.newPage()

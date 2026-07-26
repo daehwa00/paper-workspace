@@ -6,14 +6,18 @@ const fs = require('fs')
 const http = require('http')
 const path = require('path')
 const crypto = require('crypto')
+const zlib = require('zlib')
 const WebSocket = require('ws')
 const Y = require('yjs')
 const decoding = require('lib0/decoding')
 const { docs, getPersistence, getYDoc, setupWSConnection } = require('y-websocket/bin/utils')
+const { mergeTextHistory } = require('./source-merge.cjs')
 
 const DEFAULT_ROOM_PATTERN = /^paper-workspace:[A-Za-z0-9.-]+(?::[0-9]{1,5})?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const RUNTIME_REVISION_PATTERN = /^[0-9a-f]{64}$/
 const PERSISTENCE_READINESS = Symbol.for('paper-workspace.persistence-readiness')
+const SOURCE_HISTORY_VERSIONS = 4
+const SOURCE_HISTORY_MAX_BYTES = 16 * 1024 * 1024
 
 const persistence = getPersistence()
 if (persistence && !persistence[PERSISTENCE_READINESS]) {
@@ -379,28 +383,92 @@ const writeBackManagedSources = (document, projectRoot, expectedDigests, request
   return { conflictPaths, writtenPaths }
 }
 
-const nextServerDraftPath = (files, sourcePath, timestamp, startIndex) => {
+const sourceHistoryFilename = (root, docName) => path.join(root, `${crypto.createHash('sha256').update(docName).digest('hex')}.json.gz`)
+
+const loadSourceHistories = (root, docName) => {
+  const histories = {}
+  if (!root) return histories
+  const filename = sourceHistoryFilename(root, docName)
+  try {
+    const stat = fs.statSync(filename)
+    if (!stat.isFile() || stat.size > SOURCE_HISTORY_MAX_BYTES) throw new Error('source history file exceeds its size limit')
+    const payload = JSON.parse(zlib.gunzipSync(fs.readFileSync(filename), {
+      maxOutputLength: SOURCE_HISTORY_MAX_BYTES * 2
+    }).toString('utf8'))
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return histories
+    let bytes = 0
+    for (const [projectPath, versions] of Object.entries(payload.sources || {})) {
+      if (!projectPath.startsWith('paper/') || !validProjectPath(projectPath.slice(6)) || !Array.isArray(versions)) continue
+      const accepted = versions.filter(value => typeof value === 'string').slice(-SOURCE_HISTORY_VERSIONS)
+      bytes += accepted.reduce((total, value) => total + Buffer.byteLength(value), 0)
+      if (bytes > SOURCE_HISTORY_MAX_BYTES) break
+      if (accepted.length) histories[projectPath] = accepted
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn(`source history could not be read (${docName}): ${error.message}`)
+  }
+  return histories
+}
+
+const rememberSourceHistory = (histories, projectPath, value) => {
+  if (typeof value !== 'string' || Buffer.byteLength(value) > SOURCE_HISTORY_MAX_BYTES / 2) return false
+  const versions = Array.isArray(histories[projectPath]) ? histories[projectPath] : []
+  if (versions[versions.length - 1] === value) return false
+  histories[projectPath] = [...versions, value].slice(-SOURCE_HISTORY_VERSIONS)
+  let total = Object.values(histories).flat().reduce((bytes, source) => bytes + Buffer.byteLength(source), 0)
+  while (total > SOURCE_HISTORY_MAX_BYTES) {
+    const oldest = Object.entries(histories).find(([, sources]) => sources.length > 1)
+    if (!oldest) {
+      delete histories[projectPath]
+      return false
+    }
+    const [oldestPath, sources] = oldest
+    total -= Buffer.byteLength(sources.shift())
+    if (!sources.length) delete histories[oldestPath]
+  }
+  return true
+}
+
+const saveSourceHistories = (root, docName, histories) => {
+  if (!root) return
+  fs.mkdirSync(root, { mode: 0o700, recursive: true })
+  const filename = sourceHistoryFilename(root, docName)
+  const temporary = `${filename}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
+  try {
+    fs.writeFileSync(temporary, zlib.gzipSync(JSON.stringify({ sources: histories })), { mode: 0o600 })
+    fs.renameSync(temporary, filename)
+  } finally {
+    try { fs.unlinkSync(temporary) } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+}
+
+const nextServerDraftPath = (files, sourcePath, timestamp, startIndex, prefix = 'server-before-sync') => {
   const safeName = path.posix.basename(sourcePath).replace(/[^A-Za-z0-9._-]/g, '_') || 'source.tex'
   let index = startIndex
   let candidate
   do {
-    candidate = `paper/drafts/server-before-sync-${timestamp}-${index}-${safeName}`
+    candidate = `paper/drafts/${prefix}-${timestamp}-${index}-${safeName}`
     index += 1
   } while (files.has(candidate))
   return { path: candidate, nextIndex: index }
 }
 
-const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSources = null) => {
+const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSources = null, sourceHistories = null) => {
   const project = document.getMap('project')
   const files = document.getMap('files')
   const currentRevision = String(project.get('serverRuntimeRevision') || '')
-  if (currentRevision === payload.runtimeRevision) return { current_revision: currentRevision, deduplicated: true, preserved_paths: [] }
+  if (currentRevision === payload.runtimeRevision) return { conflict_paths: [], current_revision: currentRevision, deduplicated: true, merged_paths: [], preserved_paths: [], protected_paths: [] }
   if (currentRevision !== payload.previousRuntimeRevision) return { conflict: true, current_revision: currentRevision }
   const previousFingerprintsValue = project.get('serverSourceFingerprints')
   const previousFingerprints = previousFingerprintsValue && typeof previousFingerprintsValue === 'object' && !Array.isArray(previousFingerprintsValue) ? previousFingerprintsValue : {}
   const nextPaths = new Set(Object.keys(payload.sources))
   const removedPaths = payload.retiredPaths.filter(sourcePath => !nextPaths.has(sourcePath))
   const preservedPaths = []
+  const protectedPaths = []
+  const conflictPaths = []
+  const mergedPaths = []
   let draftIndex = 0
   document.transact(() => {
     for (const sourcePath of removedPaths) {
@@ -426,6 +494,29 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
         continue
       }
       const previousFingerprint = previousFingerprints[sourcePath]
+      const history = sourceHistories?.[sourcePath]
+      if (current !== source && Array.isArray(history) && history.length) {
+        const merged = mergeTextHistory(history, current, source)
+        if (merged.conflict) {
+          const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex, 'server-conflict')
+          draftIndex = draft.nextIndex
+          let draftText = files.get(draft.path)
+          if (!(draftText instanceof Y.Text)) { draftText = new Y.Text(); files.set(draft.path, draftText) }
+          replaceSharedText(draftText, source)
+          preservedPaths.push(draft.path)
+          protectedPaths.push(sourcePath)
+          conflictPaths.push(sourcePath)
+          nextFingerprints[sourcePath] = sourceFingerprint(source)
+          continue
+        }
+        replaceSharedText(text, merged.value)
+        if (merged.value !== source) {
+          protectedPaths.push(sourcePath)
+          mergedPaths.push(sourcePath)
+        }
+        nextFingerprints[sourcePath] = sourceFingerprint(source)
+        continue
+      }
       if (current !== source && current && (!previousFingerprint || sourceFingerprint(current) !== previousFingerprint)) {
         const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex)
         draftIndex = draft.nextIndex
@@ -442,7 +533,14 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
     project.set('serverManagedPaths', [...nextPaths])
     project.set('serverSourceFingerprints', nextFingerprints)
   }, 'server-runtime-sync')
-  return { current_revision: payload.runtimeRevision, deduplicated: false, preserved_paths: preservedPaths }
+  return {
+    conflict_paths: conflictPaths,
+    current_revision: payload.runtimeRevision,
+    deduplicated: false,
+    merged_paths: mergedPaths,
+    preserved_paths: preservedPaths,
+    protected_paths: protectedPaths
+  }
 }
 
 const readJsonBody = (request, limit) => new Promise((resolve, reject) => {
@@ -493,6 +591,7 @@ function createCollaborationServer (overrides = {}) {
     defaultProjectSourceDir: overrides.defaultProjectSourceDir ?? process.env.COLLAB_DEFAULT_PROJECT_SOURCE ?? '',
     projectsSourceDir: overrides.projectsSourceDir ?? process.env.COLLAB_PROJECTS_SOURCE ?? '',
     persistenceDir: overrides.persistenceDir ?? process.env.YPERSISTENCE ?? '',
+    sourceHistoryDir: overrides.sourceHistoryDir ?? process.env.COLLAB_SOURCE_HISTORY_DIR ?? '',
     maxStorageBytes: positiveInteger(overrides.maxStorageBytes ?? process.env.COLLAB_MAX_STORAGE_BYTES, 512 * 1024 * 1024),
     storageCheckMs: positiveInteger(overrides.storageCheckMs ?? process.env.COLLAB_STORAGE_CHECK_MS, 5000)
   }
@@ -504,6 +603,8 @@ function createCollaborationServer (overrides = {}) {
     process.env.COLLAB_PROJECT_CATALOG,
     process.env.COLLAB_DEFAULT_PROJECT_MANIFEST
   )
+  if (!config.sourceHistoryDir && config.persistenceDir) config.sourceHistoryDir = path.join(path.dirname(config.persistenceDir), 'source-history')
+  if (config.sourceHistoryDir && !path.isAbsolute(config.sourceHistoryDir)) throw new Error('source history directory must be absolute')
 
   const countsByIp = new Map()
   const countsByRoom = new Map()
@@ -531,7 +632,7 @@ function createCollaborationServer (overrides = {}) {
     return root && path.isAbsolute(root) ? root : ''
   }
 
-  const refreshWritebackBaseline = (document, projectRoot, expectedDigests) => {
+  const refreshWritebackBaseline = (document, projectRoot, state) => {
     const files = document.getMap('files')
     const projectFingerprints = document.getMap('project').get('serverSourceFingerprints')
     const knownFingerprints = projectFingerprints && typeof projectFingerprints === 'object' && !Array.isArray(projectFingerprints)
@@ -539,17 +640,21 @@ function createCollaborationServer (overrides = {}) {
       : {}
     const liveSources = readLiveManagedSources(projectRoot, config.maxRuntimeSyncBytes)
     const divergentWebPaths = []
+    let historyChanged = false
     for (const [projectPath, liveSource] of Object.entries(liveSources)) {
       const sharedSource = files.get(projectPath)?.toString?.()
       if (sharedSource === liveSource) {
-        expectedDigests.set(projectPath, sourceDigest(liveSource))
+        state.expectedDigests.set(projectPath, sourceDigest(liveSource))
+        historyChanged = rememberSourceHistory(state.histories, projectPath, liveSource) || historyChanged
       } else if (typeof sharedSource === 'string' && knownFingerprints[projectPath] === sourceFingerprint(liveSource)) {
         // Upgrade an existing room safely: the disk still matches the last
         // server snapshot, so the divergent Yjs value is a connected web edit.
-        expectedDigests.set(projectPath, sourceDigest(liveSource))
+        state.expectedDigests.set(projectPath, sourceDigest(liveSource))
+        historyChanged = rememberSourceHistory(state.histories, projectPath, liveSource) || historyChanged
         divergentWebPaths.push(projectPath)
       }
     }
+    if (historyChanged) saveSourceHistories(config.sourceHistoryDir, state.docName, state.histories)
     return { divergentWebPaths, liveSources }
   }
 
@@ -557,6 +662,7 @@ function createCollaborationServer (overrides = {}) {
     state.timer = null
     const document = docs.get(docName)
     if (!document) return
+    const requestedPaths = [...state.pendingPaths]
     try {
       const result = writeBackManagedSources(
         document,
@@ -566,12 +672,32 @@ function createCollaborationServer (overrides = {}) {
         config.maxRuntimeSyncBytes
       )
       state.pendingPaths.clear()
+      let historyChanged = false
+      for (const projectPath of result.writtenPaths) {
+        const source = document.getMap('files').get(projectPath)?.toString?.()
+        historyChanged = rememberSourceHistory(state.histories, projectPath, source) || historyChanged
+      }
+      if (historyChanged) saveSourceHistories(config.sourceHistoryDir, docName, state.histories)
+      document.transact(() => {
+        document.getMap('project').set('sourceWritebackStatus', {
+          paths: requestedPaths,
+          state: result.conflictPaths.length ? 'conflict' : 'synced',
+          timestamp: Date.now()
+        })
+      }, 'server-writeback-status')
       const conflictKey = result.conflictPaths.join('\0')
       if (conflictKey && conflictKey !== state.lastConflictKey) {
         console.warn(`source writeback paused for external changes (${docName}): ${result.conflictPaths.join(', ')}`)
       }
       state.lastConflictKey = conflictKey
     } catch (error) {
+      document.transact(() => {
+        document.getMap('project').set('sourceWritebackStatus', {
+          paths: requestedPaths,
+          state: 'error',
+          timestamp: Date.now()
+        })
+      }, 'server-writeback-status')
       console.error(`source writeback failed (${docName}): ${error.message}`)
     }
   }
@@ -581,13 +707,15 @@ function createCollaborationServer (overrides = {}) {
     const projectRoot = sourceRootForSlug(room.slice(room.lastIndexOf(':') + 1))
     if (!projectRoot) return null
     const state = {
+      docName,
       expectedDigests: new Map(),
+      histories: loadSourceHistories(config.sourceHistoryDir, docName),
       lastConflictKey: '',
       pendingPaths: new Set(),
       projectRoot,
       timer: null
     }
-    const baseline = refreshWritebackBaseline(document, projectRoot, state.expectedDigests)
+    const baseline = refreshWritebackBaseline(document, projectRoot, state)
     const files = document.getMap('files')
     state.observer = (events, transaction) => {
       if (transaction.origin === 'server-runtime-sync') return
@@ -686,14 +814,14 @@ function createCollaborationServer (overrides = {}) {
         const writebackState = ensureSourceWriteback(docName, room, document)
         let liveSources = null
         if (writebackState) {
-          liveSources = refreshWritebackBaseline(document, writebackState.projectRoot, writebackState.expectedDigests).liveSources
+          liveSources = refreshWritebackBaseline(document, writebackState.projectRoot, writebackState).liveSources
         }
         const update = { ...runtimeProject, previousRuntimeRevision: payload.previousRuntimeRevision }
         const timestamp = Date.now()
         const candidate = new Y.Doc()
         try {
           Y.applyUpdate(candidate, Y.encodeStateAsUpdate(document))
-          const preview = applyRuntimeSources(candidate, update, timestamp, liveSources)
+          const preview = applyRuntimeSources(candidate, update, timestamp, liveSources, writebackState?.histories)
           if (preview.conflict) return preview
           if (preview.deduplicated) {
             if (persistence?.provider) {
@@ -714,8 +842,18 @@ function createCollaborationServer (overrides = {}) {
         } finally {
           candidate.destroy()
         }
-        const applied = applyRuntimeSources(document, update, timestamp, liveSources)
-        if (writebackState) refreshWritebackBaseline(document, writebackState.projectRoot, writebackState.expectedDigests)
+        const applied = applyRuntimeSources(document, update, timestamp, liveSources, writebackState?.histories)
+        if (writebackState) {
+          const baseline = refreshWritebackBaseline(document, writebackState.projectRoot, writebackState)
+          for (const projectPath of new Set([...(applied.protected_paths || []), ...baseline.divergentWebPaths])) {
+            writebackState.pendingPaths.add(projectPath)
+          }
+          if (writebackState.pendingPaths.size) {
+            if (writebackState.timer) clearTimeout(writebackState.timer)
+            writebackState.timer = setTimeout(() => flushSourceWriteback(docName, writebackState), config.sourceWritebackDebounceMs)
+            writebackState.timer.unref()
+          }
+        }
         document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
         document.paperPendingGrowthBytes = 0
         if (persistence?.provider) {
@@ -967,6 +1105,7 @@ module.exports = {
   createCollaborationServer,
   defaultProjectSlugs,
   directoryBytes,
+  loadSourceHistories,
   projectSlugs,
   prepareCollaborationDocument,
   readRuntimeProject,
@@ -976,6 +1115,7 @@ module.exports = {
   requestRoom,
   runtimeSyncPayload,
   runtimeSyncRoom,
+  saveSourceHistories,
   sourceFingerprint,
   writeBackManagedSources,
   roomHost
