@@ -64,6 +64,33 @@ const editsConflict = (left, right) => {
   return left.start < right.end && right.start < left.end
 }
 
+const characterSpan = (base, variant) => {
+  let start = 0
+  while (start < base.length && start < variant.length && base[start] === variant[start]) start += 1
+  let suffix = 0
+  while (
+    suffix < base.length - start &&
+    suffix < variant.length - start &&
+    base[base.length - 1 - suffix] === variant[variant.length - 1 - suffix]
+  ) suffix += 1
+  return {
+    end: base.length - suffix,
+    lines: [variant.slice(start, variant.length - suffix)],
+    start
+  }
+}
+
+const mergeCharacterSpans = (base, web, server) => {
+  const webEdit = characterSpan(base, web)
+  const serverEdit = characterSpan(base, server)
+  if (editsConflict(webEdit, serverEdit)) return null
+  const edits = equalEdit(webEdit, serverEdit) ? [webEdit] : [webEdit, serverEdit]
+  edits.sort((left, right) => right.start - left.start || right.end - left.end)
+  let merged = base
+  for (const edit of edits) merged = merged.slice(0, edit.start) + edit.lines[0] + merged.slice(edit.end)
+  return merged
+}
+
 const mergeTextVersions = (base, web, server) => {
   if (web === server) return { conflict: false, value: web }
   if (web === base) return { conflict: false, value: server }
@@ -73,7 +100,12 @@ const mergeTextVersions = (base, web, server) => {
   if (!webDiff || !serverDiff) return { conflict: true, reason: 'document-too-large' }
   for (const webEdit of webDiff.edits) {
     for (const serverEdit of serverDiff.edits) {
-      if (editsConflict(webEdit, serverEdit)) return { conflict: true, reason: 'overlapping-edits' }
+      if (editsConflict(webEdit, serverEdit)) {
+        const characterMerge = mergeCharacterSpans(base, web, server)
+        return characterMerge === null
+          ? { conflict: true, reason: 'overlapping-edits' }
+          : { conflict: false, value: characterMerge }
+      }
     }
   }
   const combined = [...webDiff.edits]

@@ -201,10 +201,27 @@ test('three-way text merge combines independent web and server edits', () => {
   })
 })
 
+test('three-way text merge combines independent edits within one LaTeX line', () => {
+  const base = '\\title{Old title} % keep this submission note\n'
+  const web = '\\title{Browser title} % keep this submission note\n'
+  const server = '\\title{Old title} % retain this submission note\n'
+  assert.deepEqual(mergeTextVersions(base, web, server), {
+    conflict: false,
+    value: '\\title{Browser title} % retain this submission note\n'
+  })
+})
+
 test('three-way text merge refuses overlapping edits', () => {
   const base = 'abstract: old\n'
   const web = 'abstract: edited in browser\n'
   const server = 'abstract: edited locally\n'
+  assert.equal(mergeTextVersions(base, web, server).conflict, true)
+})
+
+test('three-way text merge refuses different insertions at the same character position', () => {
+  const base = '\\title{Paper}\n'
+  const web = '\\title{Browser Paper}\n'
+  const server = '\\title{Local Paper}\n'
   assert.equal(mergeTextVersions(base, web, server).conflict, true)
 })
 
