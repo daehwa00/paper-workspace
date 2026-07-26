@@ -12,7 +12,7 @@ const Y = require('yjs')
 const { WebsocketProvider } = require('y-websocket')
 const encoding = require('lib0/encoding')
 const syncProtocol = require('y-protocols/sync')
-const { applyRuntimeSources, createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint } = require('./server.cjs')
+const { applyRuntimeSources, createCollaborationServer, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
 const { docs, getYDoc } = require('y-websocket/bin/utils')
 
 const listen = instance => new Promise(resolve => {
@@ -62,6 +62,15 @@ const writeRuntimeProject = (root, { revision, source, retiredPaths = [] }) => {
     },
     runtime_revision: revision,
     version: '1'
+  }))
+}
+
+const writeSourceProject = (root, source) => {
+  fs.mkdirSync(root, { recursive: true })
+  fs.writeFileSync(path.join(root, 'main.tex'), source)
+  fs.writeFileSync(path.join(root, 'project.json'), JSON.stringify({
+    entrypoint: 'main.tex',
+    files: [{ path: 'main.tex', managed: true }]
   }))
 }
 
@@ -181,6 +190,65 @@ test('runtime source application avoids needless drafts and retires only declare
   document.destroy()
 })
 
+test('managed source writeback follows web edits but refuses to overwrite an external edit', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-writeback-'))
+  try {
+    writeSourceProject(root, 'server baseline')
+    const document = new Y.Doc()
+    const text = new Y.Text()
+    text.insert(0, 'server baseline')
+    document.getMap('files').set('paper/main.tex', text)
+    const state = new Map()
+    writeBackManagedSources(document, root, state)
+
+    text.insert(text.length, '\nfirst web edit')
+    const first = writeBackManagedSources(document, root, state)
+    assert.deepEqual(first.writtenPaths, ['paper/main.tex'])
+    assert.equal(fs.readFileSync(path.join(root, 'main.tex'), 'utf8'), 'server baseline\nfirst web edit')
+
+    text.insert(text.length, '\nsecond web edit')
+    const second = writeBackManagedSources(document, root, state)
+    assert.deepEqual(second.writtenPaths, ['paper/main.tex'])
+    assert.equal(fs.readFileSync(path.join(root, 'main.tex'), 'utf8'), 'server baseline\nfirst web edit\nsecond web edit')
+
+    fs.writeFileSync(path.join(root, 'main.tex'), 'external server edit')
+    text.insert(text.length, '\nthird web edit')
+    const conflict = writeBackManagedSources(document, root, state)
+    assert.deepEqual(conflict.conflictPaths, ['paper/main.tex'])
+    assert.equal(fs.readFileSync(path.join(root, 'main.tex'), 'utf8'), 'external server edit')
+    document.destroy()
+  } finally {
+    fs.rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('a stale staged runtime revision cannot roll back a newer source writeback', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  const main = new Y.Text()
+  main.insert(0, 'newer web source already written to disk')
+  files.set('paper/main.tex', main)
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+  project.set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('old server source') })
+
+  const result = applyRuntimeSources(document, {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'older staged web source' },
+    version: '1'
+  }, 1234, {
+    'paper/main.tex': 'newer web source already written to disk'
+  })
+
+  assert.equal(result.deduplicated, false)
+  assert.equal(files.get('paper/main.tex').toString(), 'newer web source already written to disk')
+  assert.equal(result.preserved_paths.length, 0)
+  assert.equal(project.get('serverRuntimeRevision'), 'b'.repeat(64))
+  document.destroy()
+})
+
 test('runtime synchronization endpoint verifies staged sources and serializes duplicate requests', async t => {
   const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-runtime-sync-'))
   t.after(() => fs.rmSync(runtime, { force: true, recursive: true }))
@@ -237,6 +305,66 @@ test('runtime synchronization endpoint verifies staged sources and serializes du
   const stale = await postJson(url, { previous_runtime_revision: previousRevision, runtime_revision: 'c'.repeat(64) })
   assert.equal(stale.status, 409)
   assert.equal(document.getMap('files').get('paper/main.tex').toString(), 'new server source')
+})
+
+test('connected Yjs edits are written back to the authoritative project source', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-connected-writeback-'))
+  t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
+  writeSourceProject(sourceRoot, 'server baseline')
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  const main = new Y.Text()
+  main.insert(0, 'server baseline\nexisting web edit')
+  document.getMap('files').set('paper/main.tex', main)
+  document.getMap('project').set('serverSourceFingerprints', {
+    'paper/main.tex': sourceFingerprint('server baseline')
+  })
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']),
+    defaultProjectSourceDir: sourceRoot,
+    sourceWritebackDebounceMs: 10
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const clientDocument = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { provider.destroy(); clientDocument.destroy() })
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('test collaboration client did not synchronize')), 2000)
+    provider.once('sync', synchronized => {
+      if (!synchronized) return
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
+
+  await new Promise((resolve, reject) => {
+    const started = Date.now()
+    const poll = () => {
+      if (fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === 'server baseline\nexisting web edit') return resolve()
+      if (Date.now() - started > 2000) return reject(new Error('existing web edit was not written back'))
+      setTimeout(poll, 10)
+    }
+    poll()
+  })
+
+  const clientMain = clientDocument.getMap('files').get('paper/main.tex')
+  clientMain.insert(clientMain.length, '\nnew web edit')
+  await new Promise((resolve, reject) => {
+    const started = Date.now()
+    const poll = () => {
+      if (fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === 'server baseline\nexisting web edit\nnew web edit') return resolve()
+      if (Date.now() - started > 2000) return reject(new Error('web edit was not written back'))
+      setTimeout(poll, 10)
+    }
+    poll()
+  })
 })
 
 test('runtime synchronization endpoint rejects unauthenticated, forged, and unopened requests', async t => {

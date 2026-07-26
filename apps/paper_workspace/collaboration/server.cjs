@@ -285,6 +285,100 @@ const readRuntimeProject = (runtimeRoot, slug, expectedRevision, maxBytes, defau
   }
 }
 
+const managedSourceEntries = (projectRoot, maxBytes) => {
+  const manifestFile = checkedRuntimeFile(projectRoot, 'project.json', Math.min(maxBytes, 2 * 1024 * 1024))
+  const manifest = JSON.parse(fs.readFileSync(manifestFile.filename, 'utf8'))
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('invalid writable project manifest')
+  if (!Array.isArray(manifest.files) || !manifest.files.length || manifest.files.length > 240) throw new Error('invalid writable project files')
+  const entrypoint = manifest.entrypoint || 'main.tex'
+  if (!validProjectPath(entrypoint)) throw new Error('invalid writable project entrypoint')
+  const entries = []
+  let totalBytes = manifestFile.size
+  for (const item of manifest.files) {
+    if (!item || typeof item !== 'object' || !validProjectPath(item.path)) throw new Error('invalid writable project file entry')
+    if (item.type === 'asset' || (!item.managed && item.path !== entrypoint)) continue
+    const sourcePath = item.source || item.path
+    if (!validProjectPath(sourcePath)) throw new Error('invalid writable project source path')
+    if (item.path === 'drafts' || item.path.startsWith('drafts/') || sourcePath === 'drafts' || sourcePath.startsWith('drafts/')) throw new Error('drafts cannot be written to project sources')
+    const sourceFile = checkedRuntimeFile(projectRoot, sourcePath, maxBytes)
+    totalBytes += sourceFile.size
+    if (totalBytes > maxBytes) throw new Error('writable project sources exceed their size limit')
+    entries.push({
+      filename: sourceFile.filename,
+      projectPath: `paper/${item.path}`
+    })
+  }
+  return entries
+}
+
+const decodeUtf8 = bytes => new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+const sourceDigest = value => crypto.createHash('sha256').update(value).digest('hex')
+
+const readLiveManagedSources = (projectRoot, maxBytes) => {
+  const sources = {}
+  for (const entry of managedSourceEntries(projectRoot, maxBytes)) {
+    sources[entry.projectPath] = decodeUtf8(fs.readFileSync(entry.filename))
+  }
+  return sources
+}
+
+const atomicReplaceSource = (filename, value, expectedDigest) => {
+  const directory = path.dirname(filename)
+  const temporary = path.join(directory, `.paper-writeback-${process.pid}-${crypto.randomBytes(8).toString('hex')}`)
+  const original = fs.lstatSync(filename)
+  if (!original.isFile() || original.isSymbolicLink()) throw new Error('writable project source is not a regular file')
+  let descriptor
+  try {
+    descriptor = fs.openSync(temporary, 'wx', original.mode & 0o777)
+    fs.writeFileSync(descriptor, value, 'utf8')
+    fs.fsyncSync(descriptor)
+    fs.closeSync(descriptor)
+    descriptor = undefined
+    const current = fs.lstatSync(filename)
+    if (!current.isFile() || current.isSymbolicLink() || sourceDigest(fs.readFileSync(filename)) !== expectedDigest) return false
+    fs.renameSync(temporary, filename)
+    const directoryDescriptor = fs.openSync(directory, 'r')
+    try { fs.fsyncSync(directoryDescriptor) } finally { fs.closeSync(directoryDescriptor) }
+    return true
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor)
+    try { fs.unlinkSync(temporary) } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+}
+
+const writeBackManagedSources = (document, projectRoot, expectedDigests, requestedPaths = null, maxBytes = 8 * 1024 * 1024) => {
+  const files = document.getMap('files')
+  const requested = requestedPaths ? new Set(requestedPaths) : null
+  const writtenPaths = []
+  const conflictPaths = []
+  for (const entry of managedSourceEntries(projectRoot, maxBytes)) {
+    if (requested && !requested.has(entry.projectPath)) continue
+    const shared = files.get(entry.projectPath)?.toString?.()
+    if (typeof shared !== 'string') continue
+    const currentBytes = fs.readFileSync(entry.filename)
+    const current = decodeUtf8(currentBytes)
+    const currentDigest = sourceDigest(currentBytes)
+    const expectedDigest = expectedDigests.get(entry.projectPath)
+    if (shared === current) {
+      expectedDigests.set(entry.projectPath, currentDigest)
+      continue
+    }
+    if (!expectedDigest) {
+      conflictPaths.push(entry.projectPath)
+      continue
+    }
+    if (currentDigest !== expectedDigest || !atomicReplaceSource(entry.filename, shared, expectedDigest)) {
+      conflictPaths.push(entry.projectPath)
+      continue
+    }
+    expectedDigests.set(entry.projectPath, sourceDigest(shared))
+    writtenPaths.push(entry.projectPath)
+  }
+  return { conflictPaths, writtenPaths }
+}
+
 const nextServerDraftPath = (files, sourcePath, timestamp, startIndex) => {
   const safeName = path.posix.basename(sourcePath).replace(/[^A-Za-z0-9._-]/g, '_') || 'source.tex'
   let index = startIndex
@@ -296,7 +390,7 @@ const nextServerDraftPath = (files, sourcePath, timestamp, startIndex) => {
   return { path: candidate, nextIndex: index }
 }
 
-const applyRuntimeSources = (document, payload, timestamp = Date.now()) => {
+const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSources = null) => {
   const project = document.getMap('project')
   const files = document.getMap('files')
   const currentRevision = String(project.get('serverRuntimeRevision') || '')
@@ -326,6 +420,11 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now()) => {
       let text = files.get(sourcePath)
       if (!(text instanceof Y.Text)) { text = new Y.Text(); files.set(sourcePath, text) }
       const current = text.toString()
+      const liveSource = liveSources?.[sourcePath]
+      if (typeof liveSource === 'string' && liveSource !== source) {
+        nextFingerprints[sourcePath] = sourceFingerprint(source)
+        continue
+      }
       const previousFingerprint = previousFingerprints[sourcePath]
       if (current !== source && current && (!previousFingerprint || sourceFingerprint(current) !== previousFingerprint)) {
         const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex)
@@ -387,9 +486,12 @@ function createCollaborationServer (overrides = {}) {
     maxIngressBytesPerMinute: positiveInteger(overrides.maxIngressBytesPerMinute ?? process.env.COLLAB_MAX_INGRESS_BYTES_PER_MINUTE, 16 * 1024 * 1024),
     maxRuntimeSyncBytes: positiveInteger(overrides.maxRuntimeSyncBytes ?? process.env.COLLAB_MAX_RUNTIME_SYNC_BYTES, 8 * 1024 * 1024),
     maxRuntimeSyncRequestsPerMinute: positiveInteger(overrides.maxRuntimeSyncRequestsPerMinute ?? process.env.COLLAB_MAX_RUNTIME_SYNC_REQUESTS_PER_MINUTE, 60),
+    sourceWritebackDebounceMs: positiveInteger(overrides.sourceWritebackDebounceMs ?? process.env.COLLAB_SOURCE_WRITEBACK_DEBOUNCE_MS, 350),
     maxDocumentBytes: positiveInteger(overrides.maxDocumentBytes ?? process.env.COLLAB_MAX_DOCUMENT_BYTES, 32 * 1024 * 1024),
     maxRooms: positiveInteger(overrides.maxRooms ?? process.env.COLLAB_MAX_ROOMS, 64),
     projectRuntimeDir: overrides.projectRuntimeDir ?? process.env.COLLAB_PROJECT_RUNTIME ?? '',
+    defaultProjectSourceDir: overrides.defaultProjectSourceDir ?? process.env.COLLAB_DEFAULT_PROJECT_SOURCE ?? '',
+    projectsSourceDir: overrides.projectsSourceDir ?? process.env.COLLAB_PROJECTS_SOURCE ?? '',
     persistenceDir: overrides.persistenceDir ?? process.env.YPERSISTENCE ?? '',
     maxStorageBytes: positiveInteger(overrides.maxStorageBytes ?? process.env.COLLAB_MAX_STORAGE_BYTES, 512 * 1024 * 1024),
     storageCheckMs: positiveInteger(overrides.storageCheckMs ?? process.env.COLLAB_STORAGE_CHECK_MS, 5000)
@@ -407,6 +509,7 @@ function createCollaborationServer (overrides = {}) {
   const countsByRoom = new Map()
   const runtimeSyncQueues = new Map()
   const runtimeRequestsByIp = new Map()
+  const writebackStates = new Map()
   const ownedDocNames = new Set()
   let storageBytes = directoryBytes(config.persistenceDir)
   let storageQuotaExceeded = storageBytes >= config.maxStorageBytes
@@ -419,6 +522,96 @@ function createCollaborationServer (overrides = {}) {
       if (runtimeSyncQueues.get(room) === current) runtimeSyncQueues.delete(room)
     }).catch(() => {})
     return current
+  }
+
+  const sourceRootForSlug = slug => {
+    const root = config.defaultProjectSlugs.has(slug)
+      ? config.defaultProjectSourceDir
+      : config.projectsSourceDir && path.join(config.projectsSourceDir, slug)
+    return root && path.isAbsolute(root) ? root : ''
+  }
+
+  const refreshWritebackBaseline = (document, projectRoot, expectedDigests) => {
+    const files = document.getMap('files')
+    const projectFingerprints = document.getMap('project').get('serverSourceFingerprints')
+    const knownFingerprints = projectFingerprints && typeof projectFingerprints === 'object' && !Array.isArray(projectFingerprints)
+      ? projectFingerprints
+      : {}
+    const liveSources = readLiveManagedSources(projectRoot, config.maxRuntimeSyncBytes)
+    const divergentWebPaths = []
+    for (const [projectPath, liveSource] of Object.entries(liveSources)) {
+      const sharedSource = files.get(projectPath)?.toString?.()
+      if (sharedSource === liveSource) {
+        expectedDigests.set(projectPath, sourceDigest(liveSource))
+      } else if (typeof sharedSource === 'string' && knownFingerprints[projectPath] === sourceFingerprint(liveSource)) {
+        // Upgrade an existing room safely: the disk still matches the last
+        // server snapshot, so the divergent Yjs value is a connected web edit.
+        expectedDigests.set(projectPath, sourceDigest(liveSource))
+        divergentWebPaths.push(projectPath)
+      }
+    }
+    return { divergentWebPaths, liveSources }
+  }
+
+  const flushSourceWriteback = (docName, state) => {
+    state.timer = null
+    const document = docs.get(docName)
+    if (!document) return
+    try {
+      const result = writeBackManagedSources(
+        document,
+        state.projectRoot,
+        state.expectedDigests,
+        state.pendingPaths,
+        config.maxRuntimeSyncBytes
+      )
+      state.pendingPaths.clear()
+      const conflictKey = result.conflictPaths.join('\0')
+      if (conflictKey && conflictKey !== state.lastConflictKey) {
+        console.warn(`source writeback paused for external changes (${docName}): ${result.conflictPaths.join(', ')}`)
+      }
+      state.lastConflictKey = conflictKey
+    } catch (error) {
+      console.error(`source writeback failed (${docName}): ${error.message}`)
+    }
+  }
+
+  const ensureSourceWriteback = (docName, room, document) => {
+    if (writebackStates.has(docName)) return writebackStates.get(docName)
+    const projectRoot = sourceRootForSlug(room.slice(room.lastIndexOf(':') + 1))
+    if (!projectRoot) return null
+    const state = {
+      expectedDigests: new Map(),
+      lastConflictKey: '',
+      pendingPaths: new Set(),
+      projectRoot,
+      timer: null
+    }
+    const baseline = refreshWritebackBaseline(document, projectRoot, state.expectedDigests)
+    const files = document.getMap('files')
+    state.observer = (events, transaction) => {
+      if (transaction.origin === 'server-runtime-sync') return
+      for (const event of events) {
+        if (event.target === files) {
+          for (const projectPath of event.keysChanged || []) state.pendingPaths.add(projectPath)
+          continue
+        }
+        const projectPath = event.path?.[0]
+        if (typeof projectPath === 'string') state.pendingPaths.add(projectPath)
+      }
+      if (!state.pendingPaths.size) return
+      if (state.timer) clearTimeout(state.timer)
+      state.timer = setTimeout(() => flushSourceWriteback(docName, state), config.sourceWritebackDebounceMs)
+      state.timer.unref()
+    }
+    files.observeDeep(state.observer)
+    writebackStates.set(docName, state)
+    for (const projectPath of baseline.divergentWebPaths) state.pendingPaths.add(projectPath)
+    if (state.pendingPaths.size) {
+      state.timer = setTimeout(() => flushSourceWriteback(docName, state), config.sourceWritebackDebounceMs)
+      state.timer.unref()
+    }
+    return state
   }
 
   const handleRuntimeSync = async (request, response, room) => {
@@ -490,12 +683,17 @@ function createCollaborationServer (overrides = {}) {
           config.maxRuntimeSyncBytes,
           config.defaultProjectSlugs
         )
+        const writebackState = ensureSourceWriteback(docName, room, document)
+        let liveSources = null
+        if (writebackState) {
+          liveSources = refreshWritebackBaseline(document, writebackState.projectRoot, writebackState.expectedDigests).liveSources
+        }
         const update = { ...runtimeProject, previousRuntimeRevision: payload.previousRuntimeRevision }
         const timestamp = Date.now()
         const candidate = new Y.Doc()
         try {
           Y.applyUpdate(candidate, Y.encodeStateAsUpdate(document))
-          const preview = applyRuntimeSources(candidate, update, timestamp)
+          const preview = applyRuntimeSources(candidate, update, timestamp, liveSources)
           if (preview.conflict) return preview
           if (preview.deduplicated) {
             if (persistence?.provider) {
@@ -516,7 +714,8 @@ function createCollaborationServer (overrides = {}) {
         } finally {
           candidate.destroy()
         }
-        const applied = applyRuntimeSources(document, update, timestamp)
+        const applied = applyRuntimeSources(document, update, timestamp, liveSources)
+        if (writebackState) refreshWritebackBaseline(document, writebackState.projectRoot, writebackState.expectedDigests)
         document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
         document.paperPendingGrowthBytes = 0
         if (persistence?.provider) {
@@ -596,6 +795,7 @@ function createCollaborationServer (overrides = {}) {
     })
     try {
       const document = await prepareCollaborationDocument(docName)
+      ensureSourceWriteback(docName, room, document)
       if (socket.readyState !== WebSocket.OPEN) return
       if (!Number.isSafeInteger(document.paperDocumentBytes)) document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
       if (document.paperDocumentBytes > config.maxDocumentBytes) {
@@ -707,6 +907,14 @@ function createCollaborationServer (overrides = {}) {
 
   const close = async () => {
     clearInterval(quotaTimer)
+    for (const [docName, state] of writebackStates) {
+      if (state.timer) {
+        clearTimeout(state.timer)
+        flushSourceWriteback(docName, state)
+      }
+      docs.get(docName)?.getMap('files').unobserveDeep(state.observer)
+    }
+    writebackStates.clear()
     for (const socket of wss.clients) socket.terminate()
     const websocketClosed = new Promise((resolve, reject) => {
       wss.close(error => error ? reject(error) : resolve())
@@ -762,11 +970,13 @@ module.exports = {
   projectSlugs,
   prepareCollaborationDocument,
   readRuntimeProject,
+  readLiveManagedSources,
   messageDocumentGrowthBytes,
   requestAddress,
   requestRoom,
   runtimeSyncPayload,
   runtimeSyncRoom,
   sourceFingerprint,
+  writeBackManagedSources,
   roomHost
 }

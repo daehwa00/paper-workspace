@@ -48,6 +48,8 @@ services:
       - project_runtime:/run/project-runtime:ro
       - ${PAPER_PROJECTS_DIR:-../../examples/project-library}/index.json:/run/project-manifests/projects.json:ro
       - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}/project.json:/run/project-manifests/default-project.json:ro
+      - ${PAPER_PROJECT_DIR:-../../examples/paper-workspace-project}:/run/project-sources/default
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/run/project-sources/projects
     environment:
       COLLAB_ALLOWED_ORIGINS: ${COLLAB_ALLOWED_ORIGINS:-https://${PAPER_DOMAIN:-localhost}}
       COLLAB_TRUST_PROXY: "1"
@@ -65,6 +67,9 @@ services:
       COLLAB_PROJECT_CATALOG: /run/project-manifests/projects.json
       COLLAB_DEFAULT_PROJECT_MANIFEST: /run/project-manifests/default-project.json
       COLLAB_PROJECT_RUNTIME: /run/project-runtime
+      COLLAB_DEFAULT_PROJECT_SOURCE: /run/project-sources/default
+      COLLAB_PROJECTS_SOURCE: /run/project-sources/projects
+      COLLAB_SOURCE_WRITEBACK_DEBOUNCE_MS: ${COLLAB_SOURCE_WRITEBACK_DEBOUNCE_MS:-350}
     read_only: true
     security_opt:
       - no-new-privileges:true

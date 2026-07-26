@@ -929,6 +929,7 @@ def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:
 def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    collaboration = (ROOT / "apps/paper_workspace/collaboration/server.cjs").read_text(encoding="utf-8")
     assert "PAPER_PROJECT_DIR" in compose
     workspace_config = compose[compose.index("  workspace:"):compose.index("  caddy-storage-init:")]
     assert "project_runtime:/usr/share/nginx/html/project-runtime:ro" in workspace_config
@@ -940,6 +941,11 @@ def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     assert "sourceFingerprint" in app
     assert "persistedState({compactDrafts:true})" in app
     assert "browser-before-server-sync" in app
+    assert "COLLAB_DEFAULT_PROJECT_SOURCE" in compose
+    assert "COLLAB_PROJECTS_SOURCE" in compose
+    assert "writeBackManagedSources" in collaboration
+    assert "atomicReplaceSource" in collaboration
+    assert "liveSource !== source" in collaboration
 
 
 def test_private_author_kit_is_not_bundled_in_public_runtime() -> None:
