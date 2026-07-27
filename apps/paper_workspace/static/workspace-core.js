@@ -132,7 +132,11 @@
     const text = String(message || '')
     const lines = [...text.matchAll(/(?:^|\n)l\.(\d+)\s*([^\n]*)/g)]
     const diagnostics = [...text.matchAll(/File `([^']+)' not found(?:[^\n]*input line (\d+))?/g)].map(match => ({file: `paper/${entrypoint}`, line: Number(match[2]) || Number(lines.at(-1)?.[1]) || 1, message: `필요한 파일이 프로젝트에 없습니다: ${match[1]}`}))
-    for (const match of text.matchAll(/LaTeX Error:\s*([^\n]+)/g)) diagnostics.push({file: `paper/${entrypoint}`, line: Number(lines.at(-1)?.[1]) || 1, message: match[1].trim()})
+    for (const match of text.matchAll(/LaTeX Error:\s*([^\n]+)/g)) {
+      const message = match[1].trim()
+      const missing = message.match(/^File [`']([^`']+)[`'] not found\.?$/)
+      diagnostics.push({file: `paper/${entrypoint}`, line: Number(lines.at(-1)?.[1]) || 1, message: missing ? `필요한 파일이 프로젝트에 없습니다: ${missing[1]}` : message})
+    }
     if (!diagnostics.length) diagnostics.push(...lines.slice(-8).map(match => ({file: `paper/${entrypoint}`, line: Number(match[1]), message: (match[2] || 'LaTeX 오류가 발생했습니다.').trim()})))
     if (!diagnostics.length) diagnostics.push({file: `paper/${entrypoint}`, line: 1, message: text.split('\n').filter(Boolean).at(-1) || '컴파일 오류'})
     const seen = new Set()

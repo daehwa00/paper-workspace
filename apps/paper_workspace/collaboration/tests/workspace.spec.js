@@ -1259,7 +1259,7 @@ test('compile failure presents a normalized cause and direct source jump', async
   await page.route('**/api/compile', route => route.fulfill({
     status: 422,
     contentType: 'application/json',
-    body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\nLaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! Package pdftex.def Error\nl.5 \\includegraphics{missing-figure.pdf}" })
+    body: JSON.stringify({ error: "LaTeX Warning: File `missing-figure.pdf' not found on input line 5.\nLaTeX Warning: File `missing-figure.pdf' not found on input line 5.\n! LaTeX Error: File `missing-figure.pdf' not found.\nl.5 \\includegraphics{missing-figure.pdf}" })
   }))
   await page.route('**/api/codex', route => {
     codexRequest = route.request().postDataJSON()
@@ -1292,7 +1292,7 @@ test('compile failure presents a normalized cause and direct source jump', async
   await expect(page.getByRole('tab', { name: '수정' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.codex-thread-turn-user')).toContainText('paper/main.tex:5의 컴파일 오류를 AI로 고쳐줘.')
   await expect(page.locator('.suggestion.codex-result')).toBeVisible()
-  expect(codexRequest.instruction).toContain('Package pdftex.def Error')
+  expect(codexRequest.instruction).toContain("LaTeX Error: File `missing-figure.pdf' not found")
   expect(codexRequest.instruction).toContain('가장 작은 수정')
   expect(codexRequest.file).toBe('paper/main.tex')
   await expect(page.locator('#editor')).toHaveValue(sourceBeforeProposal)
