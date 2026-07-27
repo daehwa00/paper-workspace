@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
@@ -975,6 +976,44 @@ def test_project_manifest_controls_server_managed_files() -> None:
     assert "canCoordinateProjectUpgrade" in app
     assert "browser-before-server-sync" in app
     assert "never replace or delete shared content during startup" in app
+
+
+def test_private_project_manifest_lists_literal_tex_dependencies() -> None:
+    project_root = ROOT / "paper"
+    manifest_path = project_root / "project.json"
+    if not manifest_path.is_file():
+        return
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    listed = {item["path"] for item in manifest["files"]}
+    missing: list[str] = []
+    for source_name in sorted(name for name in listed if name.endswith(".tex")):
+        source_path = project_root / source_name
+        if not source_path.is_file():
+            continue
+        source = re.sub(r"(?<!\\)%.*", "", source_path.read_text(encoding="utf-8"))
+        for match in re.finditer(r"\\(?:input|include)\{([^}]+)\}", source):
+            dependency = match.group(1).strip()
+            if not Path(dependency).suffix:
+                dependency += ".tex"
+            if dependency not in listed:
+                missing.append(f"{source_name}: {dependency}")
+        for match in re.finditer(
+            r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", source
+        ):
+            dependency = match.group(1).strip()
+            candidates = (
+                {dependency}
+                if Path(dependency).suffix
+                else {
+                    f"{dependency}.{extension}"
+                    for extension in ("pdf", "png", "jpg", "jpeg", "eps")
+                }
+            )
+            if listed.isdisjoint(candidates):
+                missing.append(f"{source_name}: {dependency}")
+
+    assert not missing, "project manifest omits TeX dependencies:\n" + "\n".join(missing)
 
 
 def test_project_version_prunes_only_manifest_retired_paths_from_shared_tree() -> None:
