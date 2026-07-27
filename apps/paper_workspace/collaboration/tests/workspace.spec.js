@@ -459,6 +459,51 @@ test('manifest data assets stay out of durable manuscript state', async ({ page 
   expect(persisted.indexed.state.files['paper/generated/claims.tex']).toContain('AssetBoundary')
 })
 
+test('manifest assets recover from a stale shared-upload origin', async ({ page }) => {
+  const slug = `stale-asset-origin-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const source = '\\documentclass{article}\n\\begin{document}asset fallback\\end{document}\n'
+  const remoteRequests = []
+  await page.route(`**/p/${slug}/project/**`, async route => {
+    const path = new URL(route.request().url()).pathname.split(`/p/${slug}/project/`)[1]
+    if (path === 'project.json') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slug,
+          version: '1',
+          entrypoint: 'main.tex',
+          files: [
+            { path: 'main.tex', managed: true },
+            { path: 'Figures/architecture.png', type: 'asset' }
+          ]
+        })
+      })
+    }
+    if (path === 'main.tex') return route.fulfill({ contentType: 'text/plain', body: source })
+    if (path === 'Figures/architecture.png') {
+      remoteRequests.push(path)
+      return route.fulfill({ contentType: 'image/png', body: Buffer.from([0x89, 0x50, 0x4e, 0x47]) })
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' })
+  })
+  await page.route(`**/api/backups/projects/${slug}/assets/**`, route => (
+    route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"not found"}' })
+  ))
+
+  await page.goto(`/p/${slug}`)
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('asset fallback'))
+  const recovered = await page.evaluate(async () => {
+    const path = 'paper/Figures/architecture.png'
+    state.assets[path].server = true
+    const asset = await ensureAssetLoaded(path)
+    return { data: asset.data, server: asset.server }
+  })
+
+  expect(recovered.data).toMatch(/^data:image\/png;base64,/)
+  expect(recovered.server).toBe(false)
+  expect(remoteRequests).toEqual(['Figures/architecture.png'])
+})
+
 test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
