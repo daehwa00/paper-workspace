@@ -19,6 +19,11 @@ MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_RUNTIME_FILES = 240
 MAX_RUNTIME_FILE_BYTES = 64 * 1024 * 1024
 MAX_RUNTIME_PROJECT_BYTES = 512 * 1024 * 1024
+AUTO_ASSET_EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg", ".eps")
+AUTO_TEXT_EXTENSIONS = {".bib", ".bst", ".cls", ".csv", ".dat", ".json", ".sty", ".tex", ".txt"}
+AUTO_EXTENSIONS = set(AUTO_ASSET_EXTENSIONS) | AUTO_TEXT_EXTENSIONS
+INPUT_PATTERN = re.compile(r"\\(?:input|include)\{([^{}]+)\}")
+GRAPHICS_PATTERN = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{([^{}]+)\}")
 
 
 def safe_relative(value: object) -> Path:
@@ -58,14 +63,93 @@ def checked_source(root: Path, relative: Path) -> Path:
     return candidate
 
 
-def project_files(project_root: Path) -> list[Path]:
+def automatic_dependency_entries(
+    project_root: Path,
+    manifest: dict[str, object],
+) -> list[dict[str, object]]:
+    configured_roots = manifest.get("auto_include_roots", [])
+    if not isinstance(configured_roots, list) or len(configured_roots) > 8:
+        raise ValueError("auto include roots must be a bounded list")
+    roots = tuple(safe_relative(value) for value in configured_roots)
+    if not roots:
+        return []
+
+    entries = manifest.get("files")
+    if not isinstance(entries, list):
+        raise ValueError("project manifest files must be a list")
+    published = {
+        safe_relative(entry.get("path"))
+        for entry in entries
+        if isinstance(entry, dict)
+    }
+    pending = [
+        safe_relative(entry.get("source") or entry.get("path"))
+        for entry in entries
+        if isinstance(entry, dict)
+        and Path(str(entry.get("source") or entry.get("path"))).suffix == ".tex"
+    ]
+    discovered: list[dict[str, object]] = []
+    scanned: set[Path] = set()
+
+    def opted_in(candidate: Path) -> bool:
+        return any(candidate == root or root in candidate.parents for root in roots)
+
+    while pending:
+        source = pending.pop()
+        if source in scanned:
+            continue
+        scanned.add(source)
+        text = checked_source(project_root, source).read_text(encoding="utf-8")
+        text = re.sub(r"(?<!\\)%.*", "", text)
+        references: list[tuple[str, bool]] = [
+            *((match.group(1).strip(), False) for match in INPUT_PATTERN.finditer(text)),
+            *((match.group(1).strip(), True) for match in GRAPHICS_PATTERN.finditer(text)),
+        ]
+        for value, asset in references:
+            try:
+                relative = safe_relative(value)
+            except ValueError:
+                continue
+            candidates = [relative]
+            if asset and not relative.suffix:
+                candidates = [Path(f"{relative.as_posix()}{extension}") for extension in AUTO_ASSET_EXTENSIONS]
+            elif not asset and not relative.suffix:
+                candidates = [Path(f"{relative.as_posix()}.tex")]
+            for candidate in candidates:
+                if not opted_in(candidate) or candidate.suffix.lower() not in AUTO_EXTENSIONS:
+                    continue
+                try:
+                    (project_root / candidate).lstat()
+                except FileNotFoundError:
+                    continue
+                checked_source(project_root, candidate)
+                if candidate in published:
+                    break
+                entry: dict[str, object] = {
+                    "path": candidate.as_posix(),
+                    "managed": True,
+                }
+                if candidate.suffix.lower() in AUTO_ASSET_EXTENSIONS:
+                    entry["type"] = "asset"
+                discovered.append(entry)
+                published.add(candidate)
+                if candidate.suffix.lower() == ".tex":
+                    pending.append(candidate)
+                if len(entries) + len(discovered) > MAX_RUNTIME_FILES:
+                    raise ValueError("project runtime discovered too many files")
+                break
+    return discovered
+
+
+def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]]]:
     manifest_path = checked_source(project_root, Path("project.json"))
     manifest = read_object(manifest_path)
     entries = manifest.get("files")
     if not isinstance(entries, list) or len(entries) > MAX_RUNTIME_FILES:
         raise ValueError("project manifest files must be a bounded list")
+    automatic_entries = automatic_dependency_entries(project_root, manifest)
     paths = {Path("project.json")}
-    for entry in entries:
+    for entry in [*entries, *automatic_entries]:
         if not isinstance(entry, dict):
             raise ValueError("invalid project manifest file entry")
         paths.add(safe_relative(entry.get("source") or entry.get("path")))
@@ -77,7 +161,11 @@ def project_files(project_root: Path) -> list[Path]:
     total = sum(checked_source(project_root, path).stat().st_size for path in paths)
     if total > MAX_RUNTIME_PROJECT_BYTES:
         raise ValueError("project runtime exceeds its size limit")
-    return sorted(paths)
+    return sorted(paths), automatic_entries
+
+
+def project_files(project_root: Path) -> list[Path]:
+    return project_spec(project_root)[0]
 
 
 def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[str, str]]:
@@ -100,13 +188,21 @@ def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[s
 
 
 def copy_project(project_root: Path, destination: Path) -> None:
-    paths = project_files(project_root)
+    paths, automatic_entries = project_spec(project_root)
     for relative in paths:
         source = checked_source(project_root, relative)
         target = destination / relative
         target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copyfile(source, target)
         target.chmod(0o644)
+    runtime_manifest_path = destination / "project.json"
+    runtime_manifest = read_object(runtime_manifest_path)
+    if automatic_entries:
+        runtime_manifest["files"] = [*runtime_manifest["files"], *automatic_entries]
+        runtime_manifest_path.write_text(
+            json.dumps(runtime_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
     # Hash exactly the staged bytes that the workspace will serve. Hashing the
     # source first and reopening it for copy lets an in-place server edit create
     # a descriptor/content mismatch between those two reads.
@@ -115,7 +211,6 @@ def copy_project(project_root: Path, destination: Path) -> None:
     # a non-recursive hash of its own final bytes. Source and preview entries are
     # the cacheable artifacts consumers need to verify independently.
     file_revisions.pop("project.json", None)
-    runtime_manifest_path = destination / "project.json"
     runtime_manifest = read_object(runtime_manifest_path)
     runtime_manifest["runtime_revision"] = runtime_revision
     runtime_manifest["runtime_file_revisions"] = file_revisions

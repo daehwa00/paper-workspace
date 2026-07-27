@@ -163,6 +163,7 @@ Use only letters, numbers, `-`, and `_` in slugs. Titles may change without chan
 {
   "entrypoint": "main.tex",
   "preview_entrypoints": ["main.tex", "supplement.tex"],
+  "auto_include_roots": ["Figures", "generated"],
   "page_limit": 7,
   "files": [
     {"path":"main.tex", "type":"text"},
@@ -172,6 +173,8 @@ Use only letters, numbers, `-`, and `_` in slugs. Titles may change without chan
 ```
 
 Paths must be relative and cannot contain `..`. Any selected `.tex` file can be previewed: standalone documents compile directly, while fragments reuse the main preamble. The compiler accepts up to 120 files, a 48 MB request, and 32 MB of binary assets; browser uploads are limited to 8 MB per file.
+
+`auto_include_roots` is optional. Within those explicitly approved directories, the runtime automatically stages only existing files referenced by `\input`, `\include`, or `\includegraphics`, including nested TeX inputs. Unreferenced files, missing browser-only uploads, hidden paths, and symlinks remain excluded.
 
 Interactive builds reuse only server-generated reference artifacts behind a short-lived opaque token, so ordinary prose edits usually need one LaTeX pass. Citation, label, or bibliography changes automatically run the additional settling passes. **Build source ZIP** always performs a clean multi-pass compile before packaging.
 

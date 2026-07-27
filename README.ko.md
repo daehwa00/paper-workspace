@@ -163,6 +163,7 @@ slug에는 영문·숫자·`-`·`_`만 사용하세요. 제목을 바꿔도 주�
 {
   "entrypoint": "main.tex",
   "preview_entrypoints": ["main.tex", "supplement.tex"],
+  "auto_include_roots": ["Figures", "generated"],
   "page_limit": 7,
   "files": [
     {"path":"main.tex", "type":"text"},
@@ -172,6 +173,8 @@ slug에는 영문·숫자·`-`·`_`만 사용하세요. 제목을 바꿔도 주�
 ```
 
 경로는 상대 경로여야 하며 `..`를 사용할 수 없습니다. 선택한 `.tex`가 독립 문서이면 직접 컴파일하고, appendix 같은 fragment이면 메인 preamble을 재사용합니다. 컴파일 한도는 파일 120개, 요청 48 MB, binary asset 합계 32 MB이고 브라우저 업로드는 파일당 8 MB입니다.
+
+`auto_include_roots`는 선택 설정입니다. 명시적으로 허용한 폴더 안에서 `\input`, `\include`, `\includegraphics`가 실제로 참조하는 기존 파일만 런타임에 자동 스테이징하며, 중첩된 TeX 입력도 따라갑니다. 참조하지 않은 파일, 브라우저에만 있는 누락 업로드, 숨김 경로와 심볼릭 링크는 계속 제외합니다.
 
 일반 편집 빌드는 수명이 짧은 불투명 서버 토큰을 통해 컴파일러가 생성한 참조 보조 파일만 재사용하므로, 보통의 본문 수정은 LaTeX 한 번으로 끝납니다. 인용·라벨·참고문헌이 바뀌면 필요한 안정화 패스를 자동으로 추가합니다. **Source ZIP 만들기**는 패키징 전에 항상 깨끗한 다중 패스 컴파일을 수행합니다.
 

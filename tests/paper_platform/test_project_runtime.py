@@ -81,6 +81,54 @@ def test_runtime_contains_only_manifest_listed_project_files(tmp_path: Path) -> 
         ).hexdigest()
 
 
+def test_runtime_auto_includes_only_referenced_files_from_opted_in_roots(
+    tmp_path: Path,
+) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    (default / "Figures").mkdir()
+    (default / "generated").mkdir()
+    (default / "Figures/plot.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    (default / "Figures/private.pdf").write_bytes(b"%PDF-1.4\nprivate\n%%EOF\n")
+    (default / "generated/results.tex").write_text(
+        "\\input{generated/nested}\nresults",
+        encoding="utf-8",
+    )
+    (default / "generated/nested.tex").write_text("nested", encoding="utf-8")
+    (default / "main.tex").write_text(
+        "\\input{generated/results}\n"
+        "\\includegraphics{Figures/plot.pdf}\n"
+        "\\includegraphics{Figures/missing-upload.png}\n",
+        encoding="utf-8",
+    )
+    manifest_path = default / "project.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["auto_include_roots"] = ["Figures", "generated"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+
+    runtime.sync_runtime(default, projects, output)
+
+    runtime_root = output / "project"
+    assert (runtime_root / "Figures/plot.pdf").is_file()
+    assert (runtime_root / "generated/results.tex").is_file()
+    assert (runtime_root / "generated/nested.tex").is_file()
+    assert not (runtime_root / "Figures/private.pdf").exists()
+    assert not (runtime_root / "private-draft.tex").exists()
+    runtime_manifest = json.loads((runtime_root / "project.json").read_text())
+    entries = {item["path"]: item for item in runtime_manifest["files"]}
+    assert entries["Figures/plot.pdf"]["type"] == "asset"
+    assert entries["generated/results.tex"]["managed"] is True
+    assert entries["generated/nested.tex"]["managed"] is True
+
+
 def test_runtime_revision_tracks_only_staged_manifest_files(tmp_path: Path) -> None:
     runtime = load_runtime_module()
     default = tmp_path / "default"
