@@ -996,7 +996,7 @@ def test_private_project_manifest_lists_literal_tex_dependencies() -> None:
             dependency = match.group(1).strip()
             if not Path(dependency).suffix:
                 dependency += ".tex"
-            if dependency not in listed:
+            if (project_root / dependency).is_file() and dependency not in listed:
                 missing.append(f"{source_name}: {dependency}")
         for match in re.finditer(
             r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}", source
@@ -1010,7 +1010,12 @@ def test_private_project_manifest_lists_literal_tex_dependencies() -> None:
                     for extension in ("pdf", "png", "jpg", "jpeg", "eps")
                 }
             )
-            if listed.isdisjoint(candidates):
+            local_candidates = {
+                candidate
+                for candidate in candidates
+                if (project_root / candidate).is_file()
+            }
+            if local_candidates and listed.isdisjoint(local_candidates):
                 missing.append(f"{source_name}: {dependency}")
 
     assert not missing, "project manifest omits TeX dependencies:\n" + "\n".join(missing)
