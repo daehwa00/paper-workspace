@@ -1698,27 +1698,31 @@ test('staged server source changes reach an open workspace without reload and pr
   expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
 })
 
-test('overlapping server changes are presented as drafts without replacing the web manuscript', async ({ page }) => {
+test('overlapping server changes replace the active manuscript and preserve the web version', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await expect.poll(() => page.evaluate(() => collabReady)).toBe(true)
   await expect.poll(() => page.evaluate(() => collabSession.textFor('paper/main.tex').toString())).toContain('\\documentclass')
   const activeBefore = await page.evaluate(() => editorValue())
-  await page.evaluate(() => {
-    const draftPath = 'paper/drafts/server-conflict-e2e-main.tex'
+  const serverSource = `${activeBefore}\n% latest server source`
+  await page.evaluate(({ activeBefore, serverSource }) => {
+    const draftPath = 'paper/drafts/web-conflict-e2e-main.tex'
     const draft = collabSession.textFor(draftPath)
-    draft.insert(0, 'stale local proposal')
+    draft.insert(0, activeBefore)
+    replaceSharedText(collabSession.textFor('paper/main.tex'), serverSource)
     adoptServerManifest(projectManifest, {}, {
       conflictPaths: ['paper/main.tex'],
       preservedPaths: [draftPath],
     })
-  })
+    state.files['paper/main.tex'] = serverSource
+    setEditorValue(serverSource)
+  }, { activeBefore, serverSource })
   await expect(page.locator('#source-conflict')).toBeVisible()
-  await expect(page.locator('#source-conflict-copy')).toContainText('웹 편집본을 유지')
-  expect(await page.evaluate(() => editorValue())).toBe(activeBefore)
+  await expect(page.locator('#source-conflict-copy')).toContainText('최신 서버 원본을 반영')
+  expect(await page.evaluate(() => editorValue())).toBe(serverSource)
   await page.locator('#open-preserved-draft').click()
-  expect(await page.evaluate(() => state.current)).toBe('paper/drafts/server-conflict-e2e-main.tex')
-  expect(await page.evaluate(() => editorValue())).toBe('stale local proposal')
+  expect(await page.evaluate(() => state.current)).toBe('paper/drafts/web-conflict-e2e-main.tex')
+  expect(await page.evaluate(() => editorValue())).toBe(activeBefore)
 })
 
 test('compile cancellation identity is isolated per tab and stable across reloads', async ({ browser }) => {

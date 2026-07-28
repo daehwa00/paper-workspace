@@ -498,13 +498,13 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
       if (current !== source && Array.isArray(history) && history.length) {
         const merged = mergeTextHistory(history, current, source)
         if (merged.conflict) {
-          const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex, 'server-conflict')
+          const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex, 'web-conflict')
           draftIndex = draft.nextIndex
           let draftText = files.get(draft.path)
           if (!(draftText instanceof Y.Text)) { draftText = new Y.Text(); files.set(draft.path, draftText) }
-          replaceSharedText(draftText, source)
+          replaceSharedText(draftText, current)
+          replaceSharedText(text, source)
           preservedPaths.push(draft.path)
-          protectedPaths.push(sourcePath)
           conflictPaths.push(sourcePath)
           nextFingerprints[sourcePath] = sourceFingerprint(source)
           continue

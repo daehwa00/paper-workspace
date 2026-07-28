@@ -299,7 +299,7 @@ function adoptServerManifest(manifest,sources={}, {changedPaths=[],conflictPaths
   if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];
   if(state.current&&(!activeAsset||!state.assets[activeAsset])){setEditor();if(state.current===currentPath)setEditorSelection(Math.min(selection.start,editorValue().length),Math.min(selection.end,editorValue().length))}
   listFiles();syncProjectTitleFromTex(true);renderReferenceInventory();save();
-  if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=conflictPaths.length?`동시에 바뀐 서버 원고 ${conflictPaths.length}개를 drafts에 보존하고 웹 편집본을 유지했습니다.`:`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
+  if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=conflictPaths.length?`겹쳐서 수정된 웹 원고 ${conflictPaths.length}개를 drafts에 보존하고 최신 서버 원본을 반영했습니다.`:`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
   if(scheduleCompile&&changedPaths.some(path=>compileTextExtensions.has(extensionOf(path))||compileAssetExtensions.has(extensionOf(path))))markCompileInputsChanged()
 }
 function waitForServerRuntimeRevision(revision,timeoutMs=5000){
@@ -328,7 +328,7 @@ async function refreshServerSources(){
     const changedPaths=changedManifestPaths(projectManifest,manifest),result=await submitServerRuntimeUpdate(manifest,appliedRevision);
     if(result.conflict)return false;
     adoptServerManifest(manifest,{}, {changedPaths,conflictPaths:result.conflictPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(path=>compileAssetExtensions.has(extensionOf(path)))});pruneDraftQueue({sync:true});markProjectActivity('server-sync');lastServerSourceRefreshError='';
-    if(result.applied)notify(result.conflictPaths.length?`동시에 바뀐 서버 원고 ${result.conflictPaths.length}개를 초안으로 보존하고 웹 편집본을 유지했습니다.`:result.mergedPaths.length?`웹과 서버의 서로 다른 변경 ${result.mergedPaths.length}개를 자동으로 병합했습니다.`:result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영',tone:result.conflictPaths.length?'warning':undefined});
+    if(result.applied)notify(result.conflictPaths.length?`겹쳐서 수정된 웹 원고 ${result.conflictPaths.length}개를 초안으로 보존하고 최신 서버 원고를 반영했습니다.`:result.mergedPaths.length?`웹과 서버의 서로 다른 변경 ${result.mergedPaths.length}개를 자동으로 병합했습니다.`:result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영',tone:result.conflictPaths.length?'warning':undefined});
     return true
   }catch(error){const message=String(error?.message||error);if(lastServerSourceRefreshError!==message){lastServerSourceRefreshError=message;notify(message,{title:'서버 원고 확인 지연',tone:'warning'})}return false}
   finally{serverSourceRefreshBusy=false}

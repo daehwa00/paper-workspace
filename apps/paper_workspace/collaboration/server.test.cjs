@@ -234,7 +234,7 @@ test('history merge does not bless a stale local overwrite when base costs tie',
   assert.equal(result.base, base)
 })
 
-test('runtime source conflicts keep the web manuscript active and preserve the local proposal', () => {
+test('runtime source conflicts activate the local source and preserve the web manuscript', () => {
   const document = new Y.Doc()
   const files = document.getMap('files')
   const project = document.getMap('project')
@@ -254,11 +254,12 @@ test('runtime source conflicts keep the web manuscript active and preserve the l
     'paper/main.tex': ['abstract: old\n']
   })
 
-  assert.equal(files.get('paper/main.tex').toString(), 'abstract: edited in browser\n')
-  assert.deepEqual(result.protected_paths, ['paper/main.tex'])
+  assert.equal(files.get('paper/main.tex').toString(), 'abstract: edited locally\n')
+  assert.deepEqual(result.protected_paths, [])
   assert.deepEqual(result.conflict_paths, ['paper/main.tex'])
   assert.equal(result.preserved_paths.length, 1)
-  assert.equal(files.get(result.preserved_paths[0]).toString(), 'abstract: edited locally\n')
+  assert.match(result.preserved_paths[0], /^paper\/drafts\/web-conflict-/)
+  assert.equal(files.get(result.preserved_paths[0]).toString(), 'abstract: edited in browser\n')
   document.destroy()
 })
 
@@ -470,7 +471,7 @@ test('connected Yjs edits are written back to the authoritative project source',
   assert.equal(persistedHistory['paper/main.tex'].at(-1), 'server baseline\nexisting web edit\nnew web edit')
 })
 
-test('a stale local save cannot replace the active web manuscript', async t => {
+test('an overlapping local save stays authoritative while the web manuscript is preserved', async t => {
   const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-stale-local-source-'))
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-stale-local-runtime-'))
   const sourceHistoryDir = path.join(sourceRoot, '.source-history')
@@ -536,23 +537,14 @@ test('a stale local save cannot replace the active web manuscript', async t => {
     { previous_runtime_revision: 'a'.repeat(64), runtime_revision: runtimeRevision }
   )
   assert.equal(response.status, 200)
-  assert.deepEqual(response.body.protected_paths, ['paper/main.tex'])
+  assert.deepEqual(response.body.protected_paths, [])
   assert.deepEqual(response.body.conflict_paths, ['paper/main.tex'])
-  assert.equal(document.getMap('files').get('paper/main.tex').toString(), web)
+  assert.equal(document.getMap('files').get('paper/main.tex').toString(), staleLocal)
   const conflictDrafts = [...document.getMap('files').entries()]
-    .filter(([name]) => name.startsWith('paper/drafts/server-conflict-'))
+    .filter(([name]) => name.startsWith('paper/drafts/web-conflict-'))
   assert.equal(conflictDrafts.length, 1)
-  assert.equal(conflictDrafts[0][1].toString(), staleLocal)
-  await new Promise((resolve, reject) => {
-    const started = Date.now()
-    const poll = () => {
-      if (fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === web) return resolve()
-      if (Date.now() - started > 2000) return reject(new Error('active web manuscript did not win the conflict'))
-      setTimeout(poll, 10)
-    }
-    poll()
-  })
-  assert.equal(document.getMap('project').get('sourceWritebackStatus').state, 'synced')
+  assert.equal(conflictDrafts[0][1].toString(), web)
+  assert.equal(fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8'), staleLocal)
 })
 
 test('runtime synchronization endpoint rejects unauthenticated, forged, and unopened requests', async t => {
