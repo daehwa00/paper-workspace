@@ -496,7 +496,10 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
       const previousFingerprint = previousFingerprints[sourcePath]
       const history = sourceHistories?.[sourcePath]
       if (current !== source && Array.isArray(history) && history.length) {
-        const merged = mergeTextHistory(history, current, source)
+        const exactBase = typeof previousFingerprint === 'string'
+          ? history.find(version => sourceFingerprint(version) === previousFingerprint)
+          : undefined
+        const merged = mergeTextHistory(exactBase === undefined ? history : [exactBase], current, source)
         if (merged.conflict) {
           const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex, 'web-conflict')
           draftIndex = draft.nextIndex

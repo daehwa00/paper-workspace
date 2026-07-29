@@ -285,6 +285,36 @@ test('runtime source application reports automatically merged paths separately',
   document.destroy()
 })
 
+test('restoring a deleted local source uses the exact previous server version as the merge base', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  const main = new Y.Text()
+  main.insert(0, '')
+  files.set('paper/supplement.tex', main)
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+  project.set('serverSourceFingerprints', {
+    'paper/supplement.tex': sourceFingerprint('')
+  })
+  const restored = '\\documentclass{article}\n\\input{sections/appendix/index}\n'
+
+  const result = applyRuntimeSources(document, {
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/supplement.tex': restored },
+    version: '1'
+  }, 1234, null, {
+    'paper/supplement.tex': [restored, '']
+  })
+
+  assert.equal(files.get('paper/supplement.tex').toString(), restored)
+  assert.deepEqual(result.conflict_paths, [])
+  assert.deepEqual(result.merged_paths, [])
+  assert.deepEqual(result.preserved_paths, [])
+  document.destroy()
+})
+
 test('managed source writeback follows web edits but refuses to overwrite an external edit', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-writeback-'))
   try {
