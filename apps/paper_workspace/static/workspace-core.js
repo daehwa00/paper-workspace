@@ -71,7 +71,7 @@
     const retired = manifest?.retired_paths ?? []
     const revision = String(manifest?.runtime_revision ?? '')
     const revisions = manifest?.runtime_file_revisions ?? {}
-    const pathsValid = Array.isArray(manifest?.files) && manifest.files.every(item => item && validProjectPath(item.path) && (!item.source || validProjectPath(item.source)))
+    const pathsValid = Array.isArray(manifest?.files) && manifest.files.every(item => item && validProjectPath(item.path) && (!item.source || validProjectPath(item.source)) && (item.locked === undefined || typeof item.locked === 'boolean'))
     const metadataValid = validProjectPath(entrypoint) && Array.isArray(previews) && previews.every(path => validProjectPath(path) && path.endsWith('.tex')) && Array.isArray(retired) && retired.every(validProjectPath) && (!manifest.preview_pdf || validProjectPath(manifest.preview_pdf)) && (!manifest.preview_synctex || validProjectPath(manifest.preview_synctex)) && (!revision || /^[0-9a-f]{64}$/.test(revision) && validRevisions(revisions))
     if (!pathsValid || !metadataValid) throw new Error('project.json 형식이 올바르지 않습니다.')
     return {...manifest, entrypoint, preview_entrypoints: previews, retired_paths: retired, version: String(manifest.version || 'unversioned'), runtime_revision: revision, runtime_file_revisions: revisions}

@@ -258,9 +258,11 @@ const readRuntimeProject = (runtimeRoot, slug, expectedRevision, maxBytes, defau
   const revisions = manifest.runtime_file_revisions
   if (!revisions || typeof revisions !== 'object' || Array.isArray(revisions)) throw new Error('runtime file revisions are missing')
   const sources = {}
+  const lockedPaths = []
   let totalBytes = manifestFile.size
   for (const item of manifest.files) {
     if (!item || typeof item !== 'object' || !validProjectPath(item.path)) throw new Error('invalid runtime project file entry')
+    if (item.locked !== undefined && typeof item.locked !== 'boolean') throw new Error('invalid runtime project lock')
     if (item.type === 'asset' || (!item.managed && item.path !== entrypoint)) continue
     const sourcePath = item.source || item.path
     if (!validProjectPath(sourcePath)) throw new Error('invalid runtime project source path')
@@ -277,11 +279,13 @@ const readRuntimeProject = (runtimeRoot, slug, expectedRevision, maxBytes, defau
       throw error
     }
     sources[`paper/${item.path}`] = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (item.locked) lockedPaths.push(`paper/${item.path}`)
   }
   if (!Object.keys(sources).length) throw new Error('runtime project has no managed sources')
   const retiredPaths = Array.isArray(manifest.retired_paths) ? manifest.retired_paths : []
   if (retiredPaths.length > 240 || retiredPaths.some(sourcePath => !validProjectPath(sourcePath))) throw new Error('invalid retired runtime source path')
   return {
+    lockedPaths,
     retiredPaths: [...new Set(retiredPaths.map(sourcePath => `paper/${sourcePath}`))],
     runtimeRevision: expectedRevision,
     sources,
@@ -300,6 +304,7 @@ const managedSourceEntries = (projectRoot, maxBytes) => {
   let totalBytes = manifestFile.size
   for (const item of manifest.files) {
     if (!item || typeof item !== 'object' || !validProjectPath(item.path)) throw new Error('invalid writable project file entry')
+    if (item.locked !== undefined && typeof item.locked !== 'boolean') throw new Error('invalid writable project lock')
     if (item.type === 'asset' || (!item.managed && item.path !== entrypoint)) continue
     const sourcePath = item.source || item.path
     if (!validProjectPath(sourcePath)) throw new Error('invalid writable project source path')
@@ -309,6 +314,7 @@ const managedSourceEntries = (projectRoot, maxBytes) => {
     if (totalBytes > maxBytes) throw new Error('writable project sources exceed their size limit')
     entries.push({
       filename: sourceFile.filename,
+      locked: item.locked === true,
       projectPath: `paper/${item.path}`
     })
   }
@@ -364,6 +370,11 @@ const writeBackManagedSources = (document, projectRoot, expectedDigests, request
     const currentBytes = fs.readFileSync(entry.filename)
     const current = decodeUtf8(currentBytes)
     const currentDigest = sourceDigest(currentBytes)
+    if (entry.locked) {
+      if (shared !== current) replaceSharedText(files.get(entry.projectPath), current)
+      expectedDigests.set(entry.projectPath, currentDigest)
+      continue
+    }
     const expectedDigest = expectedDigests.get(entry.projectPath)
     if (shared === current) {
       expectedDigests.set(entry.projectPath, currentDigest)
@@ -464,6 +475,7 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
   const previousFingerprintsValue = project.get('serverSourceFingerprints')
   const previousFingerprints = previousFingerprintsValue && typeof previousFingerprintsValue === 'object' && !Array.isArray(previousFingerprintsValue) ? previousFingerprintsValue : {}
   const nextPaths = new Set(Object.keys(payload.sources))
+  const lockedPaths = new Set(payload.lockedPaths || [])
   const removedPaths = payload.retiredPaths.filter(sourcePath => !nextPaths.has(sourcePath))
   const preservedPaths = []
   const protectedPaths = []
@@ -488,6 +500,19 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
       let text = files.get(sourcePath)
       if (!(text instanceof Y.Text)) { text = new Y.Text(); files.set(sourcePath, text) }
       const current = text.toString()
+      if (lockedPaths.has(sourcePath)) {
+        if (current && current !== source) {
+          const draft = nextServerDraftPath(files, sourcePath, timestamp, draftIndex, 'locked-web-edit')
+          draftIndex = draft.nextIndex
+          let draftText = files.get(draft.path)
+          if (!(draftText instanceof Y.Text)) { draftText = new Y.Text(); files.set(draft.path, draftText) }
+          replaceSharedText(draftText, current)
+          preservedPaths.push(draft.path)
+        }
+        replaceSharedText(text, source)
+        nextFingerprints[sourcePath] = sourceFingerprint(source)
+        continue
+      }
       const liveSource = liveSources?.[sourcePath]
       if (typeof liveSource === 'string' && liveSource !== source) {
         nextFingerprints[sourcePath] = sourceFingerprint(source)

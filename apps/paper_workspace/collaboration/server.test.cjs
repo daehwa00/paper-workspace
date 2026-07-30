@@ -66,12 +66,12 @@ const writeRuntimeProject = (root, { revision, source, retiredPaths = [] }) => {
   }))
 }
 
-const writeSourceProject = (root, source) => {
+const writeSourceProject = (root, source, locked = false) => {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, 'main.tex'), source)
   fs.writeFileSync(path.join(root, 'project.json'), JSON.stringify({
     entrypoint: 'main.tex',
-    files: [{ path: 'main.tex', managed: true }]
+    files: [{ path: 'main.tex', managed: true, ...(locked ? { locked: true } : {}) }]
   }))
 }
 
@@ -345,6 +345,52 @@ test('managed source writeback follows web edits but refuses to overwrite an ext
   } finally {
     fs.rmSync(root, { force: true, recursive: true })
   }
+})
+
+test('locked managed sources reject stale browser writes and restore the disk value', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-lock-'))
+  try {
+    writeSourceProject(root, 'protected main source', true)
+    const document = new Y.Doc()
+    const text = new Y.Text()
+    text.insert(0, 'stale browser overwrite')
+    document.getMap('files').set('paper/main.tex', text)
+
+    const result = writeBackManagedSources(document, root, new Map())
+
+    assert.deepEqual(result.writtenPaths, [])
+    assert.deepEqual(result.conflictPaths, [])
+    assert.equal(fs.readFileSync(path.join(root, 'main.tex'), 'utf8'), 'protected main source')
+    assert.equal(text.toString(), 'protected main source')
+    document.destroy()
+  } finally {
+    fs.rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('runtime source locks preserve a divergent browser value as a draft', () => {
+  const document = new Y.Doc()
+  const files = document.getMap('files')
+  const project = document.getMap('project')
+  const main = new Y.Text()
+  main.insert(0, 'browser value before lock')
+  files.set('paper/main.tex', main)
+  project.set('serverRuntimeRevision', 'a'.repeat(64))
+
+  const result = applyRuntimeSources(document, {
+    lockedPaths: ['paper/main.tex'],
+    previousRuntimeRevision: 'a'.repeat(64),
+    retiredPaths: [],
+    runtimeRevision: 'b'.repeat(64),
+    sources: { 'paper/main.tex': 'protected server value' },
+    version: '1'
+  }, 1234)
+
+  assert.equal(main.toString(), 'protected server value')
+  assert.equal(result.preserved_paths.length, 1)
+  assert.match(result.preserved_paths[0], /^paper\/drafts\/locked-web-edit-/)
+  assert.equal(files.get(result.preserved_paths[0]).toString(), 'browser value before lock')
+  document.destroy()
 })
 
 test('a stale staged runtime revision cannot roll back a newer source writeback', () => {

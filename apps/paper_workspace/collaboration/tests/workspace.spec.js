@@ -340,7 +340,7 @@ test('project manifest boundary normalizes valid data and rejects traversal', as
     const normalized = project.normalizeManifest({
       id: 'paper',
       files: [
-        { path: 'main.tex', managed: true },
+        { path: 'main.tex', managed: true, locked: true },
         { path: 'generated/report.json', type: 'asset' },
         { path: 'generated/claims.tex', type: 'asset' }
       ],
@@ -357,6 +357,7 @@ test('project manifest boundary normalizes valid data and rejects traversal', as
       previews: normalized.preview_entrypoints,
       reportAsset: project.manifestItemIsAsset(normalized.files[1]),
       generatedTexAsset: project.manifestItemIsAsset(normalized.files[2]),
+      locked: normalized.files[0].locked,
       traversalRejected
     }
   })
@@ -365,8 +366,47 @@ test('project manifest boundary normalizes valid data and rejects traversal', as
     previews: ['main.tex'],
     reportAsset: true,
     generatedTexAsset: false,
+    locked: true,
     traversalRejected: true
   })
+})
+
+test('locked manuscript sources are read-only while appendix files remain editable', async ({ page }) => {
+  const slug = `locked-source-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const mainSource = '\\documentclass{article}\n\\begin{document}protected main\\end{document}\n'
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.route(`**/p/${slug}/project/**`, async route => {
+    const path = new URL(route.request().url()).pathname.split(`/p/${slug}/project/`)[1]
+    if (path === 'project.json') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slug,
+          version: '1',
+          entrypoint: 'main.tex',
+          files: [
+            { path: 'main.tex', managed: true, locked: true },
+            { path: 'appendix.tex', managed: true }
+          ]
+        })
+      })
+    }
+    if (path === 'main.tex') return route.fulfill({ contentType: 'text/plain', body: mainSource })
+    if (path === 'appendix.tex') return route.fulfill({ contentType: 'text/plain', body: 'editable appendix' })
+    return route.fulfill({ status: 404, body: '' })
+  })
+
+  await page.goto(`/p/${slug}`)
+  await page.waitForFunction(source => document.getElementById('editor')?.value === source, mainSource)
+  await expect(page.locator('#active-file')).toContainText('🔒')
+  await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false')
+  await page.locator('.cm-content').pressSequentially('blocked')
+  await expect.poll(() => page.evaluate(() => editorValue())).toBe(mainSource)
+
+  await page.locator('[data-file-path="paper/appendix.tex"]').click()
+  await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true')
+  await page.locator('.cm-content').pressSequentially(' allowed')
+  await expect.poll(() => page.evaluate(() => editorValue())).toContain('allowed')
 })
 
 test('backup boundary rejects malformed and out-of-project snapshot files', async ({ page }) => {

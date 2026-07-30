@@ -631,7 +631,8 @@ def test_editor_shortcuts_support_mac_and_control_key_workflows() -> None:
     assert "defaultKeymap" in editor
     assert "indentWithTab" in editor
     assert "installEditorShortcuts()" in app
-    assert "editor.addEventListener('beforeinput',recordEditorHistory)" in app
+    assert "editor.addEventListener('beforeinput',event=>{if(isLockedProjectFile())" in app
+    assert "richEditor.contentDOM.contentEditable=locked?'false':'true'" in app
 
 
 def test_paper_assistant_can_be_collapsed_and_restored() -> None:
