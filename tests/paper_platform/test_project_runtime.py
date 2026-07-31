@@ -81,6 +81,38 @@ def test_runtime_contains_only_manifest_listed_project_files(tmp_path: Path) -> 
         ).hexdigest()
 
 
+def test_missing_declared_file_does_not_freeze_other_runtime_updates(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+    runtime.sync_runtime(default, projects, output)
+
+    (default / "sections/method.tex").unlink()
+    (default / "main.tex").write_text(
+        "\\input{sections/method}\nlatest main source",
+        encoding="utf-8",
+    )
+    runtime.sync_runtime(default, projects, output)
+
+    runtime_root = output / "project"
+    manifest = json.loads((runtime_root / "project.json").read_text())
+    assert (runtime_root / "main.tex").read_text() == (
+        "\\input{sections/method}\nlatest main source"
+    )
+    assert not (runtime_root / "sections/method.tex").exists()
+    assert all(item["path"] != "sections/method.tex" for item in manifest["files"])
+    assert manifest["runtime_warnings"] == [
+        "manifest file is missing: sections/method.tex"
+    ]
+
+
 def test_runtime_auto_includes_only_referenced_files_from_opted_in_roots(
     tmp_path: Path,
 ) -> None:

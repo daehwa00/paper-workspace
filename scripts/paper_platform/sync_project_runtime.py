@@ -63,6 +63,15 @@ def checked_source(root: Path, relative: Path) -> Path:
     return candidate
 
 
+def declared_source_exists(root: Path, relative: Path) -> bool:
+    try:
+        (root / relative).lstat()
+    except FileNotFoundError:
+        return False
+    checked_source(root, relative)
+    return True
+
+
 def automatic_dependency_entries(
     project_root: Path,
     manifest: dict[str, object],
@@ -83,10 +92,11 @@ def automatic_dependency_entries(
         if isinstance(entry, dict)
     }
     pending = [
-        safe_relative(entry.get("source") or entry.get("path"))
+        relative
         for entry in entries
         if isinstance(entry, dict)
-        and Path(str(entry.get("source") or entry.get("path"))).suffix == ".tex"
+        and (relative := safe_relative(entry.get("source") or entry.get("path"))).suffix == ".tex"
+        and declared_source_exists(project_root, relative)
     ]
     discovered: list[dict[str, object]] = []
     scanned: set[Path] = set()
@@ -141,7 +151,7 @@ def automatic_dependency_entries(
     return discovered
 
 
-def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]]]:
+def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]], set[Path]]:
     manifest_path = checked_source(project_root, Path("project.json"))
     manifest = read_object(manifest_path)
     entries = manifest.get("files")
@@ -149,10 +159,15 @@ def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]
         raise ValueError("project manifest files must be a bounded list")
     automatic_entries = automatic_dependency_entries(project_root, manifest)
     paths = {Path("project.json")}
+    missing: set[Path] = set()
     for entry in [*entries, *automatic_entries]:
         if not isinstance(entry, dict):
             raise ValueError("invalid project manifest file entry")
-        paths.add(safe_relative(entry.get("source") or entry.get("path")))
+        relative = safe_relative(entry.get("source") or entry.get("path"))
+        if declared_source_exists(project_root, relative):
+            paths.add(relative)
+        else:
+            missing.add(relative)
     for field in ("preview_pdf", "preview_synctex"):
         if manifest.get(field):
             paths.add(safe_relative(manifest[field]))
@@ -161,7 +176,7 @@ def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]
     total = sum(checked_source(project_root, path).stat().st_size for path in paths)
     if total > MAX_RUNTIME_PROJECT_BYTES:
         raise ValueError("project runtime exceeds its size limit")
-    return sorted(paths), automatic_entries
+    return sorted(paths), automatic_entries, missing
 
 
 def project_files(project_root: Path) -> list[Path]:
@@ -188,7 +203,7 @@ def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[s
 
 
 def copy_project(project_root: Path, destination: Path) -> None:
-    paths, automatic_entries = project_spec(project_root)
+    paths, automatic_entries, missing = project_spec(project_root)
     for relative in paths:
         source = checked_source(project_root, relative)
         target = destination / relative
@@ -197,12 +212,23 @@ def copy_project(project_root: Path, destination: Path) -> None:
         target.chmod(0o644)
     runtime_manifest_path = destination / "project.json"
     runtime_manifest = read_object(runtime_manifest_path)
-    if automatic_entries:
-        runtime_manifest["files"] = [*runtime_manifest["files"], *automatic_entries]
-        runtime_manifest_path.write_text(
-            json.dumps(runtime_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
-            encoding="utf-8",
-        )
+    runtime_manifest["files"] = [
+        entry
+        for entry in runtime_manifest["files"]
+        if safe_relative(entry.get("source") or entry.get("path")) not in missing
+    ]
+    runtime_manifest["files"].extend(automatic_entries)
+    if missing:
+        runtime_manifest["runtime_warnings"] = [
+            f"manifest file is missing: {relative.as_posix()}"
+            for relative in sorted(missing)
+        ]
+    else:
+        runtime_manifest.pop("runtime_warnings", None)
+    runtime_manifest_path.write_text(
+        json.dumps(runtime_manifest, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     # Hash exactly the staged bytes that the workspace will serve. Hashing the
     # source first and reopening it for copy lets an in-place server edit create
     # a descriptor/content mismatch between those two reads.
