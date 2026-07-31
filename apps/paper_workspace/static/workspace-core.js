@@ -132,8 +132,24 @@
     const text = String(message || '')
     const lines = [...text.matchAll(/(?:^|\n)l\.(\d+)\s*([^\n]*)/g)]
     const diagnostics = [...text.matchAll(/File `([^']+)' not found(?:[^\n]*input line (\d+))?/g)].map(match => ({file: `paper/${entrypoint}`, line: Number(match[2]) || Number(lines.at(-1)?.[1]) || 1, message: `필요한 파일이 프로젝트에 없습니다: ${match[1]}`}))
+    const completeErrorMessage = match => {
+      const parts = [match[1].trim()]
+      const continuation = text.slice(match.index + match[0].length).replace(/^\n/, '').split('\n')
+      for (const line of continuation) {
+        if (!line.trim() || /^(?:See the |Type\s|l\.\d+|[.!]\s|Transcript written|Output written)/.test(line.trim())) break
+        parts.push(line.trim())
+      }
+      return parts.join('')
+    }
+    const locatedErrors = [...text.matchAll(/(?:^|\n)(?:\.\/)?([^:\n]+):(\d+): LaTeX Error:\s*([^\n]+)/g)]
+    for (const match of locatedErrors) {
+      const errorMatch = {0: match[0].slice(match[0].indexOf('LaTeX Error:')), 1: match[3], index: match.index + match[0].indexOf('LaTeX Error:')}
+      const message = completeErrorMessage(errorMatch)
+      diagnostics.push({file: `paper/${match[1].replace(/^\.\//, '')}`, line: Number(match[2]) || 1, message})
+    }
     for (const match of text.matchAll(/LaTeX Error:\s*([^\n]+)/g)) {
-      const message = match[1].trim()
+      if (locatedErrors.some(located => match.index >= located.index && match.index < located.index + located[0].length)) continue
+      const message = completeErrorMessage(match)
       const missing = message.match(/^File [`']([^`']+)[`'] not found\.?$/)
       diagnostics.push({file: `paper/${entrypoint}`, line: Number(lines.at(-1)?.[1]) || 1, message: missing ? `필요한 파일이 프로젝트에 없습니다: ${missing[1]}` : message})
     }

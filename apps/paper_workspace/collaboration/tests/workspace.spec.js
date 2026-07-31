@@ -371,6 +371,19 @@ test('project manifest boundary normalizes valid data and rejects traversal', as
   })
 })
 
+test('compile diagnostics preserve wrapped messages and included-file locations', async ({ page }) => {
+  await page.goto('/')
+  const diagnostics = await page.evaluate(() => window.PaperWorkspaceCore.parseLatexDiagnostics(
+    './generated/results.tex:1: LaTeX Error: Can be used only in p\nreamble.\n\nSee the LaTeX manual.\nl.1 \\documentclass{article}',
+    'supplement.tex'
+  ))
+  expect(diagnostics).toEqual([{
+    file: 'paper/generated/results.tex',
+    line: 1,
+    message: 'Can be used only in preamble.'
+  }])
+})
+
 test('locked manuscript sources are read-only while appendix files remain editable', async ({ page }) => {
   const slug = `locked-source-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
   const mainSource = '\\documentclass{article}\n\\begin{document}protected main\\end{document}\n'

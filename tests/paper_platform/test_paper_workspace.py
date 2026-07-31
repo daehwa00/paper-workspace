@@ -947,7 +947,7 @@ def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     assert "COLLAB_PROJECTS_SOURCE" in compose
     assert "writeBackManagedSources" in collaboration
     assert "atomicReplaceSource" in collaboration
-    assert "liveSource !== source" in collaboration
+    assert "live_source_conflict_paths" in collaboration
     assert "mergeTextHistory" in collaboration
     assert "sourceWritebackStatus" in collaboration
     collaboration_image = (ROOT / "apps/paper_workspace/collaboration/Dockerfile").read_text(encoding="utf-8")

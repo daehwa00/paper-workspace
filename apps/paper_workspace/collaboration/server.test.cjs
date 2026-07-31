@@ -393,7 +393,7 @@ test('runtime source locks preserve a divergent browser value as a draft', () =>
   document.destroy()
 })
 
-test('a stale staged runtime revision cannot roll back a newer source writeback', () => {
+test('a stale staged runtime revision waits for the newer source to be staged', () => {
   const document = new Y.Doc()
   const files = document.getMap('files')
   const project = document.getMap('project')
@@ -413,10 +413,10 @@ test('a stale staged runtime revision cannot roll back a newer source writeback'
     'paper/main.tex': 'newer web source already written to disk'
   })
 
-  assert.equal(result.deduplicated, false)
+  assert.equal(result.conflict, true)
+  assert.deepEqual(result.live_source_conflict_paths, ['paper/main.tex'])
   assert.equal(files.get('paper/main.tex').toString(), 'newer web source already written to disk')
-  assert.equal(result.preserved_paths.length, 0)
-  assert.equal(project.get('serverRuntimeRevision'), 'b'.repeat(64))
+  assert.equal(project.get('serverRuntimeRevision'), 'a'.repeat(64))
   document.destroy()
 })
 

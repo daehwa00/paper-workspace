@@ -475,6 +475,16 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
   const previousFingerprintsValue = project.get('serverSourceFingerprints')
   const previousFingerprints = previousFingerprintsValue && typeof previousFingerprintsValue === 'object' && !Array.isArray(previousFingerprintsValue) ? previousFingerprintsValue : {}
   const nextPaths = new Set(Object.keys(payload.sources))
+  const liveSourceConflicts = Object.entries(payload.sources)
+    .filter(([sourcePath, source]) => typeof liveSources?.[sourcePath] === 'string' && liveSources[sourcePath] !== source)
+    .map(([sourcePath]) => sourcePath)
+  if (liveSourceConflicts.length) {
+    return {
+      conflict: true,
+      current_revision: currentRevision,
+      live_source_conflict_paths: liveSourceConflicts
+    }
+  }
   const lockedPaths = new Set(payload.lockedPaths || [])
   const removedPaths = payload.retiredPaths.filter(sourcePath => !nextPaths.has(sourcePath))
   const preservedPaths = []
@@ -510,11 +520,6 @@ const applyRuntimeSources = (document, payload, timestamp = Date.now(), liveSour
           preservedPaths.push(draft.path)
         }
         replaceSharedText(text, source)
-        nextFingerprints[sourcePath] = sourceFingerprint(source)
-        continue
-      }
-      const liveSource = liveSources?.[sourcePath]
-      if (typeof liveSource === 'string' && liveSource !== source) {
         nextFingerprints[sourcePath] = sourceFingerprint(source)
         continue
       }
