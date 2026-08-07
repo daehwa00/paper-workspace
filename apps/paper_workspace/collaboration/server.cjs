@@ -72,6 +72,14 @@ const projectSlugs = (catalogPath, defaultManifestPath) => {
   return slugs
 }
 
+const projectSlugAllowed = (config, slug) => {
+  if (config.allowedProjectSlugs.has(slug)) return true
+  if (!config.reloadProjectSlugs) return false
+  const refreshed = projectSlugs(config.projectCatalogPath, config.defaultProjectManifestPath)
+  config.allowedProjectSlugs = refreshed
+  return refreshed.has(slug)
+}
+
 const defaultProjectSlugs = (catalogPath, defaultManifestPath) => {
   const slugs = new Set(['default'])
   const readJson = filename => {
@@ -628,9 +636,12 @@ function createCollaborationServer (overrides = {}) {
     maxStorageBytes: positiveInteger(overrides.maxStorageBytes ?? process.env.COLLAB_MAX_STORAGE_BYTES, 512 * 1024 * 1024),
     storageCheckMs: positiveInteger(overrides.storageCheckMs ?? process.env.COLLAB_STORAGE_CHECK_MS, 5000)
   }
+  config.projectCatalogPath = process.env.COLLAB_PROJECT_CATALOG
+  config.defaultProjectManifestPath = process.env.COLLAB_DEFAULT_PROJECT_MANIFEST
+  config.reloadProjectSlugs = !overrides.allowedProjectSlugs
   config.allowedProjectSlugs = overrides.allowedProjectSlugs || projectSlugs(
-    process.env.COLLAB_PROJECT_CATALOG,
-    process.env.COLLAB_DEFAULT_PROJECT_MANIFEST
+    config.projectCatalogPath,
+    config.defaultProjectManifestPath
   )
   config.defaultProjectSlugs = overrides.defaultProjectSlugs || defaultProjectSlugs(
     process.env.COLLAB_PROJECT_CATALOG,
@@ -805,7 +816,7 @@ function createCollaborationServer (overrides = {}) {
       return
     }
     const slug = room.slice(room.lastIndexOf(':') + 1)
-    if (!config.allowedProjectSlugs.has(slug)) {
+    if (!projectSlugAllowed(config, slug)) {
       jsonResponse(response, 404, { error: 'project not allowed' })
       return
     }
@@ -1030,7 +1041,7 @@ function createCollaborationServer (overrides = {}) {
       return
     }
     const slug = room.slice(room.lastIndexOf(':') + 1)
-    if (!config.allowedProjectSlugs.has(slug)) {
+    if (!projectSlugAllowed(config, slug)) {
       rejectUpgrade(socket, '404 Not Found', 'project not allowed')
       return
     }
@@ -1140,6 +1151,7 @@ module.exports = {
   directoryBytes,
   loadSourceHistories,
   projectSlugs,
+  projectSlugAllowed,
   prepareCollaborationDocument,
   readRuntimeProject,
   readLiveManagedSources,

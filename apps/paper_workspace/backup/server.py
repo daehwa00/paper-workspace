@@ -81,6 +81,34 @@ def allowed_project_ids(runtime_root: str | Path) -> set[str]:
     return allowed
 
 
+class ProjectAllowlist:
+    """Reload the trusted runtime catalog after its atomic replacement."""
+
+    def __init__(self, runtime_root: str | Path) -> None:
+        self.runtime_root = Path(runtime_root)
+        self._lock = threading.RLock()
+        self._signature = -1
+        self._allowed: set[str] = set()
+        self._refresh()
+
+    def _refresh(self) -> None:
+        catalog = self.runtime_root / "projects/index.json"
+        signature = catalog.stat().st_mtime_ns
+        if signature == self._signature:
+            return
+        allowed = allowed_project_ids(self.runtime_root)
+        self._allowed = allowed
+        self._signature = signature
+
+    def snapshot(self) -> set[str]:
+        with self._lock:
+            self._refresh()
+            return set(self._allowed)
+
+    def contains(self, project: str) -> bool:
+        return project in self.snapshot()
+
+
 def validate_project_path(name: object) -> str:
     if not isinstance(name, str) or not name or len(name) > 240 or "\\" in name:
         raise ValidationError("invalid project path")
@@ -504,10 +532,17 @@ class BackupHandler(BaseHTTPRequestHandler):
     actor_mode = "shared"
     shared_actor = DEFAULT_SHARED_ACTOR
     allowed_projects: set[str] | None = None
+    project_allowlist: ProjectAllowlist | None = None
+
+    def _allowed_projects(self) -> set[str] | None:
+        if self.project_allowlist is not None:
+            return self.project_allowlist.snapshot()
+        return self.allowed_projects
 
     def _project_id(self, value: object) -> str:
         project = validate_project_id(value)
-        if self.allowed_projects is not None and project not in self.allowed_projects:
+        allowed = self._allowed_projects()
+        if allowed is not None and project not in allowed:
             raise SnapshotNotFound("project not found")
         return project
 
@@ -520,7 +555,7 @@ class BackupHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"status": "ok"})
                 return
             if ACTIVITY_COLLECTION_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"projects": self.store.list_activity(self.allowed_projects)})
+                self._json(HTTPStatus.OK, {"projects": self.store.list_activity(self._allowed_projects())})
                 return
             if match := ASSET_COLLECTION_PATTERN.fullmatch(path):
                 self._json(HTTPStatus.OK, {"assets": self.assets.list(self._project_id(match.group(1)))})
@@ -696,7 +731,8 @@ def create_server() -> ThreadingHTTPServer:
         raise ValueError("BACKUP_ACTOR_MODE must be shared, display, or proxy")
     BackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
     runtime_root = os.environ.get("BACKUP_PROJECT_RUNTIME", "").strip()
-    BackupHandler.allowed_projects = allowed_project_ids(runtime_root) if runtime_root else None
+    BackupHandler.project_allowlist = ProjectAllowlist(runtime_root) if runtime_root else None
+    BackupHandler.allowed_projects = BackupHandler.project_allowlist.snapshot() if BackupHandler.project_allowlist else None
     return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
 
 

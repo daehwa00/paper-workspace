@@ -12,7 +12,7 @@ const Y = require('yjs')
 const { WebsocketProvider } = require('y-websocket')
 const encoding = require('lib0/encoding')
 const syncProtocol = require('y-protocols/sync')
-const { applyRuntimeSources, createCollaborationServer, loadSourceHistories, messageDocumentGrowthBytes, prepareCollaborationDocument, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
+const { applyRuntimeSources, createCollaborationServer, loadSourceHistories, messageDocumentGrowthBytes, prepareCollaborationDocument, projectSlugAllowed, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
 const { mergeTextHistory, mergeTextVersions } = require('./source-merge.cjs')
 const { docs, getYDoc } = require('y-websocket/bin/utils')
 
@@ -123,6 +123,23 @@ test('room parser accepts only the workspace room namespace', () => {
   assert.equal(roomHost('paper-workspace:paper.example:example-paper'), 'paper.example')
   assert.equal(roomHost('paper-workspace:paper.example:8443:example-paper'), 'paper.example:8443')
   assert.equal(runtimeSyncRoom({ url: '/collab-runtime/paper-workspace%3Apaper.example%3Aexample-paper' }), 'paper-workspace:paper.example:example-paper')
+})
+
+test('project allowlist reloads when a new catalog project is requested', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-collab-catalog-'))
+  const catalog = path.join(root, 'projects.json')
+  fs.writeFileSync(catalog, JSON.stringify({ projects: [{ slug: 'existing-paper' }] }))
+  const config = {
+    allowedProjectSlugs: new Set(['default', 'existing-paper']),
+    defaultProjectManifestPath: '',
+    projectCatalogPath: catalog,
+    reloadProjectSlugs: true
+  }
+
+  assert.equal(projectSlugAllowed(config, 'new-paper'), false)
+  fs.writeFileSync(catalog, JSON.stringify({ projects: [{ slug: 'existing-paper' }, { slug: 'new-paper' }] }))
+  assert.equal(projectSlugAllowed(config, 'new-paper'), true)
+  assert.equal(config.allowedProjectSlugs.has('existing-paper'), true)
 })
 
 test('runtime source application is atomic, deduplicated, and preserves connected edits', () => {

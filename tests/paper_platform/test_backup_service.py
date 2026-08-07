@@ -212,6 +212,24 @@ def test_runtime_catalog_bounds_backup_project_namespaces(tmp_path: Path) -> Non
     }
 
 
+def test_runtime_project_allowlist_reloads_new_catalog_entries(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    runtime = tmp_path / "runtime"
+    (runtime / "project").mkdir(parents=True)
+    (runtime / "projects/paper-one").mkdir(parents=True)
+    (runtime / "project/project.json").write_text(json.dumps({"id": "default-id"}), encoding="utf-8")
+    (runtime / "projects/paper-one/project.json").write_text(json.dumps({"id": "paper-one"}), encoding="utf-8")
+    catalog = runtime / "projects/index.json"
+    catalog.write_text(json.dumps({"projects": []}), encoding="utf-8")
+    allowlist = backup.ProjectAllowlist(runtime)
+
+    assert not allowlist.contains("paper-one")
+    time.sleep(0.002)
+    catalog.write_text(json.dumps({"projects": [{"slug": "paper-one"}]}), encoding="utf-8")
+
+    assert allowlist.contains("paper-one")
+
+
 def test_snapshot_export_is_written_for_external_copy(tmp_path: Path) -> None:
     backup = load_backup_module()
     export_dir = tmp_path / "exports"
