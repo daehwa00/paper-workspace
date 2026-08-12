@@ -962,6 +962,43 @@ test('PDF loading and compiling use minimal status indicators', async ({ page })
   await expect(page.locator('#pdf-zoom-in')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 })
 
+test('project code ZIP downloads directly without a compile request', async ({ page }) => {
+  let packageRequests = 0
+  let compileRequests = 0
+  const pdf = onePagePdf()
+  await page.route('**/api/compile', route => {
+    compileRequests += 1
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ elapsed_ms: 12, cached: false, compile_id: '1234567890abcdef12345678', pdf_audit: { page_count: 1 }, pdf_base64: pdf.toString('base64'), synctex_base64: '' })
+    })
+  })
+  await page.route('**/api/package', async route => {
+    packageRequests += 1
+    const payload = await route.request().postDataJSON()
+    expect(payload.files['main.tex']).toContain('\\documentclass')
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ file_count: 3, zip_base64: Buffer.from('project zip').toString('base64') })
+    })
+  })
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+  await expect.poll(() => compileRequests).toBeGreaterThan(0)
+  await page.waitForTimeout(300)
+  const compileRequestsBeforeDownload = compileRequests
+  const button = page.locator('#download-project-zip')
+  await expect(button).toHaveAttribute('aria-label', '프로젝트 코드 ZIP 다운로드')
+  const downloadPromise = page.waitForEvent('download')
+  await button.click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/^default-source-\d{4}-\d{2}-\d{2}\.zip$/)
+  await expect.poll(() => packageRequests).toBe(1)
+  expect(compileRequests).toBe(compileRequestsBeforeDownload)
+})
+
 test('PDF viewport restoration keeps the visible page and position after rerender', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 900 })
   await page.goto('/')

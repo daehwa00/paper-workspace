@@ -156,7 +156,7 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
-    for identifier in ("editor", "paper-preview", "upload", "suggestion", "refresh-pdf", "download-pdf"):
+    for identifier in ("editor", "paper-preview", "upload", "suggestion", "refresh-pdf", "download-pdf", "download-project-zip"):
         assert f'id="{identifier}"' in html
     assert "localStorage" in app
     assert "render" in app
@@ -396,6 +396,16 @@ def test_compiler_can_build_a_reproducible_source_package() -> None:
     assert "SHA256SUMS" in compiler
 
 
+def test_workspace_exposes_direct_project_code_zip_download() -> None:
+    html = workspace_markup()
+    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    assert 'id="download-project-zip"' in html
+    assert 'aria-label="프로젝트 코드 ZIP 다운로드"' in html
+    assert "async function downloadProjectZip()" in app
+    assert "createProjectZip()" in app
+    assert "createProjectZip({verifyCompile:true})" in app
+
+
 def test_profile_color_can_be_selected_and_persisted() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
@@ -414,7 +424,7 @@ def test_profile_defaults_to_me_and_never_to_a_specific_person() -> None:
     assert "if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in hub
-    assert "?'daehwa':storedActorName" not in app
+    assert "?'secondary_host':storedActorName" not in app
 
 
 def test_collaborative_ux_exposes_source_pdf_and_compact_layout_states() -> None:
