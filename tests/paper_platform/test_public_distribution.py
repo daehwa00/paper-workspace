@@ -128,6 +128,9 @@ def test_public_export_installs_a_pinned_history_secret_scan(tmp_path: Path) -> 
 
     destination = tmp_path / "public"
     exporter.export(destination)
+    manifest = destination / "examples/project-library/index.json"
+    assert manifest.stat().st_mode & 0o777 == 0o644
+    assert manifest.parent.stat().st_mode & 0o777 == 0o755
     workflow = (destination / ".github/workflows/security.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in workflow
     assert "gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3" in workflow

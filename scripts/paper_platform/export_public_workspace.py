@@ -67,6 +67,21 @@ def allowed_file(path: Path) -> bool:
     return not any(part in IGNORED_NAMES for part in path.parts) and path.suffix not in {".pyc", ".pyo"}
 
 
+def normalize_public_mode(path: Path) -> None:
+    """Make exported files readable by the unprivileged runtime user."""
+    executable = bool(path.stat().st_mode & 0o111)
+    path.chmod(0o755 if executable else 0o644)
+
+
+def normalize_public_tree(destination: Path) -> None:
+    destination.chmod(0o755)
+    for path in destination.rglob("*"):
+        if path.is_dir():
+            path.chmod(0o755)
+        elif path.is_file():
+            normalize_public_mode(path)
+
+
 def copy_public_path(relative: Path, destination: Path) -> None:
     source = ROOT / relative
     for item in source.rglob("*"):
@@ -80,6 +95,7 @@ def copy_public_path(relative: Path, destination: Path) -> None:
         target = destination / relative / item_relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(item, target)
+        normalize_public_mode(target)
 
 
 def contains_secret(path: Path) -> bool:
@@ -126,6 +142,8 @@ def export(destination: Path) -> None:
         if not source_path.is_file():
             raise RuntimeError(f"Missing public source file: {source}")
         shutil.copy2(source_path, output)
+        normalize_public_mode(output)
+    normalize_public_tree(destination)
     verify_export(destination)
 
 
