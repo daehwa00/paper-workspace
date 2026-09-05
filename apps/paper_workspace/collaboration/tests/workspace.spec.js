@@ -75,6 +75,30 @@ test('comment prompt wraps without a horizontal drag track', async ({ page }) =>
   await expect.poll(() => prompt.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
 })
 
+test('file tree refreshes keep the rendered comment cards without a transient fallback list', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
+
+  const rendered = await page.evaluate(() => {
+    const source = document.getElementById('editor').value
+    window.addCommentForSelection({
+      file: 'paper/main.tex',
+      start: 0,
+      end: 14,
+      text: source.slice(0, 14)
+    }, 'single render comment')
+    window.listFiles()
+    const comments = document.getElementById('comment-list')
+    return {
+      hasCommentCard: [...comments.querySelectorAll('.comment-card')].some(card => card.textContent.includes('single render comment')),
+      hasFallbackRow: Boolean(comments.querySelector('.source-file'))
+    }
+  })
+
+  expect(rendered).toEqual({ hasCommentCard: true, hasFallbackRow: false })
+  await expect(page.locator('#comment-list .comment-card')).toContainText('single render comment')
+})
+
 test('backup actions use clear hierarchy and segmented history controls', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
@@ -185,6 +209,58 @@ test('malformed browser state cannot block the server manuscript', async ({ page
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
   await expect(page.locator('#files .file')).toHaveCount(2)
   await expect(page.locator('#project-title')).not.toHaveValue('Untitled Paper')
+})
+
+test('a required managed source failure is surfaced instead of accepting a stale local manuscript', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.route('**/project/main.tex*', route => route.fulfill({
+    status: 503,
+    contentType: 'text/plain',
+    body: 'source unavailable'
+  }))
+  await page.addInitScript(() => {
+    localStorage.setItem('paper-workspace:default', JSON.stringify({
+      fileTreeVersion: 1,
+      files: {
+        'paper/main.tex': '\\documentclass{article}\\begin{document}stale local draft\\end{document}'
+      },
+      folders: ['paper'],
+      current: 'paper/main.tex'
+    }))
+  })
+
+  await page.goto('/')
+
+  await expect(page.locator('#render-state')).toHaveText('프로젝트 로드 오류')
+  await expect(page.locator('#suggestion')).toContainText('필수 프로젝트 소스')
+  await expect(page.locator('#save-state')).not.toHaveText(/서버 원고 표시됨/)
+})
+
+test('an unavailable optional project source does not block the required entrypoint', async ({ page }) => {
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.route('**/project/project.json*', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      id: 'default',
+      version: 'optional-source-test',
+      entrypoint: 'main.tex',
+      files: [
+        { path: 'main.tex', managed: true },
+        { path: 'optional-notes.tex' }
+      ]
+    })
+  }))
+  await page.route('**/project/optional-notes.tex*', route => route.fulfill({
+    status: 404,
+    contentType: 'text/plain',
+    body: 'not found'
+  }))
+
+  await page.goto('/')
+
+  await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || '')).toContain('\\documentclass')
+  await expect(page.locator('#save-state')).toContainText(/공동 편집 병합|저장/)
+  await expect(page.locator('#suggestion')).not.toContainText('필수 프로젝트 소스')
 })
 
 test('legacy localStorage manuscripts migrate transactionally into IndexedDB', async ({ page }) => {
@@ -422,6 +498,55 @@ test('locked manuscript sources are read-only while appendix files remain editab
   await expect.poll(() => page.evaluate(() => editorValue())).toContain('allowed')
 })
 
+test('undo after switching files never restores the previous file into the active document', async ({ page }) => {
+  const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+  const slug = `cross-file-undo-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  const mainSource = '\\documentclass{article}\n\\begin{document}main file\\end{document}\n'
+  const secondSource = 'second file stays isolated'
+  await page.route('**/vendor/paper-collab.js*', route => route.abort())
+  await page.route(`**/p/${slug}/project/**`, async route => {
+    const path = new URL(route.request().url()).pathname.split(`/p/${slug}/project/`)[1]
+    if (path === 'project.json') {
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: slug,
+          version: '1',
+          entrypoint: 'main.tex',
+          files: [
+            { path: 'main.tex', managed: true },
+            { path: 'second.tex', managed: true }
+          ]
+        })
+      })
+    }
+    if (path === 'main.tex') return route.fulfill({ contentType: 'text/plain', body: mainSource })
+    if (path === 'second.tex') return route.fulfill({ contentType: 'text/plain', body: secondSource })
+    return route.fulfill({ status: 404, body: '' })
+  })
+
+  await page.goto(`/p/${slug}`)
+  await page.waitForFunction(source => document.getElementById('editor')?.value === source, mainSource)
+
+  await page.locator('.cm-content').click()
+  await page.keyboard.press('Control+End')
+  await page.keyboard.type('\n% main file edit')
+  await expect(page.locator('#editor')).toHaveValue(/main file edit/)
+
+  await page.locator('[data-file-path="paper/second.tex"]').click()
+  await expect(page.locator('#editor')).toHaveValue(secondSource)
+  await page.locator('.cm-content').click()
+  await page.keyboard.press(`${modifier}+z`)
+
+  await expect(page.locator('#active-file')).toContainText('paper/second.tex')
+  await expect(page.locator('#editor')).toHaveValue(secondSource)
+
+  await page.keyboard.type('!')
+  await expect(page.locator('#editor')).toHaveValue(`${secondSource}!`)
+  await page.keyboard.press(`${modifier}+z`)
+  await expect(page.locator('#editor')).toHaveValue(secondSource)
+})
+
 test('backup boundary rejects malformed and out-of-project snapshot files', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(() => {
@@ -557,70 +682,23 @@ test('manifest assets recover from a stale shared-upload origin', async ({ page 
   expect(remoteRequests).toEqual(['Figures/architecture.png'])
 })
 
-test('archived drafts use a thirty-item FIFO queue', async ({ page }) => {
+test('publishing and synchronizing drafts never deletes user manuscripts', async ({ page }) => {
   await page.goto('/')
-  await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await page.waitForFunction(() => sharedMetadataReady)
   const result = await page.evaluate(async () => {
-    state.current = 'paper/main.tex'
-    collabSession.document.transact(() => {
-      for (const path of [...collabSession.files.keys()]) {
-        if (path.startsWith('paper/drafts/')) collabSession.files.delete(path)
-      }
-    }, actor.id)
-    for (const path of Object.keys(state.files)) {
-      if (path.startsWith('paper/drafts/')) delete state.files[path]
-    }
-    for (let index = 0; index < 35; index += 1) {
-      state.files[`paper/drafts/fifo-${String(index).padStart(2, '0')}.tex`] = `draft ${index}`
-    }
+    const paths = Array.from({ length: 35 }, (_, index) => `paper/drafts/manuscript-${index}.tex`)
+    for (const path of paths) state.files[path] = `Original ${path}`
     publishSharedTree()
-    const afterFirstPublish = draftQueuePaths()
-    state.files['paper/drafts/fifo-35.tex'] = 'draft 35'
-    publishSharedTree()
-    const afterSecondPublish = draftQueuePaths()
-    state.current = afterSecondPublish[0]
-    state.files['paper/drafts/fifo-36.tex'] = 'draft 36'
-    publishSharedTree()
-    const afterProtectedPublish = draftQueuePaths()
-    replaceSharedText(collabSession.textFor('paper/drafts/fifo-37.tex'), 'draft 37')
-    for (let attempt = 0; attempt < 20 && draftQueuePaths().length > 30; attempt += 1) {
-      await new Promise(resolve => setTimeout(resolve, 10))
-    }
-    const afterSharedInsert = draftQueuePaths()
+    replaceSharedText(collabSession.textFor('paper/drafts/another-author.tex'), 'Other author')
+    await new Promise(resolve => setTimeout(resolve, 50))
     const payload = await compilePayload()
-    const result = {
-      afterFirstPublish,
-      afterSecondPublish,
-      afterProtectedPublish,
-      afterSharedInsert,
-      sharedDraftCount: [...collabSession.files.keys()].filter(path => path.startsWith('paper/drafts/')).length,
-      compiledDrafts: Object.keys(payload.files).filter(path => path.startsWith('drafts/')),
+    return {
+      preserved: paths.every(path => state.files[path] === `Original ${path}` && collabSession.files.get(path)?.toString() === `Original ${path}`),
+      other: state.files['paper/drafts/another-author.tex'],
+      compiledDrafts: Object.keys(payload.files).filter(path => path.startsWith('drafts/'))
     }
-    collabSession.document.transact(() => {
-      for (const path of [...collabSession.files.keys()]) {
-        if (path.startsWith('paper/drafts/')) collabSession.files.delete(path)
-      }
-    }, actor.id)
-    for (const path of Object.keys(state.files)) {
-      if (path.startsWith('paper/drafts/')) delete state.files[path]
-    }
-    return result
   })
-  expect(result.afterFirstPublish).toHaveLength(30)
-  expect(result.afterFirstPublish).not.toContain('paper/drafts/fifo-00.tex')
-  expect(result.afterFirstPublish).toContain('paper/drafts/fifo-34.tex')
-  expect(result.afterSecondPublish).toHaveLength(30)
-  expect(result.afterSecondPublish).not.toContain('paper/drafts/fifo-05.tex')
-  expect(result.afterSecondPublish).toContain('paper/drafts/fifo-35.tex')
-  expect(result.afterProtectedPublish).toHaveLength(30)
-  expect(result.afterProtectedPublish).toContain('paper/drafts/fifo-06.tex')
-  expect(result.afterProtectedPublish).not.toContain('paper/drafts/fifo-07.tex')
-  expect(result.afterProtectedPublish).toContain('paper/drafts/fifo-36.tex')
-  expect(result.afterSharedInsert).toHaveLength(30)
-  expect(result.afterSharedInsert).toContain('paper/drafts/fifo-37.tex')
-  expect(result.sharedDraftCount).toBe(30)
-  expect(result.compiledDrafts).toEqual([result.afterSharedInsert[0].slice('paper/'.length)])
+  expect(result).toEqual({ preserved: true, other: 'Other author', compiledDrafts: [] })
 })
 
 test('a matching saved PDF opens without recompiling and keeps SyncTeX data', async ({ page }) => {
@@ -914,6 +992,39 @@ test('collaboration reconnect action retries the socket without reloading the wo
   await page.locator('#health-collab-action').click()
   await expect(page.locator('#health-collab')).toHaveText('동기화됨', { timeout: 1500 })
   await expect(page).toHaveURL(/\/$/)
+})
+
+test('brief collaboration reconnects do not flash an error or resize the top bar status', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('#health-collab')).toHaveText('동기화됨', { timeout: 1500 })
+  await page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    document.querySelectorAll('.status-center-list>div').forEach(row => { row.dataset.health = 'ok' })
+    window.refreshOverallStatus()
+  })
+  const status = page.locator('#status-center-toggle')
+  await expect(status).toHaveAttribute('data-health', 'healthy')
+  const widthBefore = await status.evaluate(element => element.getBoundingClientRect().width)
+
+  await page.evaluate(() => window.handleCollaborationStatus('disconnected'))
+
+  await expect(page.locator('#health-collab')).toHaveText('다시 연결 중')
+  await expect(page.locator('#health-collab').locator('..').locator('..')).toHaveAttribute('data-health', 'pending')
+  await expect(status).toHaveAttribute('data-health', 'pending')
+  await expect(page.locator('#collab-label')).toBeHidden()
+  const widthDuringReconnect = await status.evaluate(element => element.getBoundingClientRect().width)
+
+  await page.evaluate(async () => {
+    window.handleCollaborationStatus('synced')
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    document.querySelectorAll('.status-center-list>div').forEach(row => { row.dataset.health = 'ok' })
+    window.refreshOverallStatus()
+  })
+
+  await expect(status).toHaveAttribute('data-health', 'healthy')
+  const widthAfter = await status.evaluate(element => element.getBoundingClientRect().width)
+  expect(widthDuringReconnect).toBe(widthBefore)
+  expect(widthAfter).toBe(widthBefore)
 })
 
 test('startup watchdog paints the manuscript when the app script fails', async ({ page }) => {

@@ -19,7 +19,6 @@
 .app-toast{padding:11px 13px;border:1px solid #dbe7ff;border-radius:9px;background:#fff;color:#475467;font-size:11px;line-height:1.45;box-shadow:0 12px 32px #10182826;animation:toast-in .2s ease-out}
 .app-toast strong{display:block;margin-bottom:2px;color:#1d2939}
 .app-toast.error{border-color:#fecdca;background:#fff7f6}
-.app-toast.success{border-color:#abefc6;background:#f6fef9}
 .action-dialog{width:min(420px,calc(100vw - 40px));padding:0;border:0;border-radius:14px;box-shadow:0 20px 60px #10182855}.action-dialog::backdrop{background:#10182888;backdrop-filter:blur(2px)}.action-dialog form{padding:24px}.action-dialog h2{margin:0 0 7px;color:#101828;font-size:18px}.action-dialog p{margin:0 0 15px;color:#667085;font-size:12px;line-height:1.5}.action-dialog input{width:100%;padding:10px 11px;border:1px solid #b2ccff;border-radius:8px;color:#1d2939;font:13px inherit;outline:0}.action-dialog input:focus{border-color:#4f7cff;box-shadow:0 0 0 3px #4f7cff1a}.action-dialog input[hidden]{display:none}
 @keyframes toast-in{from{opacity:0;transform:translateY(7px)}}
 @media(max-width:1180px){
@@ -70,7 +69,6 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
 .focus-modes button{transition:none}
 .file>span:last-child,.folder-row>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdf-page canvas:focus-visible{outline:3px solid #84adff;outline-offset:3px}
-.comment-marker{min-width:32px;min-height:32px;margin-left:-5px;padding:5px}
 .sync-highlight,.pdf-source-highlight{animation-duration:650ms!important}
 .backup-heading small,.backup-card-meta span,.backup-section>.hint,.codex-result-head small,.model-option-copy span,.codex-followup-head span,.codex-followup-status{font-size:10px}
 .project-meta,.panel-header #save-state,.panel-header #render-state{font-size:11px}
@@ -98,7 +96,6 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .download-pdf{width:44px;padding:0!important}
   .zoom-controls{flex:0 0 auto}.zoom-controls span{min-width:38px;font-size:10px}
   .selection-toolbar{bottom:calc(72px + env(safe-area-inset-bottom))!important}
-  .comment-marker{min-width:44px;min-height:44px;margin-left:-11px;padding:11px}
   .app-toasts{bottom:calc(80px + env(safe-area-inset-bottom))}
   .sidebar{top:calc(56px + env(safe-area-inset-top))!important;bottom:calc(72px + env(safe-area-inset-bottom))!important}
   .sidebar .file,.sidebar .folder-row{min-height:44px}
@@ -115,7 +112,7 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
 
 /* Completion audit: desktop precision targets and legible secondary copy. */
 @media(min-width:768px){
-  .side-heading{gap:6px;padding-inline:3px}.sidebar-title{flex:0 0 auto;white-space:nowrap}.tree-actions{flex:0 0 auto;gap:2px}
+  .side-heading{gap:6px;padding-inline:3px}.sidebar-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-actions{flex:0 0 auto;gap:2px}
   .project-title{min-height:36px}
   .status-center-toggle{min-height:36px;padding:7px 9px}
   .presence .avatar{width:36px;height:36px}
@@ -136,7 +133,7 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
 .collab-label,.source-conflict,.pdf-freshness{font-size:11px}
 .status-dot.warning{background:#f79009}
 .assistant-header-actions .beta{font-size:10px;padding:2px 4px}
-.model-caption,.model-settings summary,.model-option-copy strong,.model-option-copy span,.codex-request-model,.codex-followup-head span,.codex-followup-status,.task-meta,.backup-section>.hint,.backup-card-meta span{font-size:11px}
+.model-settings summary,.model-option-copy strong,.model-option-copy span,.codex-request-model,.codex-followup-head span,.codex-followup-status,.task-meta,.backup-section>.hint,.backup-card-meta span{font-size:11px}
 .inventory-heading,.check-item,.inventory-item,.diagnostic-item,.diff-block{font-size:11px}
 #task-board>.hint,#comment-list>.hint,#uploaded-files>.hint{margin:0;padding:24px 8px;color:#667085;text-align:center;line-height:1.55}
 

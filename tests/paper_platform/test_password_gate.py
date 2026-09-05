@@ -381,3 +381,35 @@ def test_edge_rejects_unsafe_requests_with_a_foreign_origin() -> None:
         assert "handle @foreign_unsafe {" in source
         assert "respond 403" in source
         assert source.index("handle @foreign_unsafe {") < source.index("handle /__client_error")
+
+
+def test_unicode_passwords(monkeypatch) -> None:
+    from urllib.parse import urlencode
+
+    gate = load_gate()
+    password = "연구실-비밀번호-충분히길게-123!"
+    assert gate.configuration_errors(password, "x" * 32) == []
+    monkeypatch.setattr(gate, "PASSWORD", password)
+    monkeypatch.setattr(gate, "SESSION_SECRET", "x" * 32)
+    monkeypatch.setattr(gate, "LOGIN_LIMITER", gate.LoginAttemptLimiter())
+    server = gate.ThreadingHTTPServer(("127.0.0.1", 0), gate.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+    try:
+        for supplied, status in ((password, 303), ("틀린암호🔐", 200)):
+            connection.request("POST", "/login", body=urlencode({"password": supplied}),
+                               headers={"Content-Type": "application/x-www-form-urlencoded"})
+            response = connection.getresponse()
+            body = response.read().decode()
+            assert response.status == status
+            if supplied != password:
+                assert "The password is incorrect" in body
+                assert not response.headers.get_all("Set-Cookie") or not any(
+                    cookie.startswith("paper_session=") for cookie in response.headers.get_all("Set-Cookie")
+                )
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

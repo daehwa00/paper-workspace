@@ -702,10 +702,10 @@ function createCollaborationServer (overrides = {}) {
     return { divergentWebPaths, liveSources }
   }
 
-  const flushSourceWriteback = (docName, state) => {
+  const flushSourceWriteback = state => {
     state.timer = null
-    const document = docs.get(docName)
-    if (!document) return
+    const document = state.document
+    if (!document || !state.pendingPaths.size) return
     const requestedPaths = [...state.pendingPaths]
     try {
       const result = writeBackManagedSources(
@@ -721,7 +721,7 @@ function createCollaborationServer (overrides = {}) {
         const source = document.getMap('files').get(projectPath)?.toString?.()
         historyChanged = rememberSourceHistory(state.histories, projectPath, source) || historyChanged
       }
-      if (historyChanged) saveSourceHistories(config.sourceHistoryDir, docName, state.histories)
+      if (historyChanged) saveSourceHistories(config.sourceHistoryDir, state.docName, state.histories)
       document.transact(() => {
         document.getMap('project').set('sourceWritebackStatus', {
           paths: requestedPaths,
@@ -731,7 +731,7 @@ function createCollaborationServer (overrides = {}) {
       }, 'server-writeback-status')
       const conflictKey = result.conflictPaths.join('\0')
       if (conflictKey && conflictKey !== state.lastConflictKey) {
-        console.warn(`source writeback paused for external changes (${docName}): ${result.conflictPaths.join(', ')}`)
+        console.warn(`source writeback paused for external changes (${state.docName}): ${result.conflictPaths.join(', ')}`)
       }
       state.lastConflictKey = conflictKey
     } catch (error) {
@@ -742,16 +742,36 @@ function createCollaborationServer (overrides = {}) {
           timestamp: Date.now()
         })
       }, 'server-writeback-status')
-      console.error(`source writeback failed (${docName}): ${error.message}`)
+      console.error(`source writeback failed (${state.docName}): ${error.message}`)
     }
   }
 
+  const disposeSourceWriteback = (docName, state, flush) => {
+    if (state.timer) {
+      clearTimeout(state.timer)
+      state.timer = null
+    }
+    if (flush) flushSourceWriteback(state)
+    state.files.unobserveDeep(state.observer)
+    state.document.off('destroy', state.destroyObserver)
+    if (writebackStates.get(docName) === state) writebackStates.delete(docName)
+  }
+
+  const scheduleSourceWriteback = state => {
+    if (state.timer) clearTimeout(state.timer)
+    state.timer = setTimeout(() => flushSourceWriteback(state), config.sourceWritebackDebounceMs)
+    state.timer.unref()
+  }
+
   const ensureSourceWriteback = (docName, room, document) => {
-    if (writebackStates.has(docName)) return writebackStates.get(docName)
+    const previousState = writebackStates.get(docName)
+    if (previousState?.document === document) return previousState
+    if (previousState) disposeSourceWriteback(docName, previousState, true)
     const projectRoot = sourceRootForSlug(room.slice(room.lastIndexOf(':') + 1))
     if (!projectRoot) return null
     const state = {
       docName,
+      document,
       expectedDigests: new Map(),
       histories: loadSourceHistories(config.sourceHistoryDir, docName),
       lastConflictKey: '',
@@ -761,6 +781,7 @@ function createCollaborationServer (overrides = {}) {
     }
     const baseline = refreshWritebackBaseline(document, projectRoot, state)
     const files = document.getMap('files')
+    state.files = files
     state.observer = (events, transaction) => {
       if (transaction.origin === 'server-runtime-sync') return
       for (const event of events) {
@@ -772,16 +793,15 @@ function createCollaborationServer (overrides = {}) {
         if (typeof projectPath === 'string') state.pendingPaths.add(projectPath)
       }
       if (!state.pendingPaths.size) return
-      if (state.timer) clearTimeout(state.timer)
-      state.timer = setTimeout(() => flushSourceWriteback(docName, state), config.sourceWritebackDebounceMs)
-      state.timer.unref()
+      scheduleSourceWriteback(state)
     }
+    state.destroyObserver = () => disposeSourceWriteback(docName, state, true)
     files.observeDeep(state.observer)
+    document.on('destroy', state.destroyObserver)
     writebackStates.set(docName, state)
     for (const projectPath of baseline.divergentWebPaths) state.pendingPaths.add(projectPath)
     if (state.pendingPaths.size) {
-      state.timer = setTimeout(() => flushSourceWriteback(docName, state), config.sourceWritebackDebounceMs)
-      state.timer.unref()
+      scheduleSourceWriteback(state)
     }
     return state
   }
@@ -893,9 +913,7 @@ function createCollaborationServer (overrides = {}) {
             writebackState.pendingPaths.add(projectPath)
           }
           if (writebackState.pendingPaths.size) {
-            if (writebackState.timer) clearTimeout(writebackState.timer)
-            writebackState.timer = setTimeout(() => flushSourceWriteback(docName, writebackState), config.sourceWritebackDebounceMs)
-            writebackState.timer.unref()
+            scheduleSourceWriteback(writebackState)
           }
         }
         document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
@@ -1090,13 +1108,8 @@ function createCollaborationServer (overrides = {}) {
   const close = async () => {
     clearInterval(quotaTimer)
     for (const [docName, state] of writebackStates) {
-      if (state.timer) {
-        clearTimeout(state.timer)
-        flushSourceWriteback(docName, state)
-      }
-      docs.get(docName)?.getMap('files').unobserveDeep(state.observer)
+      disposeSourceWriteback(docName, state, true)
     }
-    writebackStates.clear()
     for (const socket of wss.clients) socket.terminate()
     const websocketClosed = new Promise((resolve, reject) => {
       wss.close(error => error ? reject(error) : resolve())

@@ -20,6 +20,25 @@ const listen = instance => new Promise(resolve => {
   instance.server.listen(0, '127.0.0.1', () => resolve(instance.server.address().port))
 })
 
+const waitFor = (predicate, message, timeoutMs = 2000) => new Promise((resolve, reject) => {
+  const started = Date.now()
+  const poll = () => {
+    if (predicate()) return resolve()
+    if (Date.now() - started > timeoutMs) return reject(new Error(message))
+    setTimeout(poll, 10)
+  }
+  poll()
+})
+
+const waitForProviderSync = provider => new Promise((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error('test collaboration client did not synchronize')), 2000)
+  provider.once('sync', synchronized => {
+    if (!synchronized) return
+    clearTimeout(timeout)
+    resolve()
+  })
+})
+
 const responseStatus = url => new Promise((resolve, reject) => {
   http.get(url, response => {
     response.resume()
@@ -562,6 +581,104 @@ test('connected Yjs edits are written back to the authoritative project source',
   })
   const persistedHistory = loadSourceHistories(sourceHistoryDir, docName)
   assert.equal(persistedHistory['paper/main.tex'].at(-1), 'server baseline\nexisting web edit\nnew web edit')
+})
+
+test('disconnecting flushes a pending managed-source writeback when Yjs disposes the document', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-writeback-disconnect-'))
+  t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
+  writeSourceProject(sourceRoot, 'server baseline')
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  const main = new Y.Text()
+  main.insert(0, 'server baseline')
+  document.getMap('files').set('paper/main.tex', main)
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']),
+    defaultProjectSourceDir: sourceRoot,
+    sourceWritebackDebounceMs: 1000
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const clientDocument = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { provider.destroy(); clientDocument.destroy() })
+  await waitForProviderSync(provider)
+
+  const clientMain = clientDocument.getMap('files').get('paper/main.tex')
+  clientMain.insert(clientMain.length, '\nlast web edit')
+  await waitFor(
+    () => document.getMap('files').get('paper/main.tex')?.toString() === 'server baseline\nlast web edit',
+    'server did not receive the final web edit'
+  )
+
+  const closed = new Promise(resolve => provider.ws.once('close', resolve))
+  provider.destroy()
+  await closed
+  docs.delete(docName)
+  document.destroy()
+
+  assert.equal(fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8'), 'server baseline\nlast web edit')
+})
+
+test('reconnecting after Yjs replaces a document rebinds managed-source writeback', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-writeback-reconnect-'))
+  t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
+  writeSourceProject(sourceRoot, 'server baseline')
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const firstDocument = getYDoc(docName)
+  const firstMain = new Y.Text()
+  firstMain.insert(0, 'server baseline')
+  firstDocument.getMap('files').set('paper/main.tex', firstMain)
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']),
+    defaultProjectSourceDir: sourceRoot,
+    sourceWritebackDebounceMs: 10
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const firstClient = new Y.Doc()
+  const firstProvider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, firstClient, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { firstProvider.destroy(); firstClient.destroy() })
+  await waitForProviderSync(firstProvider)
+
+  const persistedUpdate = Y.encodeStateAsUpdate(firstDocument)
+  const firstClosed = new Promise(resolve => firstProvider.ws.once('close', resolve))
+  firstProvider.destroy()
+  await firstClosed
+  docs.delete(docName)
+  firstDocument.destroy()
+  const secondDocument = getYDoc(docName)
+  Y.applyUpdate(secondDocument, persistedUpdate)
+
+  const secondClient = new Y.Doc()
+  const secondProvider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, secondClient, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { secondProvider.destroy(); secondClient.destroy() })
+  await waitForProviderSync(secondProvider)
+  const secondMain = new Y.Text()
+  secondMain.insert(0, 'reconnected web edit')
+  secondClient.getMap('files').set('paper/main.tex', secondMain)
+
+  await waitFor(
+    () => fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === 'reconnected web edit',
+    'reconnected web edit was not written back'
+  )
+  assert.equal(docs.get(docName), secondDocument)
+  assert.notEqual(secondDocument, firstDocument)
 })
 
 test('an overlapping local save stays authoritative while the web manuscript is preserved', async t => {

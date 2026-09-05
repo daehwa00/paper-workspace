@@ -41,7 +41,9 @@ function safeFile(root, requestPath) {
 const server = createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`)
   let root = staticRoot
-  let pathname = url.pathname
+  // Give isolated test rooms the same public example and rendered assets.
+  let pathname = url.pathname.replace(/^\/p\/[^/]+(?=\/project\/)/, '')
+  if (/^\/p\/[^/]+\/?$/.test(pathname)) pathname = '/'
   if (pathname.startsWith('/project/')) {
     root = projectRoot
     pathname = pathname.slice('/project/'.length)

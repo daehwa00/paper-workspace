@@ -35,6 +35,7 @@ jobs:
           node --check apps/paper_workspace/collaboration/client.js
           node --check apps/paper_workspace/collaboration/server.cjs
           node --check apps/paper_workspace/codex_bridge/server.mjs
+          npm run check:client --prefix apps/paper_workspace/collaboration
           python -m compileall -q apps/paper_workspace scripts/paper_platform
       - name: Check dependencies and Compose
         run: |

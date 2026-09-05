@@ -44,14 +44,16 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
   const isBootstrapLeader = () => Math.min(...awareness.getStates().keys()) === document.clientID
   const textFor = (path, initial = '') => {
     let text = files.get(path)
-    if (!(text instanceof Y.Text)) {
+    const created = !(text instanceof Y.Text)
+    if (created) {
       text = new Y.Text()
       files.set(path, text)
     }
     // Only seed after both persistence and the server have synchronized. When
     // several clients open an empty room together, the deterministic awareness
     // leader performs the initial insert so Yjs does not merge duplicate seeds.
-    if (text.length === 0 && initial && bootstrapReady && isBootstrapLeader()) text.insert(0, initial)
+    if (text.length === 0 && initial && bootstrapReady && isBootstrapLeader() &&
+        (created || !document.getMap('project').has('serverRuntimeRevision'))) text.insert(0, initial)
     return text
   }
 

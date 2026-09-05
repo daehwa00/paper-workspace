@@ -183,7 +183,7 @@
 
   window.PaperWorkspaceCore = Object.freeze({
     backupItems, backupProjectId, baseName, buildCompilePayload, cleanSegment, compactSourceSnapshot,
-    compareBackupFiles, compilePayloadFingerprint, constrain, extensionOf, extractBackupSnapshot,
+    compareBackupFiles, compileAssetExtensions, compileTextExtensions, compilePayloadFingerprint, constrain, extensionOf, extractBackupSnapshot,
     manifestItemIsAsset, normalizeManifest, normalizeState, parentPath, parseLatexDiagnostics,
     projectFileUrl, runtimeFileRevision, serverManagedManifestItems, sourceFingerprint,
     sourceSnapshotMatches, storedJson, validateBackupSnapshot, validProjectPath

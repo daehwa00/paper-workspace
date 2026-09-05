@@ -1,4 +1,4 @@
-import { EditorState } from '@codemirror/state'
+import { EditorState, Transaction } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
@@ -22,6 +22,20 @@ const theme = EditorView.theme({
   '.cm-searchMatch': { backgroundColor: '#fedf897d', outline: '1px solid #fdb022' },
   '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: '#fdb02270' }
 })
+
+const documentChange = (previous, next) => {
+  if (previous === next) return null
+  let from = 0
+  const sharedLength = Math.min(previous.length, next.length)
+  while (from < sharedLength && previous.charCodeAt(from) === next.charCodeAt(from)) from += 1
+  let previousEnd = previous.length
+  let nextEnd = next.length
+  while (previousEnd > from && nextEnd > from && previous.charCodeAt(previousEnd - 1) === next.charCodeAt(nextEnd - 1)) {
+    previousEnd -= 1
+    nextEnd -= 1
+  }
+  return { from, to: previousEnd, insert: next.slice(from, nextEnd) }
+}
 
 const icon = path => {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
@@ -178,34 +192,80 @@ class PaperSearchPanel {
 
 export function createEditor({ parent, value = '', onChange, onSelection, onScroll }) {
   let suppress = false
+  let currentPath = null
+  const documents = new Map()
+  const createState = doc => EditorState.create({
+    doc,
+    extensions: [
+      lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), dropCursor(),
+      rectangularSelection(), crosshairCursor(), history(), bracketMatching(), closeBrackets(),
+      highlightSelectionMatches(), search({ top: true, createPanel: view => new PaperSearchPanel(view) }),
+      autocompletion(), latex(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
+      EditorView.lineWrapping,
+      EditorView.updateListener.of(update => {
+        if (update.docChanged && !suppress) onChange?.(update.state.doc.toString(), update)
+        if (update.selectionSet) onSelection?.(update.state.selection.main.from, update.state.selection.main.to)
+        if (update.viewportChanged) onScroll?.()
+      }),
+      theme
+    ]
+  })
   const view = new EditorView({
     parent,
-    state: EditorState.create({
-      doc: value,
-      extensions: [
-        lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), dropCursor(),
-        rectangularSelection(), crosshairCursor(), history(), bracketMatching(), closeBrackets(),
-        highlightSelectionMatches(), search({ top: true, createPanel: view => new PaperSearchPanel(view) }),
-        autocompletion(), latex(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
-        EditorView.lineWrapping,
-        EditorView.updateListener.of(update => {
-          if (update.docChanged && !suppress) onChange?.(update.state.doc.toString(), update)
-          if (update.selectionSet) onSelection?.(update.state.selection.main.from, update.state.selection.main.to)
-          if (update.viewportChanged) onScroll?.()
-        }),
-        theme
-      ]
-    })
+    state: createState(value)
   })
   view.scrollDOM.addEventListener('scroll', () => onScroll?.(), { passive: true })
 
-  const setValue = next => {
+  const replaceCurrentDocument = next => {
     const value = String(next ?? '')
-    if (value === view.state.doc.toString()) return
+    const changes = documentChange(view.state.doc.toString(), value)
+    if (!changes) return
     suppress = true
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
-    suppress = false
+    try {
+      // Server and collaboration updates are not local edits. Keeping this
+      // transaction out of history also lets CodeMirror map still-valid undo
+      // entries through the change.
+      view.dispatch({
+        changes,
+        annotations: Transaction.addToHistory.of(false)
+      })
+    } finally {
+      suppress = false
+    }
+  }
+  const setValue = next => {
+    replaceCurrentDocument(next)
+    if (currentPath !== null) documents.set(currentPath, view.state)
+  }
+  const setDocument = (path, next) => {
+    const key = String(path ?? '')
+    const value = String(next ?? '')
+    if (currentPath === null) {
+      currentPath = key
+      replaceCurrentDocument(value)
+      documents.set(key, view.state)
+      return
+    }
+    if (key === currentPath) {
+      setValue(value)
+      return
+    }
+
+    documents.set(currentPath, view.state)
+    let state = documents.get(key)
+    if (!state) state = createState(value)
+    else if (state.doc.toString() !== value) {
+      // This file was updated while it was inactive. Apply the update to its
+      // own state so selection and any undo entries with valid positions map.
+      state = state.update({
+        changes: documentChange(state.doc.toString(), value),
+        annotations: Transaction.addToHistory.of(false)
+      }).state
+    }
+    currentPath = key
+    documents.set(key, state)
+    view.setState(state)
   }
   const setSelection = (anchor, head = anchor, { scroll = false } = {}) => {
     const length = view.state.doc.length
@@ -220,6 +280,7 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
     scrollDOM: view.scrollDOM,
     getValue: () => view.state.doc.toString(),
     setValue,
+    setDocument,
     getSelection: () => ({ start: view.state.selection.main.from, end: view.state.selection.main.to }),
     setSelection,
     focus: () => view.focus(),

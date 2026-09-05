@@ -221,6 +221,7 @@ class BackupStore:
         self.database_path = Path(database_path)
         self.retention = retention
         self.export_dir = Path(export_dir) if export_dir else None
+        self._lock = threading.RLock()
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         if self.export_dir:
             self.export_dir.mkdir(parents=True, exist_ok=True)
@@ -297,63 +298,79 @@ class BackupStore:
         author = validate_optional_text(actor, "actor", 120)
         backup_reason = validate_optional_text(reason, "reason", 80)
         digest = hashlib.sha256(encoded).hexdigest()
-        created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                INSERT OR IGNORE INTO snapshots(
-                    project_id, created_at, checked_at, content_hash, actor, reason, size_bytes, payload, payload_encoding
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (project, created_at, created_at, digest, author, backup_reason, len(encoded), zlib.compress(encoded, level=6), "zlib"),
-            )
-            if cursor.rowcount == 0:
-                connection.execute(
+        with self._lock:
+            created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            with self._connect() as connection:
+                cursor = connection.execute(
                     """
-                    UPDATE snapshots
-                    SET checked_at = ?, actor = ?, reason = ?
-                    WHERE project_id = ? AND content_hash = ?
+                    INSERT OR IGNORE INTO snapshots(
+                        project_id, created_at, checked_at, content_hash, actor, reason, size_bytes, payload, payload_encoding
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (created_at, author, backup_reason, project, digest),
+                    (project, created_at, created_at, digest, author, backup_reason, len(encoded), zlib.compress(encoded, level=6), "zlib"),
                 )
-                existing = connection.execute(
-                    "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
-                ).fetchone()
-                assert existing is not None
-                metadata = self._metadata(existing)
-                self._export(project, metadata, encoded)
-                return metadata, True
-            snapshot_id = cursor.lastrowid
-            connection.execute(
-                """
-                DELETE FROM snapshots
-                WHERE project_id = ? AND id NOT IN (
-                    SELECT id FROM snapshots WHERE project_id = ?
-                    ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
-                )
-                """,
-                (project, project, self.retention),
-            )
-            row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
-        assert row is not None
-        self._export(project, self._metadata(row), encoded)
-        return self._metadata(row), False
+                if cursor.rowcount == 0:
+                    connection.execute(
+                        """
+                        UPDATE snapshots
+                        SET checked_at = ?, actor = ?, reason = ?
+                        WHERE project_id = ? AND content_hash = ?
+                        """,
+                        (created_at, author, backup_reason, project, digest),
+                    )
+                    existing = connection.execute(
+                        "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
+                    ).fetchone()
+                    assert existing is not None
+                    metadata = self._metadata(existing)
+                    deduplicated = True
+                else:
+                    snapshot_id = cursor.lastrowid
+                    connection.execute(
+                        """
+                        DELETE FROM snapshots
+                        WHERE project_id = ? AND id NOT IN (
+                            SELECT id FROM snapshots WHERE project_id = ?
+                            ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
+                        )
+                        """,
+                        (project, project, self.retention),
+                    )
+                    row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
+                    assert row is not None
+                    metadata = self._metadata(row)
+                    deduplicated = False
+            self._export(project, metadata, encoded)
+        return metadata, deduplicated
 
     def _export(self, project: str, metadata: dict[str, Any], encoded: bytes) -> None:
         if not self.export_dir:
             return
-        project_dir = self.export_dir / project
-        project_dir.mkdir(parents=True, exist_ok=True)
-        target = project_dir / f"{metadata['id']}-{metadata['hash'][:12]}.json.zlib"
-        if not target.exists():
-            with tempfile.NamedTemporaryFile(dir=project_dir, delete=False) as temporary:
-                temporary.write(zlib.compress(encoded, level=6))
-                temporary_path = Path(temporary.name)
-            os.replace(temporary_path, target)
-        exports = sorted(project_dir.glob("*.json.zlib"), key=lambda path: path.stat().st_mtime, reverse=True)
-        for stale in exports[self.retention :]:
-            stale.unlink(missing_ok=True)
+        with self._lock:
+            project_dir = self.export_dir / project
+            project_dir.mkdir(parents=True, exist_ok=True)
+            target = project_dir / f"{metadata['id']}-{metadata['hash'][:12]}.json.zlib"
+            if not target.exists():
+                with tempfile.NamedTemporaryFile(dir=project_dir, delete=False) as temporary:
+                    temporary.write(zlib.compress(encoded, level=6))
+                    temporary_path = Path(temporary.name)
+                os.replace(temporary_path, target)
+            with self._connect() as connection:
+                retained = connection.execute(
+                    """
+                    SELECT id, content_hash FROM snapshots
+                    WHERE project_id = ?
+                    ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
+                    """,
+                    (project, self.retention),
+                ).fetchall()
+            retained_names = {
+                f"{row['id']}-{row['content_hash'][:12]}.json.zlib" for row in retained
+            }
+            for export in project_dir.glob("*.json.zlib"):
+                if export.name not in retained_names:
+                    export.unlink(missing_ok=True)
 
     def list(self, project_id: object) -> list[dict[str, Any]]:
         project = validate_project_id(project_id)

@@ -345,38 +345,40 @@ def test_normalized_synctex_survives_a_new_navigation_workspace(tmp_path: Path) 
     reason="TeX tools are available in the compiler image",
 )
 def test_legacy_nested_synctex_remains_bidirectional(tmp_path: Path) -> None:
-    build = tmp_path / "build"
-    navigation = tmp_path / "navigation"
-    (build / "sections").mkdir(parents=True)
-    navigation.mkdir()
-    (build / "main.tex").write_text(
-        "\\documentclass{article}\n\\begin{document}\n"
-        "\\input{sections/method}\n\\end{document}\n",
-        encoding="utf-8",
-    )
-    (build / "sections" / "method.tex").write_text("Nested legacy source\n", encoding="utf-8")
-    subprocess.run(
-        ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-synctex=1", "-jobname=preview", "main.tex"],
-        cwd=build, capture_output=True, check=True,
-    )
-    (navigation / "main.synctex.gz").write_bytes((build / "preview.synctex.gz").read_bytes())
-    (navigation / "main.pdf").write_bytes((build / "preview.pdf").read_bytes())
+    # Legacy bundles originate in the compiler's /tmp/tmpXXXXXXXX workspace.
+    with compiler.tempfile.TemporaryDirectory(dir="/tmp") as directory:
+        build = Path(directory)
+        navigation = tmp_path / "navigation"
+        (build / "sections").mkdir(parents=True)
+        navigation.mkdir()
+        (build / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n"
+            "\\input{sections/method}\n\\end{document}\n",
+            encoding="utf-8",
+        )
+        (build / "sections" / "method.tex").write_text("Nested legacy source\n", encoding="utf-8")
+        subprocess.run(
+            ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "-synctex=1", "-jobname=preview", "main.tex"],
+            cwd=build, capture_output=True, check=True,
+        )
+        (navigation / "main.synctex.gz").write_bytes((build / "preview.synctex.gz").read_bytes())
+        (navigation / "main.pdf").write_bytes((build / "preview.pdf").read_bytes())
 
-    forward = subprocess.run(
-        ["synctex", "view", "-i", "1:0:sections/method.tex", "-o", "main.pdf"],
-        cwd=navigation, text=True, capture_output=True, check=True,
-    )
-    page = compiler.re.search(r"^Page:(\d+)$", forward.stdout, compiler.re.MULTILINE)
-    x = compiler.re.search(r"^x:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
-    y = compiler.re.search(r"^y:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
-    assert page and x and y
-    reverse = subprocess.run(
-        ["synctex", "edit", "-o", f"{page.group(1)}:{x.group(1)}:{y.group(1)}:main.pdf"],
-        cwd=navigation, text=True, capture_output=True, check=True,
-    )
-    input_match = compiler.re.search(r"^Input:(.+)$", reverse.stdout, compiler.re.MULTILINE)
-    assert input_match
-    assert compiler.synctex_source_path(input_match.group(1), navigation) == "sections/method.tex"
+        forward = subprocess.run(
+            ["synctex", "view", "-i", "1:0:sections/method.tex", "-o", "main.pdf"],
+            cwd=navigation, text=True, capture_output=True, check=True,
+        )
+        page = compiler.re.search(r"^Page:(\d+)$", forward.stdout, compiler.re.MULTILINE)
+        x = compiler.re.search(r"^x:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
+        y = compiler.re.search(r"^y:([0-9.+-]+)$", forward.stdout, compiler.re.MULTILINE)
+        assert page and x and y
+        reverse = subprocess.run(
+            ["synctex", "edit", "-o", f"{page.group(1)}:{x.group(1)}:{y.group(1)}:main.pdf"],
+            cwd=navigation, text=True, capture_output=True, check=True,
+        )
+        input_match = compiler.re.search(r"^Input:(.+)$", reverse.stdout, compiler.re.MULTILINE)
+        assert input_match
+        assert compiler.synctex_source_path(input_match.group(1), navigation) == "sections/method.tex"
 
 
 def test_compiler_health_reflects_required_tex_tools(monkeypatch: pytest.MonkeyPatch) -> None:

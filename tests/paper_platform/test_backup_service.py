@@ -240,6 +240,55 @@ def test_snapshot_export_is_written_for_external_copy(tmp_path: Path) -> None:
     assert json.loads(backup.zlib.decompress(exported[0].read_bytes())) == snapshot_payload()
 
 
+def test_snapshot_export_retention_follows_database_order_after_deduplication(
+    tmp_path: Path,
+) -> None:
+    backup = load_backup_module()
+    export_dir = tmp_path / "exports"
+    store = backup.BackupStore(tmp_path / "backups.sqlite3", retention=2, export_dir=export_dir)
+
+    first, _ = store.create("paper-one", snapshot_payload("first"), None, "interval")
+    time.sleep(0.002)
+    second, _ = store.create("paper-one", snapshot_payload("second"), None, "interval")
+    time.sleep(0.002)
+    refreshed, deduplicated = store.create("paper-one", snapshot_payload("first"), None, "checkpoint")
+    time.sleep(0.002)
+    third, _ = store.create("paper-one", snapshot_payload("third"), None, "interval")
+
+    assert deduplicated is True
+    assert refreshed["id"] == first["id"]
+    retained = store.list("paper-one")
+    assert [item["id"] for item in retained] == [third["id"], first["id"]]
+
+    exported = {path.name for path in (export_dir / "paper-one").glob("*.json.zlib")}
+    assert exported == {
+        f"{third['id']}-{third['hash'][:12]}.json.zlib",
+        f"{first['id']}-{first['hash'][:12]}.json.zlib",
+    }
+
+
+def test_parallel_snapshot_exports_follow_retained_database_rows(tmp_path: Path) -> None:
+    backup = load_backup_module()
+    export_dir = tmp_path / "exports"
+    store = backup.BackupStore(tmp_path / "backups.sqlite3", retention=4, export_dir=export_dir)
+    payloads = {index: snapshot_payload(f"parallel-{index}") for index in range(24)}
+
+    def create(index: int) -> dict[str, object]:
+        metadata, deduplicated = store.create("paper-one", payloads[index], None, "parallel")
+        assert deduplicated is False
+        return metadata
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(create, payloads))
+
+    retained = store.list("paper-one")
+    expected = {
+        f"{item['id']}-{item['hash'][:12]}.json.zlib" for item in retained
+    }
+    exported = {path.name for path in (export_dir / "paper-one").glob("*.json.zlib")}
+    assert exported == expected
+
+
 def test_asset_store_round_trip_quota_and_paths(tmp_path: Path) -> None:
     backup = load_backup_module()
     store = backup.AssetStore(tmp_path / "assets", max_file_bytes=20, max_project_bytes=24)

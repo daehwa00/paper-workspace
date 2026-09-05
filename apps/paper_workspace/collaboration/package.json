@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ci": "CI=1 playwright test --reporter=line",
     "start": "HOST=0.0.0.0 PORT=8765 node server.cjs",
-    "test:server": "node --test server.test.cjs"
+    "test:server": "node --test server.test.cjs",
+    "check:client": "npm run build:client && git diff --exit-code -- ../static/vendor/paper-collab.js ../static/vendor/paper-editor.js"
   },
   "dependencies": {
     "y-indexeddb": "9.0.12",

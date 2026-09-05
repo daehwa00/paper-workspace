@@ -95,7 +95,7 @@ def configuration_errors(password: str | None = None, session_secret: str | None
         errors.append("access password must be at least 12 non-placeholder characters")
     if len(secret) < 32 or secret.startswith("replace-with-"):
         errors.append("session secret must be at least 32 random non-placeholder characters")
-    if access and hmac.compare_digest(access, secret):
+    if access and hmac.compare_digest(access.encode("utf-8"), secret.encode("utf-8")):
         errors.append("access password and session secret must be different")
     return errors
 
@@ -258,7 +258,7 @@ def valid_session(cookie_header: str | None, now: int | None = None) -> bool:
     except (TypeError, ValueError):
         return False
     current = int(time.time()) if now is None else now
-    return expires > current and hmac.compare_digest(provided, signature(expires))
+    return expires > current and hmac.compare_digest(provided.encode("utf-8"), signature(expires).encode("ascii"))
 
 
 def issue_session(now: int | None = None) -> tuple[str, int]:
@@ -418,7 +418,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.headers.get("Accept-Language"),
             )
             identity = client_ip(self)
-            password_matches = bool(PASSWORD) and hmac.compare_digest(supplied, PASSWORD)
+            password_matches = bool(PASSWORD) and hmac.compare_digest(supplied.encode("utf-8"), PASSWORD.encode("utf-8"))
             authenticated, retry_after = LOGIN_LIMITER.evaluate_attempt(
                 identity,
                 password_matches,

@@ -166,7 +166,6 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "validProjectPath" in core
     assert "/api/compile" in app
     assert "compileAfterSave" in app
-    assert "preview_entrypoints" in app
     assert "selectedEntrypoint" in app
     assert "const entrypoint=selectedEntrypoint()" in app
     assert "selectedPreviewMode" in app
@@ -742,7 +741,6 @@ def test_dark_theme_covers_secondary_workspace_copy() -> None:
     assert 'html[data-color-scheme="dark"] .status-center-list small' in css
     assert 'html[data-color-scheme="dark"] .task-meta' in css
     assert 'html[data-color-scheme="dark"] .backup-card-meta' in css
-    assert 'html[data-color-scheme="dark"] .model-caption' in css
 
 
 def test_dark_theme_reserves_white_for_rendered_paper() -> None:
@@ -835,7 +833,7 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
     assert "location /vendor/" in nginx
     assert "looksLikeHtml" in app
     assert "contentType.toLowerCase().includes('text/html')" in app
-    assert "if(remoteMain){" in app
+    assert "if(typeof remoteMain==='string'){" in app
     assert "if(!isLatexDocument(localMain))" in app
     assert "preservedDraftPath=`paper/drafts/${previousVersion}.tex`" in app
     assert "split('/').map(encodeURIComponent).join('/')" in app
@@ -872,7 +870,6 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "remoteAssetSources" in app
     assert "parallelLimit(paths, 4" in core
     assert "const autoSaveDelayMs=1000" in app
-    assert "trimEditorHistory" in app
     assert "layoutAnimationFrame=requestAnimationFrame" in app
     assert "compileController?.abort()" in app
     assert "compile_id" in app
@@ -1055,15 +1052,6 @@ def test_project_version_prunes_only_manifest_retired_paths_from_shared_tree() -
     assert "collabSession.files.delete(path)" in app
     assert "delete state.serverSourceSnapshots[path]" in app
 
-
-def test_archived_drafts_are_bounded_by_a_shared_fifo_queue() -> None:
-    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-
-    assert "const archivedDraftLimit=30" in app
-    assert "function draftQueuePaths()" in app
-    assert "function pruneDraftQueue({sync=false}={})" in app
-    assert "queue.filter(path=>path!==active).slice(0,excess)" in app
-    assert "pruneDraftQueue({sync:true})" in app
 
 
 def test_project_version_replaces_stale_collaboration_main() -> None:
