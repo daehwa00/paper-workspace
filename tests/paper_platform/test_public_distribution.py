@@ -241,7 +241,9 @@ def test_public_edge_and_collaboration_are_hardened() -> None:
     assert ":/projects:ro" not in compose
     assert ":/project-default:ro" not in compose
     assert "COLLAB_MAX_PAYLOAD_BYTES" in compose
-    assert "projects.json:ro" in compose
+    # Directory mounts follow atomic catalog replacements; file binds retain old inodes.
+    assert "COLLAB_PROJECT_CATALOG: /run/project-sources/projects/index.json" in compose
+    assert "COLLAB_DEFAULT_PROJECT_MANIFEST: /run/project-sources/default/project.json" in compose
     assert "collaboration-storage-init:" in compose
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     for caddy in caddy_files:
