@@ -373,16 +373,21 @@ const writeBackManagedSources = (document, projectRoot, expectedDigests, request
   const conflictPaths = []
   for (const entry of managedSourceEntries(projectRoot, maxBytes)) {
     if (requested && !requested.has(entry.projectPath)) continue
-    const shared = files.get(entry.projectPath)?.toString?.()
-    if (typeof shared !== 'string') continue
     const currentBytes = fs.readFileSync(entry.filename)
     const current = decodeUtf8(currentBytes)
     const currentDigest = sourceDigest(currentBytes)
     if (entry.locked) {
-      if (shared !== current) replaceSharedText(files.get(entry.projectPath), current)
+      let text = files.get(entry.projectPath)
+      if (!(text instanceof Y.Text)) {
+        text = new Y.Text()
+        files.set(entry.projectPath, text)
+      }
+      replaceSharedText(text, current)
       expectedDigests.set(entry.projectPath, currentDigest)
       continue
     }
+    const shared = files.get(entry.projectPath)?.toString?.()
+    if (typeof shared !== 'string') continue
     const expectedDigest = expectedDigests.get(entry.projectPath)
     if (shared === current) {
       expectedDigests.set(entry.projectPath, currentDigest)
@@ -597,6 +602,7 @@ const readJsonBody = (request, limit) => new Promise((resolve, reject) => {
     if (tooLarge) { const error = new Error('runtime sync payload too large'); error.statusCode = 413; reject(error); return }
     try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))) } catch { const error = new Error('invalid JSON payload'); error.statusCode = 400; reject(error) }
   })
+  request.on('aborted', () => reject(new Error('runtime sync request aborted')))
   request.on('error', reject)
 })
 
@@ -654,6 +660,8 @@ function createCollaborationServer (overrides = {}) {
   const countsByRoom = new Map()
   const runtimeSyncQueues = new Map()
   const runtimeRequestsByIp = new Map()
+  const activeRuntimeRequests = new Set()
+  const httpSockets = new Set()
   const writebackStates = new Map()
   const ownedDocNames = new Set()
   let storageBytes = directoryBytes(config.persistenceDir)
@@ -953,15 +961,21 @@ function createCollaborationServer (overrides = {}) {
     }
     const runtimeRoom = runtimeSyncRoom(request)
     if (request.method === 'POST' && runtimeRoom) {
-      handleRuntimeSync(request, response, runtimeRoom).catch(error => {
+      const operation = handleRuntimeSync(request, response, runtimeRoom).catch(error => {
         console.error(`runtime synchronization request failed: ${error.message}`)
         if (!response.headersSent) jsonResponse(response, 500, { error: 'runtime synchronization failed' })
         else response.destroy()
       })
+      activeRuntimeRequests.add(operation)
+      operation.finally(() => activeRuntimeRequests.delete(operation)).catch(() => {})
       return
     }
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
     response.end('not found\n')
+  })
+  server.on('connection', socket => {
+    httpSockets.add(socket)
+    socket.once('close', () => httpSockets.delete(socket))
   })
 
   const wss = new WebSocket.Server({
@@ -1105,6 +1119,21 @@ function createCollaborationServer (overrides = {}) {
   }, config.storageCheckMs)
   quotaTimer.unref()
 
+  const closeHttpServer = () => new Promise((resolve, reject) => {
+    if (!server.listening) return resolve()
+    const forceCloseTimer = setTimeout(() => {
+      if (typeof server.closeAllConnections === 'function') server.closeAllConnections()
+      else for (const socket of httpSockets) socket.destroy()
+    }, 1000)
+    forceCloseTimer.unref()
+    const done = error => {
+      clearTimeout(forceCloseTimer)
+      if (error) reject(error)
+      else resolve()
+    }
+    server.close(done)
+  })
+
   const close = async () => {
     clearInterval(quotaTimer)
     for (const [docName, state] of writebackStates) {
@@ -1114,11 +1143,9 @@ function createCollaborationServer (overrides = {}) {
     const websocketClosed = new Promise((resolve, reject) => {
       wss.close(error => error ? reject(error) : resolve())
     })
-    const httpClosed = new Promise((resolve, reject) => {
-      if (!server.listening) return resolve()
-      server.close(error => error ? reject(error) : resolve())
-    })
+    const httpClosed = closeHttpServer()
     await Promise.all([websocketClosed, httpClosed])
+    await Promise.allSettled([...activeRuntimeRequests])
     if (persistence?.provider?.flushDocument) {
       await Promise.all([...ownedDocNames].map(docName => persistence.provider.flushDocument(docName)))
     }
@@ -1130,6 +1157,8 @@ function createCollaborationServer (overrides = {}) {
     ownedDocNames.clear()
     runtimeSyncQueues.clear()
     runtimeRequestsByIp.clear()
+    activeRuntimeRequests.clear()
+    httpSockets.clear()
   }
 
   return { close, config, server, wss }

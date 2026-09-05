@@ -404,6 +404,45 @@ test('locked managed sources reject stale browser writes and restore the disk va
   }
 })
 
+test('locked managed sources restore a deleted shared source from disk', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-lock-deleted-'))
+  try {
+    writeSourceProject(root, 'protected main source', true)
+    const document = new Y.Doc()
+    const files = document.getMap('files')
+
+    const result = writeBackManagedSources(document, root, new Map())
+
+    assert.deepEqual(result.writtenPaths, [])
+    assert.deepEqual(result.conflictPaths, [])
+    assert.ok(files.get('paper/main.tex') instanceof Y.Text)
+    assert.equal(files.get('paper/main.tex').toString(), 'protected main source')
+    document.destroy()
+  } finally {
+    fs.rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('locked managed sources replace a non-text shared value from disk', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-source-lock-malformed-'))
+  try {
+    writeSourceProject(root, 'protected main source', true)
+    const document = new Y.Doc()
+    const files = document.getMap('files')
+    files.set('paper/main.tex', new Y.Map())
+
+    const result = writeBackManagedSources(document, root, new Map())
+
+    assert.deepEqual(result.writtenPaths, [])
+    assert.deepEqual(result.conflictPaths, [])
+    assert.ok(files.get('paper/main.tex') instanceof Y.Text)
+    assert.equal(files.get('paper/main.tex').toString(), 'protected main source')
+    document.destroy()
+  } finally {
+    fs.rmSync(root, { force: true, recursive: true })
+  }
+})
+
 test('runtime source locks preserve a divergent browser value as a draft', () => {
   const document = new Y.Doc()
   const files = document.getMap('files')
@@ -785,6 +824,64 @@ test('runtime synchronization endpoint rejects unauthenticated, forged, and unop
   assert.equal(document.getMap('files').size, 0)
   document.destroy()
   docs.delete(`collab/${room}`)
+})
+
+test('shutdown force-closes an incomplete runtime request before clearing collaboration documents', async t => {
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper'])
+  })
+  let closed = false
+  let partialRequest
+  let provider
+  let clientDocument
+  t.after(async () => {
+    partialRequest?.destroy()
+    provider?.destroy()
+    clientDocument?.destroy()
+    if (!closed) await instance.close()
+  })
+  const port = await listen(instance)
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  clientDocument = new Y.Doc()
+  provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  await waitForProviderSync(provider)
+  partialRequest = http.request({
+    method: 'POST',
+    hostname: '127.0.0.1',
+    port,
+    path: `/collab-runtime/${encodeURIComponent(room)}`,
+    headers: {
+      'Content-Length': '64',
+      'Content-Type': 'application/json',
+      Origin: 'https://paper.example',
+      'X-Paper-Actor': 'test-user'
+    }
+  })
+  partialRequest.on('error', () => {})
+  partialRequest.write('{')
+  await new Promise(resolve => setTimeout(resolve, 20))
+
+  const started = Date.now()
+  const shutdown = instance.close()
+  let timeout
+  try {
+    await Promise.race([
+      shutdown,
+      new Promise((resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('server shutdown waited for an incomplete runtime request')), 2000)
+      })
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
+  closed = true
+  assert.ok(Date.now() - started < 1500)
+  assert.equal(docs.has(docName), false)
 })
 
 test('server rejects foreign origins and arbitrary rooms', async t => {
