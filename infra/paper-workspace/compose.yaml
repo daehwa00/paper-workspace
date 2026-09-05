@@ -108,6 +108,7 @@ services:
       - FOWNER
     restart: "no"
   backup:
+    init: true
     build:
       context: ../..
       dockerfile: apps/paper_workspace/backup/Dockerfile
@@ -146,6 +147,7 @@ services:
       - backup_internal
     restart: unless-stopped
   compiler:
+    init: true
     image: paper-workspace-compiler
     build:
       context: ../..
@@ -171,6 +173,7 @@ services:
       start_period: 5s
     restart: unless-stopped
   project-thumbnails:
+    init: true
     image: paper-workspace-compiler
     depends_on:
       compiler:
@@ -232,6 +235,7 @@ services:
       - FOWNER
     restart: "no"
   project-runtime:
+    init: true
     image: paper-workspace-compiler
     depends_on:
       project-runtime-storage-init:
