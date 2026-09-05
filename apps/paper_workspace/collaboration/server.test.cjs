@@ -622,6 +622,32 @@ test('connected Yjs edits are written back to the authoritative project source',
   assert.equal(persistedHistory['paper/main.tex'].at(-1), 'server baseline\nexisting web edit\nnew web edit')
 })
 
+test('missing managed source entries do not prevent an authenticated collaboration connection', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-missing-managed-source-'))
+  t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
+  writeSourceProject(sourceRoot, 'server baseline')
+  const manifestPath = path.join(sourceRoot, 'project.json')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  manifest.files.push({ path: 'optional.tex', managed: true })
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']),
+    defaultProjectSourceDir: sourceRoot
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const clientDocument = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, 'paper-workspace:paper.example:example-paper', clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+  t.after(() => { provider.destroy(); clientDocument.destroy() })
+
+  await waitForProviderSync(provider)
+})
+
 test('disconnecting flushes a pending managed-source writeback when Yjs disposes the document', async t => {
   const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-writeback-disconnect-'))
   t.after(() => fs.rmSync(sourceRoot, { force: true, recursive: true }))
@@ -913,6 +939,35 @@ test('document synchronization waits for persistence readiness', async () => {
   assert.equal(prepared, true)
   document.destroy()
   docs.delete(docName)
+})
+
+test('a delayed persistence read preserves the provider initial synchronization message', async t => {
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']),
+    allowedProjectSlugs: new Set(['example-paper'])
+  })
+  const room = 'paper-workspace:paper.example:example-paper'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  let releasePersistence
+  document.paperPersistenceReady = new Promise(resolve => { releasePersistence = resolve })
+  const clientDocument = new Y.Doc()
+  let provider
+  t.after(async () => {
+    releasePersistence()
+    provider?.destroy()
+    clientDocument.destroy()
+    await instance.close()
+  })
+  const port = await listen(instance)
+  provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, clientDocument, {
+    WebSocketPolyfill: PaperOriginWebSocket,
+    disableBc: true
+  })
+
+  await new Promise(resolve => setTimeout(resolve, 20))
+  releasePersistence()
+  await waitForProviderSync(provider)
 })
 
 test('connections are reauthenticated and ingress is rate limited', async t => {

@@ -317,7 +317,14 @@ const managedSourceEntries = (projectRoot, maxBytes) => {
     const sourcePath = item.source || item.path
     if (!validProjectPath(sourcePath)) throw new Error('invalid writable project source path')
     if (item.path === 'drafts' || item.path.startsWith('drafts/') || sourcePath === 'drafts' || sourcePath.startsWith('drafts/')) throw new Error('drafts cannot be written to project sources')
-    const sourceFile = checkedRuntimeFile(projectRoot, sourcePath, maxBytes)
+    let sourceFile
+    try {
+      sourceFile = checkedRuntimeFile(projectRoot, sourcePath, maxBytes)
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+      console.warn(`managed project source is missing and will be skipped (${sourcePath})`)
+      continue
+    }
     totalBytes += sourceFile.size
     if (totalBytes > maxBytes) throw new Error('writable project sources exceed their size limit')
     entries.push({
@@ -987,6 +994,8 @@ function createCollaborationServer (overrides = {}) {
 
   wss.on('connection', async (socket, request, connection) => {
     const { address, docName, room } = connection
+    const transport = socket._socket
+    transport?.pause?.()
     ownedDocNames.add(docName)
     countsByIp.set(address, (countsByIp.get(address) || 0) + 1)
     countsByRoom.set(room, (countsByRoom.get(room) || 0) + 1)
@@ -1052,6 +1061,8 @@ function createCollaborationServer (overrides = {}) {
     } catch (error) {
       console.error(`collaboration persistence unavailable (${room}): ${error.message}`)
       socket.close(1011, 'collaboration state unavailable')
+    } finally {
+      transport?.resume?.()
     }
   })
 
