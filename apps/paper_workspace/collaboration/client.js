@@ -21,6 +21,7 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
   const files = document.getMap('files')
   const awareness = provider.awareness
   let bootstrapReady = false
+  const provisionalFiles = new Map()
   const bootstrapSettleMs = 400
   awareness.setLocalStateField('user', actor)
 
@@ -42,9 +43,25 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
   provider.connect()
 
   const isBootstrapLeader = () => Math.min(...awareness.getStates().keys()) === document.clientID
+  const provisionalTextFor = (path, initial) => {
+    let entry = provisionalFiles.get(path)
+    if (!entry) {
+      const provisionalDocument = new Y.Doc()
+      const text = provisionalDocument.getText('text')
+      if (initial) text.insert(0, initial)
+      entry = { document: provisionalDocument, text }
+      provisionalFiles.set(path, entry)
+    }
+    return entry.text
+  }
   const textFor = (path, initial = '') => {
     let text = files.get(path)
     const created = !(text instanceof Y.Text)
+    // A newly connected client has not yet received the authoritative map.
+    // Do not create a competing shared value during that interval. The local
+    // editor can keep rendering against this detached text until callers
+    // rebind after whenReady.
+    if (created && !bootstrapReady) return provisionalTextFor(path, initial)
     if (created) {
       text = new Y.Text()
       files.set(path, text)
@@ -123,6 +140,8 @@ export function createSession({ url, room, actor, onStatus, onPeers }) {
       awareness.off('change', publishPeers)
       provider.destroy()
       persistence.destroy()
+      for (const entry of provisionalFiles.values()) entry.document.destroy()
+      provisionalFiles.clear()
       document.destroy()
     }
   }
