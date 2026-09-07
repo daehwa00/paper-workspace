@@ -30,6 +30,11 @@
 
   function openDialog(){
     applyTheme();
+    const utilities=document.getElementById('mobile-utilities');
+    if(innerWidth<768&&utilities?.open){
+      utilities.removeAttribute('open');
+      dialog?.addEventListener('close',()=>utilities.querySelector('summary')?.focus(),{once:true});
+    }
     if(typeof dialog?.showModal==='function')dialog.showModal();
   }
 

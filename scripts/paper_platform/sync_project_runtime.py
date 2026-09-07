@@ -323,8 +323,18 @@ def sync_runtime(default_project: Path, projects_root: Path, output_root: Path) 
             copy_project(projects_root / slug, staged_projects / slug)
         digest = hashlib.sha256()
         for path in sorted(staging.rglob("*")):
-            if path.is_file():
-                digest.update(path.relative_to(staging).as_posix().encode())
+            relative = path.relative_to(staging).as_posix()
+            if path.is_symlink():
+                # Runtime aliases are part of the served tree.  Hash the link
+                # itself and its target without following it; source symlinks
+                # remain rejected by checked_source before this staging step.
+                digest.update(b"symlink\0")
+                digest.update(relative.encode())
+                digest.update(b"\0")
+                digest.update(os.fsencode(os.readlink(path)))
+                digest.update(b"\0")
+            elif path.is_file():
+                digest.update(relative.encode())
                 with path.open("rb") as handle:
                     while chunk := handle.read(64 * 1024):
                         digest.update(chunk)

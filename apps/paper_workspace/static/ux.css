@@ -108,7 +108,7 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
 }
 
 @media(prefers-reduced-motion:reduce){
-  .workspace,.sidebar,.sidebar-resizer,.status-center,.app-toast,.assistant-panel,.assistant-content,.folder-children,.selection-toolbar{transition-duration:1ms!important;animation:none!important}
+  .workspace,.sidebar,.sidebar-resizer,.status-center,.app-toast,.assistant-panel,.assistant-content,.folder-children,.selection-toolbar{transition-duration:0s!important;animation:none!important}
   button,.file,.folder-row{transition:background-color 100ms linear,border-color 100ms linear,color 100ms linear,opacity 100ms linear!important}
   button:active:not(:disabled){transform:none!important}
   .sidebar-toggle svg,.assistant-toggle svg{transition:none!important}
@@ -170,4 +170,40 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .collaborator-avatar:nth-child(n+3){display:none}
   .app-toasts{right:max(8px,env(safe-area-inset-right));left:max(8px,env(safe-area-inset-left));width:auto}
   .name-toast{right:max(8px,env(safe-area-inset-right));left:max(8px,env(safe-area-inset-left));bottom:calc(80px + env(safe-area-inset-bottom));width:auto}
+}
+
+/* Collapsed navigation is a rail; its hidden controls must leave the tab order. */
+@media(min-width:768px){
+  .shell.sidebar-collapsed .sidebar{padding:0 4px}
+  .shell.sidebar-collapsed .side-heading{height:48px;min-height:48px;padding:0}
+  .shell.sidebar-collapsed .file-search{display:none}
+}
+.folder-children.collapsed{visibility:hidden}
+.folder-chevron{transition-duration:var(--motion-ui)}
+.side-heading .sidebar-toggle:focus-visible,.zoom-controls button:focus-visible,.pdf-control:focus-visible{outline:2px solid #84adff;outline-offset:-2px}
+.shell.sidebar-collapsed .sidebar-toggle:hover,.shell.sidebar-collapsed .sidebar-toggle:focus-visible{background:var(--theme-accent-soft)!important}
+
+.dialog-actions button,.file-search button,.source-conflict button,.status-action,.pdf-error-state button{min-height:36px}
+.file-search button{flex:0 0 36px;width:36px}
+.file-search input{height:36px}
+
+@media(max-width:767px){
+  .mobile-utilities>summary,.status-center header button{width:44px;height:44px}
+  .mobile-utilities>summary:focus-visible{outline:2px solid #84adff;outline-offset:-2px}
+  .mobile-utility-items{top:48px!important}
+  .shell[data-focus="files"].sidebar-collapsed .side-heading{justify-content:space-between;padding-inline:7px}
+  .shell[data-focus="files"].sidebar-collapsed .sidebar-title{display:inline}
+  .shell[data-focus="files"].sidebar-collapsed .tree-actions{display:flex}
+  .shell[data-focus="files"].sidebar-collapsed #new-folder,.shell[data-focus="files"].sidebar-collapsed #new-file{display:grid}
+  .shell[data-focus="files"].sidebar-collapsed #files{display:block}
+  .sidebar #toggle-sidebar{display:none}
+  .dialog-actions button,.file-search button,.source-conflict button,.status-action,.pdf-error-state button{min-height:44px}
+  .file-search button{flex-basis:44px;width:44px}
+  .file-search input{height:44px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .codex-request-summary,.sync-highlight,.pdf-source-highlight,.refresh-pdf.loading svg,.project-zip.loading svg,.source-zip.loading svg{animation:none!important}
+  .folder-chevron,.status-chevron{transition:none!important}
+  .status-center,.app-toast,.app-toast.leaving{transform:none}
 }

@@ -13,6 +13,7 @@ const thumbnailPattern = /^\/projects\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\/thumbnail
 const profileColors = ['#2457d6', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
 let projects = []
 let projectActivity = new Map()
+let activityLoadState = 'pending'
 
 i18n.register('en', {
   'language.label': 'Language',
@@ -43,7 +44,9 @@ i18n.register('en', {
   'hub.task': '{count} open task',
   'hub.tasks': '{count} open tasks',
   'hub.lastEdited': 'Last edited by {actor} · {time}',
+  'hub.localActivity': 'Local browser activity · Last edited by {actor} · {time}',
   'hub.noActivity': 'No edit history yet',
+  'hub.activityUnavailable': 'Activity details are temporarily unavailable',
   'profile.title': 'Set display name',
   'profile.description': 'This name and profile color are visible to collaborators.',
   'profile.color': 'Profile color',
@@ -101,7 +104,9 @@ i18n.register('ko', {
   'hub.task': '할 일 {count}',
   'hub.tasks': '할 일 {count}',
   'hub.lastEdited': '{actor} 수정 · {time}',
+  'hub.localActivity': '이 브라우저의 최근 작업 · {actor} 수정 · {time}',
   'hub.noActivity': '아직 수정 기록 없음',
+  'hub.activityUnavailable': '최근 작업 정보를 잠시 불러올 수 없습니다',
   'profile.title': '표시 이름 설정',
   'profile.description': '공동 편집자에게 보이는 이름과 프로필 색상입니다.',
   'profile.color': '프로필 색상',
@@ -209,7 +214,7 @@ function localProjectState(project) {
   const serverActive = Date.parse(activity?.modified_at || '') || 0
   const modifiedAt = serverActive || browserActive
   const actor = activity?.actor || (browserActive ? currentProfile().name : '')
-  return { comments, tasks, modifiedAt, actor }
+  return { comments, tasks, modifiedAt, actor, hasServerActivity: Boolean(activity), hasLocalActivity: browserActive > 0 }
 }
 
 function formatActivityTime(value) {
@@ -279,6 +284,7 @@ window.addEventListener('focus', () => {
 })
 
 function renderProjects() {
+  list.dataset.activityStatus = activityLoadState
   const query = search.value.trim().toLowerCase()
   const visible = sortedProjects(projects.filter(project => searchableProjectText(project).includes(query)))
   list.setAttribute('aria-busy', 'false')
@@ -307,7 +313,9 @@ function renderProjects() {
     ].filter(Boolean)
     const meta = `${updated ? `<span>${updated}</span>` : ''}${pageCount ? `<small class="project-page-count">${pageCount}</small>` : ''}${badges.slice(updated ? 1 : 0).map(item => `<span>${escapeHtml(item)}</span>`).join('')}`
     const activityTime = local.modifiedAt ? formatActivityTime(local.modifiedAt) : ''
-    const activityLabel = local.actor && activityTime ? i18n.t('hub.lastEdited', { actor: local.actor, time: activityTime }) : i18n.t('hub.noActivity')
+    const activityLabel = local.actor && activityTime
+      ? i18n.t(activityLoadState === 'unavailable' && !local.hasServerActivity ? 'hub.localActivity' : 'hub.lastEdited', { actor: local.actor, time: activityTime })
+      : activityLoadState === 'unavailable' ? i18n.t('hub.activityUnavailable') : i18n.t('hub.noActivity')
     return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div><div class="project-activity"><span class="project-activity-dot" aria-hidden="true"></span>${escapeHtml(activityLabel)}</div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
   }).join('') || `<div class="empty-card">${escapeHtml(i18n.t('hub.emptyProjects'))}</div>`
   list.querySelectorAll('img[data-project-fallback]').forEach(image => {
@@ -322,16 +330,28 @@ function renderProjects() {
 
 async function loadProjects() {
   try {
-    const [response, activityResponse] = await Promise.all([
+    const activity = fetch('/api/backups/activity', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('activity unavailable')
+        const payload = await response.json()
+        const entries = Array.isArray(payload) ? payload : Array.isArray(payload?.projects) ? payload.projects : null
+        if (!entries) throw new Error('activity payload unavailable')
+        return entries
+      })
+      .then(entries => {
+        projectActivity = new Map(entries.filter(item => slugPattern.test(item?.project_id || '')).map(item => [item.project_id, item]))
+        activityLoadState = 'available'
+      })
+      .catch(() => {
+        projectActivity = new Map()
+        activityLoadState = 'unavailable'
+      })
+    const [response] = await Promise.all([
       fetch('/projects/index.json', { cache: 'no-store' }),
-      fetch('/api/backups/activity', { headers: { Accept: 'application/json' }, cache: 'no-store' }).catch(() => null)
+      activity
     ])
     if (!response.ok) throw new Error(i18n.t('hub.loadError'))
     const payload = await response.json()
-    if (activityResponse?.ok) {
-      const activityPayload = await activityResponse.json().catch(() => null)
-      projectActivity = new Map((Array.isArray(activityPayload?.projects) ? activityPayload.projects : []).filter(item => slugPattern.test(item?.project_id || '')).map(item => [item.project_id, item]))
-    }
     projects = Array.isArray(payload) ? payload : (Array.isArray(payload.projects) ? payload.projects : [])
     renderProjects()
   } catch (error) {

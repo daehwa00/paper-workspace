@@ -171,13 +171,37 @@ test('hub retains review counts after IndexedDB persistence', async ({ page }) =
   await expect(page.locator('.project-card')).toContainText('1 open task')
 })
 
-test('a malformed optional activity response does not hide the project catalog', async ({ page }) => {
+for (const failure of ['malformed', 'http', 'network']) {
+test(`an optional ${failure} activity response keeps the project catalog and reports the unavailable activity state`, async ({ page }) => {
   await page.route('**/projects/index.json', route => route.fulfill({
     contentType: 'application/json', body: JSON.stringify({ projects: [{ slug: 'available', display_name: 'Available paper' }] })
   }))
-  await page.route('**/api/backups/activity', route => route.fulfill({ contentType: 'text/html', body: '<html>temporarily unavailable</html>' }))
+  await page.route('**/api/backups/activity', route => {
+    if (failure === 'network') return route.abort('failed')
+    if (failure === 'http') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporarily unavailable' }) })
+    return route.fulfill({ contentType: 'text/html', body: '<html>temporarily unavailable</html>' })
+  })
   await page.goto('/hub.html?lang=en')
   await expect(page.locator('.project-card')).toContainText('Available paper')
+  await expect(page.locator('#project-list')).toHaveAttribute('data-activity-status', 'unavailable')
+  await expect(page.locator('.project-activity')).toHaveText('Activity details are temporarily unavailable')
+})
+}
+
+test('activity fallback labels browser-only activity when the activity service is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('collab-name', 'Local Author')
+    localStorage.setItem('collab-name-user-set', '1')
+    localStorage.setItem('paper-workspace:last-active:available', String(Date.now()))
+  })
+  await page.route('**/projects/index.json', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ projects: [{ slug: 'available', display_name: 'Available paper' }] })
+  }))
+  await page.route('**/api/backups/activity', route => route.abort('failed'))
+
+  await page.goto('/hub.html?lang=en')
+  await expect(page.locator('.project-activity')).toContainText('Local browser activity')
+  await expect(page.locator('.project-activity')).toContainText('Local Author')
 })
 
 test('corrupt local metadata cannot suppress authoritative project activity', async ({ page }) => {

@@ -26,6 +26,7 @@ PUBLIC_PATHS = (
     Path("scripts/paper_platform"),
 )
 ROOT_FILES = {
+    Path("apps/paper_workspace/DESIGN.md"): Path("DESIGN.md"),
     Path("apps/paper_workspace/README.md"): Path("README.md"),
     Path("apps/paper_workspace/README.ko.md"): Path("README.ko.md"),
     Path("apps/paper_workspace/LICENSE"): Path("LICENSE"),

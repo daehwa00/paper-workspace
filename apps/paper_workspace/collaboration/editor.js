@@ -7,8 +7,22 @@ import {
   selectMatches, setSearchQuery
 } from '@codemirror/search'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { latex } from 'codemirror-lang-latex'
+
+// Keep CodeMirror's light palette and formatting. Theme variables change only
+// colors, so switching appearance never rebuilds document or undo state.
+const syntaxColors = {
+  '#404740': 'meta', '#708': 'keyword', '#219': 'atom', '#164': 'literal',
+  '#a11': 'string', '#e40': 'escape', '#00f': 'definition', '#30a': 'local',
+  '#085': 'type', '#167': 'class', '#256': 'macro', '#00c': 'property',
+  '#940': 'comment', '#f00': 'invalid'
+}
+const syntaxStyle = HighlightStyle.define(defaultHighlightStyle.specs.map(spec => (
+  syntaxColors[spec.color]
+    ? { ...spec, color: `var(--theme-syntax-${syntaxColors[spec.color]}, ${spec.color})` }
+    : spec
+)))
 
 const theme = EditorView.theme({
   '&': { height: '100%', backgroundColor: '#fff', color: '#1d2939' },
@@ -200,7 +214,7 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
       lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), dropCursor(),
       rectangularSelection(), crosshairCursor(), history(), bracketMatching(), closeBrackets(),
       highlightSelectionMatches(), search({ top: true, createPanel: view => new PaperSearchPanel(view) }),
-      autocompletion(), latex(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      autocompletion(), latex(), syntaxHighlighting(syntaxStyle, { fallback: true }),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
       EditorView.lineWrapping,
       EditorView.updateListener.of(update => {

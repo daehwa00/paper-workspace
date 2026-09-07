@@ -84,6 +84,43 @@ def test_runtime_contains_only_manifest_listed_project_files(tmp_path: Path) -> 
         ).hexdigest()
 
 
+def test_runtime_upgrade_replaces_an_old_fingerprint_missing_default_alias(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    (projects / "index.json").parent.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+    runtime.sync_runtime(default, projects, output)
+
+    # Releases before default aliases existed hashed only regular files.  Model
+    # that persisted fingerprint, then remove the newly required alias from the
+    # old runtime volume before running the upgraded synchronizer.
+    legacy_digest = hashlib.sha256()
+    paths = sorted([
+        *(output / "project").rglob("*"),
+        *(output / "projects").rglob("*"),
+    ])
+    for path in paths:
+        if path.is_file():
+            legacy_digest.update(path.relative_to(output).as_posix().encode())
+            with path.open("rb") as handle:
+                while chunk := handle.read(64 * 1024):
+                    legacy_digest.update(chunk)
+    (output / ".fingerprint").write_text(f"{legacy_digest.hexdigest()}\n", encoding="utf-8")
+    (output / "projects/default-paper").unlink()
+
+    runtime.sync_runtime(default, projects, output)
+
+    alias = output / "projects/default-paper"
+    assert alias.is_symlink()
+    assert alias.readlink() == Path("../project")
+
+
 def test_missing_declared_file_does_not_freeze_other_runtime_updates(tmp_path: Path) -> None:
     runtime = load_runtime_module()
     default = tmp_path / "default"

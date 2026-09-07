@@ -14,6 +14,26 @@
   --theme-shadow:#10182814;
 }
 
+/* Shared profile and appearance dialogs keep every choice within the viewport. */
+.name-dialog .color-options{flex-wrap:wrap;gap:4px}
+.name-dialog .color-option{flex:0 0 36px;width:36px;height:36px}
+.name-dialog,.action-dialog,.theme-dialog{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+.name-dialog[open],.action-dialog[open],.theme-dialog[open]{animation:dialog-enter 160ms cubic-bezier(.2,.8,.2,1)}
+@keyframes dialog-enter{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.name-dialog input[type="text"]:focus-visible,.name-dialog #name-input:focus-visible{border-color:#4f7cff;box-shadow:0 0 0 3px #4f7cff26}
+.name-dialog .color-option input:focus-visible+.color-swatch{outline:3px solid #84adff;outline-offset:3px}
+.dialog-actions button{min-height:36px}
+@media(max-width:767px){
+  .hub-toolbar .theme-trigger,.mobile-utility-items .theme-trigger{width:44px;height:44px}
+  .name-dialog .color-option{flex-basis:44px;width:44px;height:44px}
+  .name-dialog[open] form,.action-dialog form{padding:20px}
+  .dialog-actions button{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+  .name-dialog[open],.action-dialog[open],.theme-dialog[open]{animation:none!important}
+  .color-option:hover .color-swatch{transform:none}
+}
+
 html[data-color-scheme="dark"]{
   --theme-bg:#0b1220;
   --theme-surface:#111a2b;
@@ -28,6 +48,20 @@ html[data-color-scheme="dark"]{
   --theme-accent-soft:#172b52;
   --theme-accent-border:#365f9f;
   --theme-shadow:#0000004d;
+  --theme-syntax-meta:var(--theme-text-muted);
+  --theme-syntax-keyword:#c4a7ff;
+  --theme-syntax-atom:#9bc0ff;
+  --theme-syntax-literal:#86d9b4;
+  --theme-syntax-string:#f2aaa2;
+  --theme-syntax-escape:#f4c27f;
+  --theme-syntax-definition:#9bc0ff;
+  --theme-syntax-local:#c4a7ff;
+  --theme-syntax-type:#86d9b4;
+  --theme-syntax-class:#7dd3fc;
+  --theme-syntax-macro:#7dd3fc;
+  --theme-syntax-property:#9bc0ff;
+  --theme-syntax-comment:var(--theme-text-muted);
+  --theme-syntax-invalid:#ffaaa5;
 }
 
 .theme-trigger{
@@ -164,6 +198,8 @@ html[data-color-scheme="dark"] .editor-view .cm-content{background:var(--theme-s
 html[data-color-scheme="dark"] .editor-view .cm-gutters{background:var(--theme-surface-subtle);color:var(--theme-text-faint);border-color:var(--theme-border)}
 html[data-color-scheme="dark"] .editor-view .cm-activeLine,
 html[data-color-scheme="dark"] .editor-view .cm-activeLineGutter{background:#172b527a}
+html[data-color-scheme="dark"] .editor-view .cm-tooltip{background:var(--theme-surface-raised);color:var(--theme-text);border-color:var(--theme-border)}
+html[data-color-scheme="dark"] .editor-view .cm-tooltip-autocomplete>ul>[aria-selected="true"]{background:var(--theme-accent-soft);color:var(--theme-text-strong)}
 html[data-color-scheme="dark"] .file-search{border-color:var(--theme-border);background:var(--theme-surface-subtle);color:var(--theme-text-faint)}
 html[data-color-scheme="dark"] .file-search:focus-within{border-color:#365f9f;background:var(--theme-surface-raised)}
 html[data-color-scheme="dark"] .file-search input{color:var(--theme-text)}
@@ -214,6 +250,9 @@ html[data-color-scheme="dark"] .side-heading .sidebar-toggle:hover,
 html[data-color-scheme="dark"] .side-heading .sidebar-toggle:focus-visible,
 html[data-color-scheme="dark"] .assistant-header-actions .layout-reset:hover,
 html[data-color-scheme="dark"] .assistant-header-actions .assistant-toggle:hover{border-color:transparent!important;background:var(--theme-surface-raised)!important;color:#a9c7ff!important}
+html[data-color-scheme="dark"] .shell.sidebar-collapsed .sidebar-toggle{color:#9bc0ff!important}
+html[data-color-scheme="dark"] .model-settings{border-color:var(--theme-border-soft)}
+html[data-color-scheme="dark"] .preview-panel .preview-header{box-shadow:0 1px 0 var(--theme-border-soft),0 5px 12px #0002}
 html[data-color-scheme="dark"] .assistant-header-actions .beta{border-color:transparent;background:#172b52;color:#8ab4ff}
 html[data-color-scheme="dark"] .assistant-tabs .tab{color:var(--theme-text-muted);border-color:transparent}
 html[data-color-scheme="dark"] .assistant-tabs .tab:hover{background:transparent;color:var(--theme-text-strong)}

@@ -99,6 +99,17 @@ test('recent activity uses server timestamps and shows the latest editor', async
   await expect(page.locator('.project-activity').first()).toContainText('KDH 수정')
 })
 
+test('an available but empty activity response remains distinct from an activity lookup failure', async ({ page }) => {
+  await page.route('**/projects/index.json', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ projects: [{ slug: 'available', display_name: 'Available paper' }] })
+  }))
+  await page.route('**/api/backups/activity', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ projects: [] }) }))
+
+  await page.goto('/hub.html?lang=en')
+  await expect(page.locator('#project-list')).toHaveAttribute('data-activity-status', 'available')
+  await expect(page.locator('.project-activity')).toHaveText('No edit history yet')
+})
+
 test('a supported browser locale is used when no explicit preference exists', async ({ browser }) => {
   const context = await namedContext(browser, { locale: 'ko-KR' })
   const page = await context.newPage()
