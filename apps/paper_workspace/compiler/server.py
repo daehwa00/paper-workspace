@@ -486,6 +486,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("project exceeds 48 MB")
             raw_payload = self.rfile.read(size)
             payload = json.loads(raw_payload)
+            if not isinstance(payload, dict):
+                raise ValueError("project request must be an object")
             client_id = self.headers.get("X-Compile-Client", "")
             if client_id and (len(client_id) > 80 or not re.fullmatch(r"[A-Za-z0-9_-]+", client_id)):
                 raise ValueError("invalid compile client")
@@ -615,9 +617,11 @@ class Handler(BaseHTTPRequestHandler):
     def _synctex(self) -> None:
         try:
             size = int(self.headers.get("Content-Length", "0"))
-            if size > MAX_REQUEST_BYTES:
+            if size < 1 or size > MAX_REQUEST_BYTES:
                 raise ValueError("SyncTeX request is too large")
             payload = json.loads(self.rfile.read(size))
+            if not isinstance(payload, dict):
+                raise ValueError("SyncTeX request must be an object")
             page = int(payload["page"])
             x = float(payload["x"])
             y = float(payload["y"])
@@ -670,6 +674,8 @@ class Handler(BaseHTTPRequestHandler):
             if size < 1 or size > MAX_REQUEST_BYTES:
                 raise ValueError("SyncTeX request is too large")
             payload = json.loads(self.rfile.read(size))
+            if not isinstance(payload, dict):
+                raise ValueError("SyncTeX request must be an object")
             line = int(payload["line"])
             column = int(payload.get("column", 0))
             source = safe_project_path(payload["file"], SOURCE_EXTENSIONS)
@@ -703,6 +709,8 @@ class Handler(BaseHTTPRequestHandler):
             if size < 1 or size > MAX_REQUEST_BYTES:
                 raise ValueError("project exceeds 48 MB")
             payload = json.loads(self.rfile.read(size))
+            if not isinstance(payload, dict):
+                raise ValueError("project request must be an object")
             files = payload.get("files", {})
             assets = payload.get("assets", {})
             if payload.get("remote_assets"):

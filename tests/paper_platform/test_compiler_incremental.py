@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 import gzip
+import http.client
+import json
 import os
 import subprocess
 import sys
+import tempfile
 import threading
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -258,6 +262,33 @@ def test_synctex_validation_rejects_invalid_and_expanding_payloads(monkeypatch: 
     assert compiler.validated_synctex(gzip.compress(b"valid"))
 
 
+def test_compiler_http_endpoints_reject_non_object_or_negative_length_requests() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), compiler.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        for path in ("/compile", "/synctex", "/synctex-view", "/package"):
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+            connection.request("POST", path, body=b"[]", headers={"Content-Type": "application/json"})
+            response = connection.getresponse()
+            assert response.status == 422
+            assert "must be an object" in json.loads(response.read())["error"]
+            connection.close()
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+        connection.putrequest("POST", "/synctex")
+        connection.putheader("Content-Length", "-1")
+        connection.endheaders()
+        response = connection.getresponse()
+        assert response.status == 422
+        assert json.loads(response.read())["error"] == "SyncTeX request is too large"
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_compile_normalizes_only_project_synctex_sources(tmp_path: Path) -> None:
     nested = tmp_path / "sections" / "method.tex"
     nested.parent.mkdir()
@@ -298,6 +329,12 @@ def test_reverse_synctex_keeps_nested_project_paths_and_rejects_escape(tmp_path:
         compiler.synctex_source_path(str(tmp_path.parent / "secret.tex"), tmp_path)
     with pytest.raises(ValueError, match="outside"):
         compiler.synctex_source_path("/tmp/uploaded/main.tex", tmp_path)
+    with pytest.raises(ValueError, match="outside"):
+        compiler.synctex_source_path("/etc/passwd.tex", tmp_path)
+    with pytest.raises(ValueError, match="outside"):
+        compiler.synctex_source_path(
+            str(tmp_path.parent / "untrusted-build" / "sections" / "method.tex"), tmp_path,
+        )
     with pytest.raises(ValueError, match="invalid project path"):
         compiler.synctex_source_path("/tmp/tmpabcd1234/../secret.tex", tmp_path)
 

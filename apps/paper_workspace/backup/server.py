@@ -327,24 +327,36 @@ class BackupStore:
                     deduplicated = True
                 else:
                     snapshot_id = cursor.lastrowid
-                    connection.execute(
-                        """
-                        DELETE FROM snapshots
-                        WHERE project_id = ? AND id NOT IN (
-                            SELECT id FROM snapshots WHERE project_id = ?
-                            ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
-                        )
-                        """,
-                        (project, project, self.retention),
-                    )
                     row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
                     assert row is not None
                     metadata = self._metadata(row)
                     deduplicated = False
-            self._export(project, metadata, encoded)
+                retained_ids = {
+                    row["id"]
+                    for row in connection.execute(
+                        """
+                        SELECT id FROM snapshots WHERE project_id = ?
+                        ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
+                        """,
+                        (project, self.retention),
+                    )
+                }
+                connection.execute(
+                    "DELETE FROM snapshots WHERE project_id = ? AND id NOT IN ("
+                    "SELECT id FROM snapshots WHERE project_id = ? "
+                    "ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?)",
+                    (project, project, self.retention),
+                )
+            self._export(project, metadata, encoded, retained_ids)
         return metadata, deduplicated
 
-    def _export(self, project: str, metadata: dict[str, Any], encoded: bytes) -> None:
+    def _export(
+        self,
+        project: str,
+        metadata: dict[str, Any],
+        encoded: bytes,
+        retained_ids: set[int],
+    ) -> None:
         if not self.export_dir:
             return
         with self._lock:
@@ -360,10 +372,10 @@ class BackupStore:
                 retained = connection.execute(
                     """
                     SELECT id, content_hash FROM snapshots
-                    WHERE project_id = ?
+                    WHERE project_id = ? AND id IN ({})
                     ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
-                    """,
-                    (project, self.retention),
+                    """.format(",".join("?" for _ in retained_ids)),
+                    (project, *sorted(retained_ids), self.retention),
                 ).fetchall()
             retained_names = {
                 f"{row['id']}-{row['content_hash'][:12]}.json.zlib" for row in retained

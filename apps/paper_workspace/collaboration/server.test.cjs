@@ -12,7 +12,7 @@ const Y = require('yjs')
 const { WebsocketProvider } = require('y-websocket')
 const encoding = require('lib0/encoding')
 const syncProtocol = require('y-protocols/sync')
-const { applyRuntimeSources, createCollaborationServer, loadSourceHistories, messageDocumentGrowthBytes, prepareCollaborationDocument, projectSlugAllowed, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
+const { applyRuntimeSources, createCollaborationServer, loadSourceHistories, messageDocumentGrowthBytes, prepareCollaborationDocument, projectSlugAllowed, readRuntimeProject, requestRoom, roomHost, runtimeSyncRoom, sourceFingerprint, writeBackManagedSources } = require('./server.cjs')
 const { mergeTextHistory, mergeTextVersions } = require('./source-merge.cjs')
 const { docs, getYDoc } = require('y-websocket/bin/utils')
 
@@ -380,6 +380,61 @@ test('managed source writeback follows web edits but refuses to overwrite an ext
     document.destroy()
   } finally {
     fs.rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('manifest text extensions marked as assets remain synchronized sources', () => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-text-asset-source-'))
+  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-text-asset-runtime-'))
+  try {
+    const mainSource = '\\documentclass{article}\\n'
+    const claimsSource = '\\newcommand{\\Claim}{initial}\\n'
+    const files = [
+      { path: 'main.tex', managed: true },
+      { path: 'generated/claims.tex', type: 'asset', managed: true }
+    ]
+    fs.mkdirSync(path.join(sourceRoot, 'generated'), { recursive: true })
+    fs.writeFileSync(path.join(sourceRoot, 'main.tex'), mainSource)
+    fs.writeFileSync(path.join(sourceRoot, 'generated/claims.tex'), claimsSource)
+    fs.writeFileSync(path.join(sourceRoot, 'project.json'), JSON.stringify({ entrypoint: 'main.tex', files }))
+
+    const runtimeProject = path.join(runtimeRoot, 'projects', 'example-paper')
+    fs.mkdirSync(path.join(runtimeProject, 'generated'), { recursive: true })
+    fs.writeFileSync(path.join(runtimeProject, 'main.tex'), mainSource)
+    fs.writeFileSync(path.join(runtimeProject, 'generated/claims.tex'), claimsSource)
+    const revision = 'b'.repeat(64)
+    fs.writeFileSync(path.join(runtimeProject, 'project.json'), JSON.stringify({
+      entrypoint: 'main.tex',
+      files,
+      runtime_file_revisions: {
+        'main.tex': crypto.createHash('sha256').update(mainSource).digest('hex'),
+        'generated/claims.tex': crypto.createHash('sha256').update(claimsSource).digest('hex')
+      },
+      runtime_revision: revision,
+      version: '1'
+    }))
+
+    const runtime = readRuntimeProject(runtimeRoot, 'example-paper', revision, 1024 * 1024)
+    assert.deepEqual(runtime.sources, {
+      'paper/main.tex': mainSource,
+      'paper/generated/claims.tex': claimsSource
+    })
+
+    const document = new Y.Doc()
+    const claims = new Y.Text()
+    claims.insert(0, claimsSource)
+    document.getMap('files').set('paper/generated/claims.tex', claims)
+    const expectedDigests = new Map()
+    writeBackManagedSources(document, sourceRoot, expectedDigests)
+    claims.insert(claims.length, '\\newcommand{\\ClaimStatus}{updated}\\n')
+
+    const result = writeBackManagedSources(document, sourceRoot, expectedDigests)
+    assert.deepEqual(result, { conflictPaths: [], writtenPaths: ['paper/generated/claims.tex'] })
+    assert.equal(fs.readFileSync(path.join(sourceRoot, 'generated/claims.tex'), 'utf8'), claims.toString())
+    document.destroy()
+  } finally {
+    fs.rmSync(sourceRoot, { force: true, recursive: true })
+    fs.rmSync(runtimeRoot, { force: true, recursive: true })
   }
 })
 

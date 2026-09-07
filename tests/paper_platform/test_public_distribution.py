@@ -1,5 +1,7 @@
 import json
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -141,6 +143,77 @@ def test_public_export_installs_a_pinned_history_secret_scan(tmp_path: Path) -> 
     assert "npm run test:e2e:ci" in platform
     assert "npm audit" in platform
     assert "docker compose -f infra/paper-workspace/compose.yaml config --quiet" in platform
+
+
+def test_public_mode_normalization_preserves_executable_intent(tmp_path: Path) -> None:
+    module_path = ROOT / "scripts/paper_platform/export_public_workspace.py"
+    spec = importlib.util.spec_from_file_location("paper_public_mode_normalizer", module_path)
+    assert spec and spec.loader
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    regular = nested / "README.md"
+    executable = nested / "tool"
+    regular.write_text("documentation")
+    executable.write_text("#!/bin/sh\n")
+    regular.chmod(0o600)
+    executable.chmod(0o700)
+
+    exporter.normalize_public_tree(tmp_path)
+
+    assert tmp_path.stat().st_mode & 0o777 == 0o755
+    assert nested.stat().st_mode & 0o777 == 0o755
+    assert regular.stat().st_mode & 0o777 == 0o644
+    assert executable.stat().st_mode & 0o777 == 0o755
+
+
+def test_public_root_file_export_rejects_symlinks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module_path = ROOT / "scripts/paper_platform/export_public_workspace.py"
+    spec = importlib.util.spec_from_file_location("paper_public_root_boundary", module_path)
+    assert spec and spec.loader
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+    source = tmp_path / "source.txt"
+    source.write_text("private source")
+    link = tmp_path / "public.txt"
+    link.symlink_to(source)
+    monkeypatch.setattr(exporter, "ROOT", tmp_path)
+
+    with pytest.raises(RuntimeError, match="Refusing to export symlink"):
+        exporter.root_source_path(Path("public.txt"), Path("fallback.txt"))
+
+
+def test_public_export_rejects_a_symlink_destination(tmp_path: Path) -> None:
+    module_path = ROOT / "scripts/paper_platform/export_public_workspace.py"
+    spec = importlib.util.spec_from_file_location("paper_public_destination_boundary", module_path)
+    assert spec and spec.loader
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+    target = tmp_path / "target"
+    target.mkdir()
+    destination = tmp_path / "public"
+    destination.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(RuntimeError, match="Destination must not be a symlink"):
+        exporter.export(destination)
+
+
+def test_public_export_cli_preserves_the_symlink_destination_guard(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    destination = tmp_path / "public"
+    destination.symlink_to(target, target_is_directory=True)
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/paper_platform/export_public_workspace.py"), str(destination)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Destination must not be a symlink" in result.stderr
+    assert not list(target.iterdir())
 
 
 def test_public_export_scans_large_files_and_chunk_boundaries(tmp_path: Path) -> None:

@@ -289,6 +289,93 @@ def test_parallel_snapshot_exports_follow_retained_database_rows(tmp_path: Path)
     assert exported == expected
 
 
+def test_external_export_retention_follows_snapshot_ids_when_timestamps_tie(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backup = load_backup_module()
+    export_dir = tmp_path / "exports"
+    original_replace = backup.os.replace
+    original_glob = backup.Path.glob
+
+    def replace_with_coarse_timestamp(source: object, destination: object) -> None:
+        original_replace(source, destination)
+        target = Path(destination)
+        if target.name.endswith(".json.zlib"):
+            backup.os.utime(target, (1, 1))
+
+    def lexical_glob(path: Path, pattern: str):
+        return iter(sorted(original_glob(path, pattern)))
+
+    monkeypatch.setattr(backup.os, "replace", replace_with_coarse_timestamp)
+    monkeypatch.setattr(backup.Path, "glob", lexical_glob)
+    store = backup.BackupStore(tmp_path / "backups.sqlite3", retention=2, export_dir=export_dir)
+    first, _ = store.create("paper-one", snapshot_payload("first"), None, "auto")
+    time.sleep(0.002)
+    store.create("paper-one", snapshot_payload("second"), None, "auto")
+    time.sleep(0.002)
+    store.create("paper-one", snapshot_payload("first"), None, "checkpoint")
+    time.sleep(0.002)
+    latest, _ = store.create("paper-one", snapshot_payload("latest"), None, "auto")
+
+    retained_ids = {item["id"] for item in store.list("paper-one")}
+    exported_ids = {
+        int(path.name.split("-", 1)[0])
+        for path in (export_dir / "paper-one").glob("*.json.zlib")
+    }
+
+    assert retained_ids == {first["id"], latest["id"]}
+    assert exported_ids == retained_ids
+
+
+def test_export_retention_cannot_use_a_stale_concurrent_snapshot_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backup = load_backup_module()
+    export_dir = tmp_path / "exports"
+    store = backup.BackupStore(tmp_path / "backups.sqlite3", retention=1, export_dir=export_dir)
+    store.create("paper-one", snapshot_payload("first"), None, "auto")
+    original_export = store._export
+    stale_export_started = threading.Event()
+    release_stale_export = threading.Event()
+    first_export = True
+
+    def delay_first_export(project, metadata, encoded, retained_ids):
+        nonlocal first_export
+        if first_export:
+            first_export = False
+            stale_export_started.set()
+            assert release_stale_export.wait(timeout=2)
+        original_export(project, metadata, encoded, retained_ids)
+
+    monkeypatch.setattr(store, "_export", delay_first_export)
+    stale_errors: list[BaseException] = []
+
+    def create_stale_snapshot() -> None:
+        try:
+            store.create("paper-one", snapshot_payload("second"), None, "auto")
+        except BaseException as error:  # pragma: no cover - surfaced below
+            stale_errors.append(error)
+
+    stale = threading.Thread(target=create_stale_snapshot)
+    stale.start()
+    assert stale_export_started.wait(timeout=2)
+    timer = threading.Timer(0.2, release_stale_export.set)
+    timer.start()
+    try:
+        latest, _ = store.create("paper-one", snapshot_payload("latest"), None, "auto")
+    finally:
+        release_stale_export.set()
+        timer.cancel()
+        stale.join(timeout=2)
+
+    assert not stale_errors
+    assert not stale.is_alive()
+    exported_ids = {
+        int(path.name.split("-", 1)[0])
+        for path in (export_dir / "paper-one").glob("*.json.zlib")
+    }
+    assert {item["id"] for item in store.list("paper-one")} == {latest["id"]}
+    assert exported_ids == {latest["id"]}
 def test_asset_store_round_trip_quota_and_paths(tmp_path: Path) -> None:
     backup = load_backup_module()
     store = backup.AssetStore(tmp_path / "assets", max_file_bytes=20, max_project_bytes=24)

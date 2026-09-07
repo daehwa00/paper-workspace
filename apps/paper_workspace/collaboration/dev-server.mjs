@@ -9,9 +9,13 @@ const repository = resolve(import.meta.dirname, '../../..')
 const staticRoot = join(repository, 'apps/paper_workspace/static')
 const projectRoot = join(repository, 'examples/paper-workspace-project')
 const port = Number(process.env.PAPER_E2E_PORT || 18080)
+// A custom HTTP port needs its own collaboration server as well. Keep the
+// historical port for the default fixture, while deriving an adjacent port for
+// isolated parallel runs without requiring a second environment variable.
+const collaborationPort = Number(process.env.PAPER_E2E_COLLAB_PORT || (process.env.PAPER_E2E_PORT ? port + 1 : 18765))
 const mime = { '.css': 'text/css', '.gif': 'image/gif', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.pdf': 'application/pdf', '.png': 'image/png', '.svg': 'image/svg+xml', '.tex': 'text/plain' }
 
-const collaborationEnvironment = { ...process.env, HOST: '127.0.0.1', PORT: '18765' }
+const collaborationEnvironment = { ...process.env, HOST: '127.0.0.1', PORT: String(collaborationPort) }
 delete collaborationEnvironment.YPERSISTENCE
 const collaboration = spawn(process.execPath, ['node_modules/y-websocket/bin/server.cjs'], {
   cwd: import.meta.dirname,
@@ -69,7 +73,7 @@ const server = createServer((request, response) => {
 })
 
 server.on('upgrade', (request, socket, head) => {
-  const upstream = connect(18765, '127.0.0.1', () => {
+  const upstream = connect(collaborationPort, '127.0.0.1', () => {
     const headers = Object.entries(request.headers).map(([name, value]) => `${name}: ${value}`).join('\r\n')
     upstream.write(`${request.method} ${request.url.replace(/^\/collab/, '') || '/'} HTTP/${request.httpVersion}\r\n${headers}\r\n\r\n`)
     if (head.length) upstream.write(head)

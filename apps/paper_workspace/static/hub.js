@@ -7,6 +7,7 @@ const avatar = document.getElementById('hub-collab-name')
 const nameDialog = document.getElementById('hub-name-dialog')
 const nameInput = document.getElementById('hub-name-input')
 const i18n = window.PaperI18n
+const preferences = window.PaperPreferenceStorage
 const slugPattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 const thumbnailPattern = /^\/projects\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\/thumbnail\.(?:png|jpe?g|webp)$/i
 const profileColors = ['#2457d6', '#7c3aed', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777']
@@ -133,7 +134,7 @@ const explicitLanguage = (() => {
   try { return i18n.normalize(new URLSearchParams(location.search).get('lang')) } catch (_) { return null }
 })()
 i18n.setLanguage(i18n.getLanguage(), { persist: Boolean(explicitLanguage), updateUrl: false })
-sort.value = localStorage.getItem('paper-workspace:project-sort') || 'recent'
+sort.value = preferences.get('paper-workspace:project-sort') || 'recent'
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -177,11 +178,11 @@ function applyHubLanguage() {
 }
 
 function currentProfile() {
-  const userSet = localStorage.getItem('collab-name-user-set') === '1'
-  let storedName = localStorage.getItem('collab-name')
-  if (!userSet && (storedName === 'daehwa' || storedName === '나' || storedName === 'Me')) storedName = ''
+  const userSet = preferences.get('collab-name-user-set') === '1'
+  let storedName = preferences.get('collab-name')
+  if (!userSet && (storedName === 'secondary_host' || storedName === '나' || storedName === 'Me')) storedName = ''
   const name = (storedName || i18n.t('profile.defaultName')).trim() || i18n.t('profile.defaultName')
-  const storedColor = localStorage.getItem('collab-color')
+  const storedColor = preferences.get('collab-color')
   return { name, color: profileColors.includes(storedColor) ? storedColor : '#2457d6' }
 }
 
@@ -194,21 +195,21 @@ function paintAvatar() {
 }
 
 function localProjectState(project) {
+  const slug = project.slug
+  let draft = null, browserActive = 0
   try {
-    const slug = project.slug
-    const draft = JSON.parse(localStorage.getItem(`paper-workspace:${slug}`) || 'null')
-    const comments = Array.isArray(draft?.comments) ? draft.comments.length : 0
-    const tasks = Array.isArray(draft?.tasks) ? draft.tasks.filter(task => !task.done).length : 0
-    const browserActive = Number(localStorage.getItem(`paper-workspace:last-active:${slug}`)) || 0
-    const activityId = slugPattern.test(project.activity_id || '') ? project.activity_id : slug
-    const activity = projectActivity.get(activityId)
-    const serverActive = Date.parse(activity?.modified_at || '') || 0
-    const modifiedAt = serverActive || browserActive
-    const actor = activity?.actor || (browserActive ? currentProfile().name : '')
-    return { comments, tasks, modifiedAt, actor }
-  } catch (_) {
-    return { comments: 0, tasks: 0, modifiedAt: 0, actor: '' }
-  }
+    browserActive = Number(preferences.get(`paper-workspace:last-active:${slug}`)) || 0
+    draft = JSON.parse(preferences.get(`paper-workspace:${slug}`) || 'null')
+  } catch (_) {}
+  const count = (value, fallback) => Number.isSafeInteger(value) && value >= 0 ? value : fallback
+  const comments = count(draft?.commentCount, Array.isArray(draft?.comments) ? draft.comments.length : 0)
+  const tasks = count(draft?.openTaskCount, Array.isArray(draft?.tasks) ? draft.tasks.filter(task => task && !task.done).length : 0)
+  const activityId = slugPattern.test(project.activity_id || '') ? project.activity_id : slug
+  const activity = projectActivity.get(activityId)
+  const serverActive = Date.parse(activity?.modified_at || '') || 0
+  const modifiedAt = serverActive || browserActive
+  const actor = activity?.actor || (browserActive ? currentProfile().name : '')
+  return { comments, tasks, modifiedAt, actor }
 }
 
 function formatActivityTime(value) {
@@ -265,9 +266,9 @@ nameDialog.addEventListener('close', () => {
   const name = nameInput.value.trim()
   const color = document.querySelector('input[name="hub-profile-color"]:checked')?.value
   if (!name) return
-  localStorage.setItem('collab-name', name.slice(0, 32))
-  localStorage.setItem('collab-name-user-set','1')
-  if (profileColors.includes(color)) localStorage.setItem('collab-color', color)
+  preferences.set('collab-name', name.slice(0, 32))
+  preferences.set('collab-name-user-set','1')
+  if (profileColors.includes(color)) preferences.set('collab-color', color)
   paintAvatar()
 })
 window.addEventListener('storage', event => {
@@ -328,7 +329,7 @@ async function loadProjects() {
     if (!response.ok) throw new Error(i18n.t('hub.loadError'))
     const payload = await response.json()
     if (activityResponse?.ok) {
-      const activityPayload = await activityResponse.json()
+      const activityPayload = await activityResponse.json().catch(() => null)
       projectActivity = new Map((Array.isArray(activityPayload?.projects) ? activityPayload.projects : []).filter(item => slugPattern.test(item?.project_id || '')).map(item => [item.project_id, item]))
     }
     projects = Array.isArray(payload) ? payload : (Array.isArray(payload.projects) ? payload.projects : [])
@@ -346,7 +347,7 @@ i18n.onChange(() => {
 })
 search.addEventListener('input', renderProjects)
 sort.addEventListener('change', () => {
-  localStorage.setItem('paper-workspace:project-sort', sort.value)
+  preferences.set('paper-workspace:project-sort', sort.value)
   renderProjects()
 })
 

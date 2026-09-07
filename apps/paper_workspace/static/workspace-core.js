@@ -17,7 +17,7 @@
     try {
       return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback))
     } catch {
-      localStorage.removeItem(key)
+      try { localStorage.removeItem(key) } catch {}
       return fallback
     }
   }
@@ -95,6 +95,8 @@
 
   const compileTextExtensions = new Set(['tex', 'bib', 'sty', 'bst', 'cls', 'csv', 'txt', 'json', 'dat'])
   const compileAssetExtensions = new Set(['png', 'jpg', 'jpeg', 'pdf', 'eps'])
+  const isCompileAssetPath = path => compileAssetExtensions.has(extensionOf(path))
+  const isCompileInputPath = path => compileTextExtensions.has(extensionOf(path)) || isCompileAssetPath(path)
   async function parallelLimit(items, limit, worker) {
     let index = 0
     const run = async () => { while (index < items.length) await worker(items[index++]) }
@@ -112,7 +114,7 @@
     }
     files['main.tex'] = workspaceFiles['paper/main.tex']
     const assets = {}
-    const paths = Object.keys(workspaceAssets).filter(path => path.startsWith('paper/') && compileAssetExtensions.has(extensionOf(path)))
+    const paths = Object.keys(workspaceAssets).filter(path => path.startsWith('paper/') && isCompileAssetPath(path))
     await parallelLimit(paths, 4, ensureAssetLoaded)
     for (const path of paths) {
       const data = workspaceAssets[path].data
@@ -173,7 +175,18 @@
   function validateBackupSnapshot(snapshot) {
     const files = snapshot?.files
     if (record(files) !== files || !Object.keys(files).length || !Object.entries(files).every(([path, content]) => validProjectPath(path) && typeof content === 'string')) throw new Error('백업의 원고 파일 형식이 올바르지 않습니다.')
-    return {...snapshot, title: typeof snapshot.title === 'string' ? snapshot.title.slice(0, 160) : '', files: {...files}, comments: Array.isArray(snapshot.comments) ? snapshot.comments : [], tasks: Array.isArray(snapshot.tasks) ? snapshot.tasks : []}
+    const comments = Array.isArray(snapshot.comments) ? snapshot.comments : []
+    const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : []
+    const validActor = item => item.actor === undefined || typeof item.actor === 'string'
+    const validModernComment = item => validProjectPath(item.file) && typeof item.anchor === 'string' && typeof item.body === 'string' && Number.isSafeInteger(item.start) && item.start >= 0 && Number.isSafeInteger(item.end) && item.end >= item.start
+    // Versions saved before range anchors used `text` and a revision. Keep
+    // those comments intact so restoring an old snapshot never drops review
+    // metadata, while still rejecting malformed records.
+    const validLegacyComment = item => ['string', 'number'].includes(typeof item.id) && validProjectPath(item.file) && typeof item.text === 'string' && Number.isSafeInteger(item.revision)
+    const validComment = item => record(item) === item && validActor(item) && (validModernComment(item) || validLegacyComment(item))
+    const validTask = item => record(item) === item && ['string', 'number'].includes(typeof item.id) && typeof item.title === 'string' && (!item.file || validProjectPath(item.file)) && validActor(item)
+    if (!comments.every(validComment) || !tasks.every(validTask)) throw new Error('백업의 댓글 또는 작업 형식이 올바르지 않습니다.')
+    return {...snapshot, title: typeof snapshot.title === 'string' ? snapshot.title.slice(0, 160) : '', files: {...files}, comments, tasks}
   }
 
   function compareBackupFiles(previous, current) {
@@ -184,6 +197,7 @@
   window.PaperWorkspaceCore = Object.freeze({
     backupItems, backupProjectId, baseName, buildCompilePayload, cleanSegment, compactSourceSnapshot,
     compareBackupFiles, compileAssetExtensions, compileTextExtensions, compilePayloadFingerprint, constrain, extensionOf, extractBackupSnapshot,
+    isCompileAssetPath, isCompileInputPath,
     manifestItemIsAsset, normalizeManifest, normalizeState, parentPath, parseLatexDiagnostics,
     projectFileUrl, runtimeFileRevision, serverManagedManifestItems, sourceFingerprint,
     sourceSnapshotMatches, storedJson, validateBackupSnapshot, validProjectPath

@@ -66,6 +66,7 @@
     '패키지 생성 실패': 'Package creation failed', '컴파일 실패': 'Compile failed', '검사 탭에서 오류 위치를 확인하세요': 'Open Checks to inspect the error location.',
     'PDF를 만들지 못했습니다': 'Could not build the PDF', '마지막 정상 PDF는 그대로 유지됩니다.': 'The last successful PDF is preserved.', '아직 표시할 정상 PDF가 없습니다.': 'No successful PDF is available yet.', '아직 표시할 정상 PDF가 없습니다. 검사 탭의 오류를 누르면 해당 줄로 이동합니다.': 'No successful PDF is available yet. Click an error in Checks to navigate to its source line.',
     'PDF 컴파일 오류': 'PDF compile error', 'PDF를 만들지 못했습니다. 검사 탭에서 오류 위치를 확인하세요.': 'Could not build the PDF. Open Checks to inspect the error location.', '컴파일 오류 확인': 'View compile error', '기존 브라우저 초안을 drafts에 보존했습니다.': 'The previous browser draft was preserved in drafts.', '서버 원본 변경 감지': 'Server source change detected',
+    'PDF 위치 연결 오류': 'PDF navigation error', '소스 위치 연결 오류': 'Source navigation error',
     '선택한 원문이 변경되었습니다. 문장을 다시 선택해 주세요.': 'The selected source changed. Select the sentence again.',
     'Codex 요청 이후 원문이 변경되어 자동 적용하지 않았습니다. 다시 선택해 주세요.': 'The source changed after the Codex request, so the revision was not applied. Select it again.',
     '유효한 BibTeX 항목을 찾지 못했습니다.': 'No valid BibTeX entry was found.', '모든 citation key가 이미 존재합니다.': 'All citation keys already exist.',
@@ -84,6 +85,8 @@
     'workspace.compile.previousError': '{file} error · previous PDF',
     'workspace.compile.persisted': '{file} current · saved PDF',
     'workspace.compile.lastSuccessful': '{file} · last successful PDF',
+    'workspace.editor.oneWord': '{count} word',
+    'workspace.editor.words': '{count} words',
     'workspace.tasks.empty': 'No tasks yet.'
   })
   i18n.register('ko', {
@@ -95,6 +98,8 @@
     'workspace.compile.previousError': '{file} 오류 · 이전 PDF',
     'workspace.compile.persisted': '{file} 최신 · 저장된 PDF',
     'workspace.compile.lastSuccessful': '{file} · 마지막 정상 PDF',
+    'workspace.editor.oneWord': '{count}단어',
+    'workspace.editor.words': '{count}단어',
     'workspace.tasks.empty': '등록된 작업이 없습니다.'
   })
 

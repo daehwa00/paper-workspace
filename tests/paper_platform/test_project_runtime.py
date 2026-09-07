@@ -68,6 +68,9 @@ def test_runtime_contains_only_manifest_listed_project_files(tmp_path: Path) -> 
     assert (output / "project/sections/method.tex").is_file()
     assert (output / "projects/index.json").is_file()
     assert (output / "projects/paper-two/main.tex").read_text() == "main paper-two"
+    default_alias = output / "projects/default-paper"
+    assert default_alias.is_symlink()
+    assert (default_alias / "main.tex").read_text() == "main default-paper"
     assert not (output / "project/private-draft.tex").exists()
     assert not (output / "project/.secret").exists()
     assert not (output / "projects/paper-two/private-draft.tex").exists()
@@ -111,6 +114,116 @@ def test_missing_declared_file_does_not_freeze_other_runtime_updates(tmp_path: P
     assert manifest["runtime_warnings"] == [
         "manifest file is missing: sections/method.tex"
     ]
+
+
+def test_missing_preview_artifacts_do_not_freeze_runtime_updates(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    (default / "build").mkdir()
+    preview_pdf = default / "build/preview.pdf"
+    preview_synctex = default / "build/preview.synctex.gz"
+    preview_pdf.write_bytes(b"%PDF-1.4\n")
+    preview_synctex.write_bytes(b"SyncTeX\n")
+    manifest_path = default / "project.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["preview_pdf"] = "build/preview.pdf"
+    manifest["preview_synctex"] = "build/preview.synctex.gz"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+    runtime.sync_runtime(default, projects, output)
+
+    preview_pdf.unlink()
+    preview_synctex.unlink()
+    (default / "main.tex").write_text("latest source", encoding="utf-8")
+    runtime.sync_runtime(default, projects, output)
+
+    runtime_manifest = json.loads((output / "project/project.json").read_text())
+    assert (output / "project/main.tex").read_text() == "latest source"
+    assert "preview_pdf" not in runtime_manifest
+    assert "preview_synctex" not in runtime_manifest
+    assert runtime_manifest["runtime_warnings"] == [
+        "manifest file is missing: build/preview.pdf",
+        "manifest file is missing: build/preview.synctex.gz",
+    ]
+
+
+def test_runtime_omits_synctex_without_its_preview_pdf(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    (default / "build").mkdir()
+    (default / "build/preview.synctex.gz").write_bytes(b"SyncTeX\n")
+    manifest_path = default / "project.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["preview_pdf"] = "build/preview.pdf"
+    manifest["preview_synctex"] = "build/preview.synctex.gz"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+
+    runtime.sync_runtime(default, projects, output)
+
+    runtime_manifest = json.loads((output / "project/project.json").read_text())
+    assert "preview_pdf" not in runtime_manifest
+    assert "preview_synctex" not in runtime_manifest
+    assert not (output / "project/build/preview.synctex.gz").exists()
+    assert runtime_manifest["runtime_warnings"] == [
+        "manifest file is missing: build/preview.pdf"
+    ]
+
+
+def test_runtime_keeps_preview_pdf_when_only_synctex_is_missing(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    (default / "build").mkdir()
+    (default / "build/preview.pdf").write_bytes(b"%PDF-1.4\n")
+    manifest_path = default / "project.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["preview_pdf"] = "build/preview.pdf"
+    manifest["preview_synctex"] = "build/preview.synctex.gz"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    projects.mkdir()
+    (projects / "index.json").write_text(
+        json.dumps({"projects": [{"slug": "default-paper", "source": "default"}]}),
+        encoding="utf-8",
+    )
+
+    runtime.sync_runtime(default, projects, output)
+
+    runtime_manifest = json.loads((output / "project/project.json").read_text())
+    assert runtime_manifest["preview_pdf"] == "build/preview.pdf"
+    assert "preview_synctex" not in runtime_manifest
+    assert (output / "project/build/preview.pdf").is_file()
+    assert runtime_manifest["runtime_warnings"] == [
+        "manifest file is missing: build/preview.synctex.gz"
+    ]
+
+
+def test_runtime_rejects_duplicate_catalog_slugs(tmp_path: Path) -> None:
+    runtime = load_runtime_module()
+    catalog = tmp_path / "index.json"
+    catalog.write_text(
+        json.dumps({"projects": [{"slug": "duplicate"}, {"slug": "duplicate"}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate slugs"):
+        runtime.catalog_projects(catalog)
 
 
 def test_runtime_auto_includes_only_referenced_files_from_opted_in_roots(

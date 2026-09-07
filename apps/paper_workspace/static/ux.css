@@ -85,11 +85,17 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .topbar{padding-top:env(safe-area-inset-top);height:calc(56px + env(safe-area-inset-top))}
   .workspace{height:calc(100dvh - 56px - env(safe-area-inset-top))}
   .focus-modes{bottom:max(8px,env(safe-area-inset-bottom));min-height:56px;padding:6px}
-  .focus-modes button{min-width:44px;min-height:44px;padding:8px 10px;font-size:11px}.focus-modes button:not(.is-active){background:transparent!important;color:#667085!important}.focus-modes button.is-active{background:#2457d6!important;color:#fff!important}
+  .focus-modes button{min-width:44px;min-height:44px;padding:8px 10px;font-size:11px}.focus-modes button:not(.is-active){background:transparent!important;color:var(--theme-text-muted,#667085)!important}.focus-modes button.is-active{background:#2457d6!important;color:#fff!important}
   .status-center-toggle,.presence .avatar,.zoom-controls button,.pdf-control,.layout-reset,.assistant-toggle,.tree-action,.sidebar-toggle{min-width:44px!important;min-height:44px!important}
   .status-center-toggle{justify-content:center;padding:8px}.status-center-toggle .collab-label{display:none}
   .presence .avatar{width:44px;height:44px}
   .panel-header{min-height:52px;height:auto}
+  #editor-panel>.panel-header{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:8px;row-gap:2px;padding-block:4px}
+  #editor-panel .panel-header-tools{display:contents}
+  #active-file{grid-column:1;grid-row:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:end}
+  #editor-panel #save-state{grid-column:1;grid-row:2;min-width:0;max-width:none;align-self:start}
+  #download-project-zip{grid-column:2;grid-row:1 / 3}
+  #editor-panel .panel-header .zoom-controls{grid-column:3;grid-row:1 / 3}
   .preview-header{padding:6px 8px!important}
   .render-controls{width:100%;min-width:0;display:flex;justify-content:flex-end;gap:5px;flex-wrap:nowrap}
   .render-controls #render-state{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

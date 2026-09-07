@@ -24,6 +24,7 @@ AUTO_TEXT_EXTENSIONS = {".bib", ".bst", ".cls", ".csv", ".dat", ".json", ".sty",
 AUTO_EXTENSIONS = set(AUTO_ASSET_EXTENSIONS) | AUTO_TEXT_EXTENSIONS
 INPUT_PATTERN = re.compile(r"\\(?:input|include)\{([^{}]+)\}")
 GRAPHICS_PATTERN = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{([^{}]+)\}")
+PREVIEW_FIELDS = ("preview_pdf", "preview_synctex")
 
 
 def safe_relative(value: object) -> Path:
@@ -168,9 +169,18 @@ def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]
             paths.add(relative)
         else:
             missing.add(relative)
-    for field in ("preview_pdf", "preview_synctex"):
+    previews: dict[str, Path] = {}
+    for field in PREVIEW_FIELDS:
         if manifest.get(field):
-            paths.add(safe_relative(manifest[field]))
+            relative = safe_relative(manifest[field])
+            if declared_source_exists(project_root, relative):
+                previews[field] = relative
+            else:
+                missing.add(relative)
+    if preview_pdf := previews.get("preview_pdf"):
+        paths.add(preview_pdf)
+        if preview_synctex := previews.get("preview_synctex"):
+            paths.add(preview_synctex)
     if len(paths) > MAX_RUNTIME_FILES:
         raise ValueError("project manifest contains too many runtime files")
     total = sum(checked_source(project_root, path).stat().st_size for path in paths)
@@ -218,6 +228,15 @@ def copy_project(project_root: Path, destination: Path) -> None:
         if safe_relative(entry.get("source") or entry.get("path")) not in missing
     ]
     runtime_manifest["files"].extend(automatic_entries)
+    preview_pdf = runtime_manifest.get("preview_pdf")
+    if preview_pdf and safe_relative(preview_pdf) in missing:
+        runtime_manifest.pop("preview_pdf")
+        preview_pdf = None
+    preview_synctex = runtime_manifest.get("preview_synctex")
+    if not preview_pdf or (
+        preview_synctex and safe_relative(preview_synctex) in missing
+    ):
+        runtime_manifest.pop("preview_synctex", None)
     if missing:
         runtime_manifest["runtime_warnings"] = [
             f"manifest file is missing: {relative.as_posix()}"
@@ -253,11 +272,15 @@ def catalog_projects(catalog_path: Path) -> tuple[dict[str, object], list[dict[s
     if not isinstance(projects, list) or len(projects) > MAX_RUNTIME_FILES:
         raise ValueError("project catalog must contain a bounded projects list")
     valid: list[dict[str, object]] = []
+    slugs: set[str] = set()
     for project in projects:
         if not isinstance(project, dict) or not isinstance(project.get("slug"), str):
             raise ValueError("invalid project catalog entry")
         if not SLUG_PATTERN.fullmatch(project["slug"]):
             raise ValueError("invalid project slug")
+        if project["slug"] in slugs:
+            raise ValueError("project catalog contains duplicate slugs")
+        slugs.add(project["slug"])
         valid.append(project)
     return catalog, valid
 
@@ -292,6 +315,10 @@ def sync_runtime(default_project: Path, projects_root: Path, output_root: Path) 
         for project in projects:
             slug = str(project["slug"])
             if project.get("source") == "default":
+                # The edge maps generic /p/<slug>/project requests to this
+                # directory. Keep default-source catalog aliases usable without
+                # duplicating the staged canonical project tree.
+                os.symlink("../project", staged_projects / slug)
                 continue
             copy_project(projects_root / slug, staged_projects / slug)
         digest = hashlib.sha256()

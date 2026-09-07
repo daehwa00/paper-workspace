@@ -122,6 +122,8 @@
         fileTreeVersion: currentSnapshot.fileTreeVersion || 1,
         fileTreePreferencesVersion: currentSnapshot.fileTreePreferencesVersion || 1,
         current, activeFolder: currentSnapshot.activeFolder || 'paper',
+        commentCount: Array.isArray(currentSnapshot.comments) ? currentSnapshot.comments.length : 0,
+        openTaskCount: Array.isArray(currentSnapshot.tasks) ? currentSnapshot.tasks.filter(task => !task.done).length : 0,
         folders: Array.isArray(currentSnapshot.folders) ? currentSnapshot.folders : [],
         collapsedFolders: Array.isArray(currentSnapshot.collapsedFolders) ? currentSnapshot.collapsedFolders : [],
         projectTitle: currentSnapshot.projectTitle || '', projectVersion: currentSnapshot.projectVersion || '',

@@ -18,6 +18,7 @@ const RUNTIME_REVISION_PATTERN = /^[0-9a-f]{64}$/
 const PERSISTENCE_READINESS = Symbol.for('paper-workspace.persistence-readiness')
 const SOURCE_HISTORY_VERSIONS = 4
 const SOURCE_HISTORY_MAX_BYTES = 16 * 1024 * 1024
+const SOURCE_EXTENSIONS = new Set(['tex', 'bib', 'sty', 'bst', 'cls'])
 
 const persistence = getPersistence()
 if (persistence && !persistence[PERSISTENCE_READINESS]) {
@@ -198,6 +199,8 @@ const rejectUpgrade = (socket, status, message) => {
 
 const validProjectPath = value => typeof value === 'string' && value.length > 0 && value.length <= 240 && !value.startsWith('/') && !value.includes('\\') && value.split('/').length <= 12 && value.split('/').every(part => part && part !== '.' && part !== '..' && !part.startsWith('.') && ![...part].some(character => character.charCodeAt(0) < 32))
 
+const manifestItemIsAsset = item => item.type === 'asset' && !SOURCE_EXTENSIONS.has(path.posix.extname(item.path).slice(1).toLowerCase())
+
 const sourceFingerprint = value => {
   let first = 2166136261
   let second = 2246822507
@@ -271,7 +274,7 @@ const readRuntimeProject = (runtimeRoot, slug, expectedRevision, maxBytes, defau
   for (const item of manifest.files) {
     if (!item || typeof item !== 'object' || !validProjectPath(item.path)) throw new Error('invalid runtime project file entry')
     if (item.locked !== undefined && typeof item.locked !== 'boolean') throw new Error('invalid runtime project lock')
-    if (item.type === 'asset' || (!item.managed && item.path !== entrypoint)) continue
+    if (manifestItemIsAsset(item) || (!item.managed && item.path !== entrypoint)) continue
     const sourcePath = item.source || item.path
     if (!validProjectPath(sourcePath)) throw new Error('invalid runtime project source path')
     if (item.path === 'drafts' || item.path.startsWith('drafts/') || sourcePath === 'drafts' || sourcePath.startsWith('drafts/')) throw new Error('drafts cannot be authoritative runtime sources')
@@ -313,7 +316,7 @@ const managedSourceEntries = (projectRoot, maxBytes) => {
   for (const item of manifest.files) {
     if (!item || typeof item !== 'object' || !validProjectPath(item.path)) throw new Error('invalid writable project file entry')
     if (item.locked !== undefined && typeof item.locked !== 'boolean') throw new Error('invalid writable project lock')
-    if (item.type === 'asset' || (!item.managed && item.path !== entrypoint)) continue
+    if (manifestItemIsAsset(item) || (!item.managed && item.path !== entrypoint)) continue
     const sourcePath = item.source || item.path
     if (!validProjectPath(sourcePath)) throw new Error('invalid writable project source path')
     if (item.path === 'drafts' || item.path.startsWith('drafts/') || sourcePath === 'drafts' || sourcePath.startsWith('drafts/')) throw new Error('drafts cannot be written to project sources')

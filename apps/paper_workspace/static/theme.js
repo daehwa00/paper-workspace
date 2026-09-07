@@ -1,5 +1,6 @@
 (()=>{
   const storageKey='paper-workspace-theme';
+  const preferences=window.PaperPreferenceStorage;
   const modes=new Set(['system','light','dark']);
   const media=window.matchMedia('(prefers-color-scheme: dark)');
   const root=document.documentElement;
@@ -8,7 +9,7 @@
   const triggers=[...document.querySelectorAll('.theme-trigger')];
 
   function selectedMode(){
-    const value=localStorage.getItem(storageKey)||'system';
+    const value=preferences.get(storageKey)||'system';
     return modes.has(value)?value:'system';
   }
 
@@ -36,7 +37,7 @@
   dialog?.addEventListener('change',event=>{
     const input=event.target.closest('input[name="workspace-theme"]');
     if(!input||!modes.has(input.value))return;
-    localStorage.setItem(storageKey,input.value);
+    preferences.set(storageKey,input.value);
     applyTheme(input.value);
   });
   media.addEventListener?.('change',()=>{

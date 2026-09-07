@@ -156,9 +156,22 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
-    for identifier in ("editor", "paper-preview", "upload", "suggestion", "refresh-pdf", "download-pdf", "download-project-zip"):
+    bootstrap = (ROOT / "apps/paper_workspace/static/bootstrap.js").read_text(encoding="utf-8")
+    for identifier in (
+        "editor",
+        "paper-preview",
+        "upload",
+        "suggestion",
+        "refresh-pdf",
+        "download-pdf",
+        "download-project-zip",
+        "download-source-package",
+    ):
         assert f'id="{identifier}"' in html
-    assert "localStorage" in app
+    assert "window.PaperPreferenceStorage" in bootstrap
+    assert "try { return localStorage.getItem(key) } catch { return null }" in bootstrap
+    assert "const preferences=window.PaperPreferenceStorage" in app
+    assert html.index('/bootstrap.js') < html.index('/app.js')
     assert "render" in app
     assert "loadProject" in app
     assert "/project/project.json" in app
@@ -410,8 +423,8 @@ def test_profile_color_can_be_selected_and_persisted() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert 'name="profile-color"' in html
     assert html.count('class="color-swatch"') == 7
-    assert "localStorage.getItem('collab-color')" in app
-    assert "localStorage.setItem('collab-color',actor.color)" in app
+    assert "preferences.get('collab-color')" in app
+    assert "preferences.set('collab-color',actor.color)" in app
     assert "$('collab-name').style.background=actor.color" in app
 
 
@@ -422,8 +435,8 @@ def test_profile_requires_a_name_instead_of_publishing_a_default_person() -> Non
     assert "const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me'" in app
     assert "actor:hasDisplayName(actor.name)?actor:null" in app
     assert "if(!hasDisplayName(actor.name))openNameSettings()" in app
-    assert "localStorage.setItem('collab-name-user-set','1')" in app
-    assert "localStorage.setItem('collab-name-user-set','1')" in hub
+    assert "preferences.set('collab-name-user-set','1')" in app
+    assert "preferences.set('collab-name-user-set','1')" in hub
     assert "?'secondary_host':storedActorName" not in app
 
 
@@ -654,7 +667,7 @@ def test_paper_assistant_can_be_collapsed_and_restored() -> None:
     assert ".workspace.assistant-collapsed" in css
     assert "assistantCollapsed:false" in app
     assert "setAssistantCollapsed" in app
-    assert "localStorage.setItem(layoutKey" in app
+    assert "preferences.set(layoutKey" in app
     assert "html,body{height:100%;overflow:hidden}" in html
     assert ".assistant-panel{display:flex;flex-direction:column;overflow:hidden}" in html
     assert ".assistant-panel>.assistant-content:not(.hidden)" in html

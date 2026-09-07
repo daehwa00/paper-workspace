@@ -1743,7 +1743,7 @@ test('Yjs merges text and awareness between two browsers', async ({ browser }) =
   const room = `e2e-${Date.now()}`
   const create = (page, name) => page.evaluate(({ room, name }) => {
     window.e2eSession = PaperCollab.createSession({
-      url: 'ws://127.0.0.1:18765', room,
+      url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`, room,
       actor: { id: name, name, color: '#2457d6' }
     })
     return window.e2eSession.whenReady.then(() => true)
@@ -1782,7 +1782,7 @@ test('a fresh browser cannot replace an established shared manuscript with the s
   const routeProjectFiles = page => page.route(`**/p/${slug}/project/**`, async route => {
     const requestUrl = new URL(route.request().url())
     const projectPath = requestUrl.pathname.split(`/p/${slug}/project/`)[1]
-    await route.fulfill({ response: await route.fetch({ url: `http://127.0.0.1:18080/project/${projectPath}` }) })
+    await route.fulfill({ response: await route.fetch({ url: new URL(`/project/${projectPath}`, requestUrl.origin).toString() }) })
   })
   await Promise.all(pages.map(routeProjectFiles))
 

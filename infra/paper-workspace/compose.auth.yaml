@@ -33,6 +33,8 @@ services:
       - ALL
     networks:
       - auth_internal
+      # Google discovery, signing keys, and token exchange require egress.
+      - edge
     restart: unless-stopped
   caddy:
     depends_on:

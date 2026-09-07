@@ -84,6 +84,8 @@ def normalize_public_tree(destination: Path) -> None:
 
 def copy_public_path(relative: Path, destination: Path) -> None:
     source = ROOT / relative
+    if source.is_symlink() or not source.is_dir():
+        raise RuntimeError(f"Missing public directory: {relative}")
     for item in source.rglob("*"):
         item_relative = item.relative_to(source)
         if any(part in IGNORED_NAMES for part in item_relative.parts):
@@ -124,8 +126,19 @@ def verify_export(destination: Path) -> None:
             raise RuntimeError(f"Possible secret found in {relative}")
 
 
+def root_source_path(source: Path, target: Path) -> Path:
+    for candidate in (ROOT / source, ROOT / target):
+        if candidate.is_symlink():
+            raise RuntimeError(f"Refusing to export symlink: {candidate.relative_to(ROOT)}")
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(f"Missing public source file: {source}")
+
+
 def export(destination: Path) -> None:
-    if destination.exists() and any(destination.iterdir()):
+    if destination.is_symlink():
+        raise RuntimeError("Destination must not be a symlink")
+    if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise RuntimeError(f"Destination must be empty: {destination}")
     destination.mkdir(parents=True, exist_ok=True)
     for relative in PUBLIC_PATHS:
@@ -133,14 +146,7 @@ def export(destination: Path) -> None:
     for source, target in ROOT_FILES.items():
         output = destination / target
         output.parent.mkdir(parents=True, exist_ok=True)
-        source_path = ROOT / source
-        if not source_path.is_file():
-            # A clean public clone already stores these files at their exported
-            # locations. Supporting that layout keeps the exporter reproducible
-            # without widening the public allowlist.
-            source_path = ROOT / target
-        if not source_path.is_file():
-            raise RuntimeError(f"Missing public source file: {source}")
+        source_path = root_source_path(source, target)
         shutil.copy2(source_path, output)
         normalize_public_mode(output)
     normalize_public_tree(destination)
@@ -151,8 +157,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("destination", type=Path, help="new or empty output directory")
     args = parser.parse_args()
-    export(args.destination.resolve())
-    print(f"Public workspace exported to {args.destination.resolve()}")
+    destination = args.destination.absolute()
+    export(destination)
+    print(f"Public workspace exported to {destination}")
 
 
 if __name__ == "__main__":

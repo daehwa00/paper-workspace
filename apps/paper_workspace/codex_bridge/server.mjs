@@ -3,7 +3,15 @@ import { spawn } from 'node:child_process';
 import { readFile, rm } from 'node:fs/promises';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 
-const PORT = 8790;
+function configuredPort(value) {
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('CODEX_BRIDGE_PORT must be an integer between 1 and 65535.');
+  }
+  return port;
+}
+
+const PORT = configuredPort(process.env.CODEX_BRIDGE_PORT || 8790);
 const MAX_BODY_BYTES = 120_000;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT = 10;
@@ -120,7 +128,16 @@ async function bodyOf(request) {
 
 function boundedString(value, limit, label) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label}이(가) 필요합니다.`);
-  return value.slice(0, limit);
+  if (value.length > limit) throw new Error(`${label}이(가) 너무 깁니다.`);
+  return value;
+}
+
+function responseString(value, limit, label, required = true) {
+  if (typeof value !== 'string' || (required && !value.trim())) {
+    throw new Error(`${label}이(가) 필요합니다.`);
+  }
+  if (value.length > limit) throw new Error(`${label}이(가) 너무 깁니다.`);
+  return value;
 }
 
 function boundedHistory(value) {
@@ -184,23 +201,26 @@ async function runCodex(payload) {
     });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
     child.stdin.end(codexPrompt({ file, selection, instruction, source, history }));
-    const exitCode = await new Promise((resolve, reject) => {
+    const exit = await new Promise((resolve, reject) => {
       let timedOut = false;
       const timeout = setTimeout(() => {
         timedOut = true;
         try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
       }, 120_000);
       child.once('error', error => { clearTimeout(timeout); reject(error); });
-      child.once('exit', code => {
+      child.once('exit', (code, signal) => {
         clearTimeout(timeout);
         if (timedOut) reject(new Error('Codex 응답 시간이 초과되었습니다.'));
-        else resolve(code);
+        else resolve({ code, signal });
       });
     });
-    if (exitCode !== 0) throw new Error(stderr || `Codex가 종료 코드 ${exitCode}로 끝났습니다.`);
+    if (exit.code !== 0) {
+      const status = exit.signal ? `신호 ${exit.signal}` : `종료 코드 ${exit.code}`;
+      throw new Error(stderr || `Codex가 ${status}(으)로 끝났습니다.`);
+    }
     const result = JSON.parse(await readFile(outputPath, 'utf8'));
-    const replacement = boundedString(result.replacement, 50_000, 'Codex 수정문');
-    const summary = typeof result.summary === 'string' ? result.summary.slice(0, 500) : '';
+    const replacement = responseString(result.replacement, 50_000, 'Codex 수정문');
+    const summary = responseString(result.summary, 500, 'Codex 요약', false);
     if (containsSecret(replacement) || containsSecret(summary)) throw new Error('Codex 응답에서 보호 대상 자격증명 형식이 감지되어 차단했습니다.');
     return { replacement, summary };
   } finally {

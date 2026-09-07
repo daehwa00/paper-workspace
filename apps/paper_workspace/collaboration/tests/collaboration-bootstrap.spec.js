@@ -12,7 +12,7 @@ test('a delayed fresh client preserves an established dummy manuscript', async (
 
     await established.evaluate(async ({ room, marker }) => {
       const session = window.PaperCollab.createSession({
-        url: 'ws://127.0.0.1:18765', room,
+        url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`, room,
         actor: { id: 'established', name: 'Established', color: '#2457d6' }
       })
       window.__bootstrapEstablished = session
@@ -22,7 +22,7 @@ test('a delayed fresh client preserves an established dummy manuscript', async (
 
     const beforeSync = await fresh.evaluate(({ room }) => {
       const session = window.PaperCollab.createSession({
-        url: 'ws://127.0.0.1:18765', room,
+        url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`, room,
         actor: { id: 'fresh', name: 'Fresh', color: '#7c3aed' }
       })
       session.provider.disconnect()

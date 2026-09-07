@@ -1,6 +1,7 @@
 const initial = '';
-const {backupItems,backupProjectId:backupManifestId,baseName,buildCompilePayload,cleanSegment,compactSourceSnapshot,compareBackupFiles,compileAssetExtensions,compileTextExtensions,compilePayloadFingerprint,constrain,extensionOf,extractBackupSnapshot,manifestItemIsAsset,normalizeManifest,normalizeState,parentPath,parseLatexDiagnostics:parseCompileDiagnostics,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems,sourceFingerprint,sourceSnapshotMatches,storedJson,validateBackupSnapshot}=window.PaperWorkspaceCore;
+const {backupItems,backupProjectId:backupManifestId,baseName,buildCompilePayload,cleanSegment,compactSourceSnapshot,compareBackupFiles,compileAssetExtensions,compileTextExtensions,compilePayloadFingerprint,constrain,extensionOf,extractBackupSnapshot,isCompileAssetPath,isCompileInputPath,manifestItemIsAsset,normalizeManifest,normalizeState,parentPath,parseLatexDiagnostics:parseCompileDiagnostics,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems,sourceFingerprint,sourceSnapshotMatches,storedJson,validateBackupSnapshot}=window.PaperWorkspaceCore;
 const {createWorkspacePersistence,workspaceAssetStore}=window.PaperWorkspaceStorage;
+const preferences=window.PaperPreferenceStorage;
 const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
 const projectSlug=projectRouteMatch?.[1]||'default';
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;
@@ -102,11 +103,11 @@ function mathPreview(value){const symbols={alpha:'α',beta:'β',gamma:'γ',delta
 function latexPreview(value){const normalized=String(value??'').replace(/\r\n?/g,'\n').replace(/\n\s*\n+/g,'\u0000').replace(/\s*\n\s*/g,' ');let html=esc(normalized);const commands=[['emph','em'],['textit','em'],['textbf','strong'],['texttt','code'],['underline','u']];for(const [command,tag] of commands)html=html.replace(new RegExp(`\\\\${command}\\{([^{}]*)\\}`,'g'),`<${tag}>$1</${tag}>`);html=html.replace(/\\cite(?:t|p)?\{([^{}]+)\}/g,(_,keys)=>`<span class="latex-citation">${keys.split(',').map(key=>`[${key.trim()}]`).join(' ')}</span>`).replace(/\$([^$\n]+)\$/g,(_,math)=>`<span class="latex-math">${mathPreview(math)}</span>`).replace(/\\(?:pac|prl)\b/g,match=>match==='\\pac'?'PAC':'PRL').replace(/\\%/g,'%').replace(/\\_/g,'_').replace(/~/g,' ').replace(/\\\\/g,'<br>').replace(/\u0000/g,'<br><br>');return html}
 const layoutKey='paper-workspace-layout';
 const defaultLayout={editorWidth:null,assistantWidth:292,assistantCollapsed:false,sidebarWidth:224,sidebarCollapsed:false,editorZoom:1,pdfZoom:1};
-const hasStoredLayout=localStorage.getItem(layoutKey)!==null;
+const hasStoredLayout=preferences.get(layoutKey)!==null;
 const layout={...defaultLayout,...storedJson(layoutKey,{})};
 if(!hasStoredLayout&&innerWidth<1600)layout.assistantCollapsed=true;
 const minEditorWidth=390, minPreviewWidth=390, minAssistantWidth=240, maxAssistantWidth=500, minSidebarWidth=180, maxSidebarWidth=420, resizerWidth=20;
-function persistLayout(){localStorage.setItem(layoutKey,JSON.stringify(layout))}
+function persistLayout(){preferences.set(layoutKey,JSON.stringify(layout))}
 function layoutLimits(){const workspace=$('workspace')||document.querySelector('.workspace');const width=workspace.clientWidth;const assistantMax=Math.min(maxAssistantWidth,width-minEditorWidth-minPreviewWidth-resizerWidth);return {editorMax:width-(layout.assistantWidth||defaultLayout.assistantWidth)-minPreviewWidth-resizerWidth,assistantMax:Math.max(minAssistantWidth,assistantMax)};}
 function updateResizerAria(){const limits=layoutLimits();document.querySelectorAll('.panel-resizer').forEach(resizer=>{const assistant=resizer.dataset.resize==='preview-assistant';const value=assistant?layout.assistantWidth:(layout.editorWidth||Math.round($('editor-panel').getBoundingClientRect().width));resizer.setAttribute('aria-valuenow',String(Math.round(value)));resizer.setAttribute('aria-valuemin',String(assistant?minAssistantWidth:minEditorWidth));resizer.setAttribute('aria-valuemax',String(Math.round(assistant?limits.assistantMax:limits.editorMax)));});const sidebar=$('sidebar-resizer');sidebar.setAttribute('aria-valuenow',String(Math.round(layout.sidebarWidth)));sidebar.setAttribute('aria-valuemin',String(minSidebarWidth));sidebar.setAttribute('aria-valuemax',String(maxSidebarWidth))}
 function updateAssistantToggle(){const collapsed=Boolean(layout.assistantCollapsed);const button=$('toggle-assistant');document.querySelector('.workspace').classList.toggle('assistant-collapsed',collapsed);button.classList.toggle('points-left',collapsed);button.title=collapsed?'논문 도우미 펼치기':'논문 도우미 접기';button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!collapsed));}
@@ -130,9 +131,7 @@ async function fetchProjectSource(name,path,{required=false}={}){
     if(!response.ok){const error=new Error(`project source request failed (${response.status})`);error.status=response.status;throw error}
     const contentType=response.headers.get('content-type')||'';
     if(contentType.toLowerCase().includes('text/html'))throw new Error('project source returned HTML');
-    const value=await response.text();
-    if(looksLikeHtml(value))throw new Error('project source returned HTML');
-    return value
+    return await response.text()
   }catch(error){
     if(!required){if(error?.status!==404)reportClientError(error,`fetchOptionalProjectSource:${name}`);return null}
     const failure=new Error(`${name} 필수 프로젝트 소스를 불러오지 못했습니다.`);
@@ -149,11 +148,11 @@ const normalizeDisplayName=value=>String(value??'').trim().slice(0,32);
 function hasDisplayName(value){const name=normalizeDisplayName(value);return Boolean(name.replace(/[\s\u200b-\u200d\ufeff]/gu,''))&&!['나','me','secondary_host'].includes(name.toLowerCase())}
 function collaboratorColor(id){let hash=0;for(const character of id)hash=(hash*31+character.charCodeAt(0))|0;return collaboratorPalette[Math.abs(hash)%collaboratorPalette.length]}
 function collaboratorInitial(name){const words=name.trim().split(/\s+/).filter(Boolean);return (words.length>1?words.slice(0,2).map(word=>word[0]).join(''):words[0]?.slice(0,2)||'?').toUpperCase()}
-const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=localStorage.getItem('collab-id')||crypto.randomUUID();const storedColor=localStorage.getItem('collab-color');let storedActorName=localStorage.getItem('collab-name');if(!localStorage.getItem('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:normalizeDisplayName(storedActorName)||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};localStorage.setItem('collab-id',actor.id);localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=hasDisplayName(actor.name)?collaboratorInitial(actor.name):'?';$('collab-name').style.background=actor.color;const collaborators=new Map();
+const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=preferences.get('collab-id')||crypto.randomUUID();const storedColor=preferences.get('collab-color');let storedActorName=preferences.get('collab-name');if(!preferences.get('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:normalizeDisplayName(storedActorName)||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};preferences.set('collab-id',actor.id);preferences.set('collab-name',actor.name);preferences.set('collab-color',actor.color);$('collab-name').textContent=hasDisplayName(actor.name)?collaboratorInitial(actor.name):'?';$('collab-name').style.background=actor.color;const collaborators=new Map();
 $('name-toast').hidden=true;
 let projectActivityTimer=0,pendingProjectActivityReason='edit',suppressProjectActivity=false;
 async function recordProjectActivity(reason=pendingProjectActivityReason){clearTimeout(projectActivityTimer);projectActivityTimer=0;if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;try{await fetch(`/api/backups/projects/${backupProjectId()}/activity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor:actor.name,reason}),keepalive:true})}catch{}}
-function markProjectActivity(reason='edit'){if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;try{localStorage.setItem(`paper-workspace:last-active:${projectSlug}`,String(Date.now()))}catch{}clearTimeout(projectActivityTimer);projectActivityTimer=setTimeout(()=>recordProjectActivity(reason),900)}
+function markProjectActivity(reason='edit'){if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;preferences.set(`paper-workspace:last-active:${projectSlug}`,Date.now());clearTimeout(projectActivityTimer);projectActivityTimer=setTimeout(()=>recordProjectActivity(reason),900)}
 function setEditorValueWithoutActivity(value){suppressProjectActivity=true;try{setEditorValue(value)}finally{suppressProjectActivity=false}}
 window.addEventListener('pagehide',()=>{if(projectActivityTimer)recordProjectActivity(pendingProjectActivityReason)});
 function collaboratorPosition(person){return Array.isArray(person.selection)?Math.max(0,Number(person.selection[1]??person.selection[0])||0):0}
@@ -325,7 +324,7 @@ function adoptServerManifest(manifest,sources={}, {changedPaths=[],conflictPaths
   if(state.current&&(!activeAsset||!state.assets[activeAsset])){setEditor();if(state.current===currentPath)setEditorSelection(Math.min(selection.start,editorValue().length),Math.min(selection.end,editorValue().length))}
   listFiles();syncProjectTitleFromTex(true);renderReferenceInventory();save();
   if(preservedPaths.length){sourceConflictDismissed=false;sourceConflictBanner.hidden=false;$('source-conflict-copy').textContent=conflictPaths.length?`겹쳐서 수정된 웹 원고 ${conflictPaths.length}개를 drafts에 보존하고 최신 서버 원본을 반영했습니다.`:`웹에서 편집한 ${preservedPaths.length}개 파일을 drafts에 보존하고 최신 서버 원본을 반영했습니다.`;$('open-preserved-draft').onclick=()=>{state.current=preservedPaths[0];setEditor();listFiles();sourceConflictBanner.hidden=true}}
-  if(scheduleCompile&&changedPaths.some(path=>compileTextExtensions.has(extensionOf(path))||compileAssetExtensions.has(extensionOf(path))))markCompileInputsChanged()
+  if(scheduleCompile&&changedPaths.some(isCompileInputPath))markCompileInputsChanged()
 }
 function waitForServerRuntimeRevision(revision,timeoutMs=5000){
   if(sharedProject.get('serverRuntimeRevision')===revision)return Promise.resolve(true);
@@ -352,7 +351,7 @@ async function refreshServerSources(){
     if(!collabReady||!/^[0-9a-f]{64}$/.test(String(appliedRevision||'')))return false;
     const changedPaths=changedManifestPaths(projectManifest,manifest),result=await submitServerRuntimeUpdate(manifest,appliedRevision);
     if(result.conflict)return false;
-    adoptServerManifest(manifest,{}, {changedPaths,conflictPaths:result.conflictPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(path=>compileAssetExtensions.has(extensionOf(path)))});markProjectActivity('server-sync');lastServerSourceRefreshError='';
+    adoptServerManifest(manifest,{}, {changedPaths,conflictPaths:result.conflictPaths,preservedPaths:result.preservedPaths,scheduleCompile:changedPaths.some(isCompileAssetPath)});pruneDraftQueue({sync:true});markProjectActivity('server-sync');lastServerSourceRefreshError='';
     if(result.applied)notify(result.conflictPaths.length?`겹쳐서 수정된 웹 원고 ${result.conflictPaths.length}개를 초안으로 보존하고 최신 서버 원고를 반영했습니다.`:result.mergedPaths.length?`웹과 서버의 서로 다른 변경 ${result.mergedPaths.length}개를 자동으로 병합했습니다.`:result.preservedPaths.length?`웹 편집본 ${result.preservedPaths.length}개를 초안으로 보존하고 서버 원고를 반영했습니다.`:'서버에서 변경한 원고를 공동 작업공간에 반영했습니다.',{title:'서버 원고 자동 반영',tone:result.conflictPaths.length?'warning':undefined});
     return true
   }catch(error){const message=String(error?.message||error);if(lastServerSourceRefreshError!==message){lastServerSourceRefreshError=message;notify(message,{title:'서버 원고 확인 지연',tone:'warning'})}return false}
@@ -386,8 +385,8 @@ function openNameSettings(){
   $('name-input').focus();
 }
 function syncLocalProfile(){
-  actor.name=normalizeDisplayName(localStorage.getItem('collab-name')??actor.name)||defaultActorName;
-  const color=localStorage.getItem('collab-color');
+  actor.name=normalizeDisplayName(preferences.get('collab-name')??actor.name)||defaultActorName;
+  const color=preferences.get('collab-color');
   if(collaboratorPalette.includes(color))actor.color=color;
   const configured=hasDisplayName(actor.name);
   $('collab-name').textContent=configured?collaboratorInitial(actor.name):'?';
@@ -446,9 +445,9 @@ $('name-dialog').querySelector('form').addEventListener('submit',event=>{
   actor.name=name;
   const color=document.querySelector('input[name="profile-color"]:checked')?.value;
   if(collaboratorPalette.includes(color))actor.color=color;
-  localStorage.setItem('collab-name',actor.name);
-  localStorage.setItem('collab-name-user-set','1');
-  localStorage.setItem('collab-color',actor.color);
+  preferences.set('collab-name',actor.name);
+  preferences.set('collab-name-user-set','1');
+  preferences.set('collab-color',actor.color);
   $('collab-name').textContent=collaboratorInitial(actor.name);
   $('collab-name').style.background=actor.color;
   $('name-toast').hidden=true;
@@ -501,6 +500,22 @@ async function createServerBackup(reason='manual',{quiet=false}={}){
   catch(error){setBackupStatus(`백업 실패 · ${error.message}`);if(!quiet)alert(`서버 백업에 실패했습니다.\n${error.message}`);return false}
   finally{backupBusy=false;resolveBackupIdle?.();resolveBackupIdle=null;$('create-backup').disabled=false}
 }
+function applyBackupSnapshot(snapshot){
+  state.files=snapshot.files;
+  state.comments=snapshot.comments;
+  state.tasks=snapshot.tasks;
+  state.projectTitle=snapshot.title||state.projectTitle;
+  state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);
+  state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];
+  // Metadata observers save immediately, so they must see the restored editor
+  // and all shared maps from the same transaction.
+  setEditorValueWithoutActivity(state.files[state.current]);
+  if(sharedMetadataReady)collabSession.document.transact(()=>{
+    replaceSharedMap(sharedComments,state.comments,item=>item.id||item.revision);
+    replaceSharedMap(sharedTasks,state.tasks,item=>item.id);
+    publishSharedTree();
+  },actor.id);
+}
 async function restoreServerBackup(snapshotId,button){
   if(!await actionDialog({title:'백업 복원',message:'이 백업으로 원고를 복원할까요? 현재 상태는 먼저 별도 백업으로 저장됩니다.',confirmLabel:'복원'}))return;
   button.disabled=true;
@@ -508,7 +523,7 @@ async function restoreServerBackup(snapshotId,button){
   const protectedCurrent=await createServerBackup('pre-restore');
   if(!protectedCurrent){button.disabled=false;return}
   backupBusy=true;setBackupStatus('백업을 복원하는 중…');
-  try{if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=validateBackupSnapshot(extractBackupSnapshot(result));if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');state.files=snapshot.files;state.comments=snapshot.comments;state.tasks=snapshot.tasks;state.projectTitle=snapshot.title||state.projectTitle;state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);if(!state.current)throw new Error('백업에 복원할 원고 파일이 없습니다.');state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];richEditor.setDocument(state.current,state.files[state.current]);$('editor').value=richEditor.getValue();if(sharedMetadataReady)collabSession.document.transact(()=>{replaceSharedMap(sharedComments,snapshot.comments,item=>item.id||item.revision);replaceSharedMap(sharedTasks,snapshot.tasks,item=>item.id);publishSharedTree()},actor.id);setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();renderTaskBoard();save();markProjectActivity('restore');setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
+  try{if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=validateBackupSnapshot(extractBackupSnapshot(result));if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');applyBackupSnapshot(snapshot);setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();renderTaskBoard();save();markProjectActivity('restore');setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
   catch(error){setBackupStatus(`복원 실패 · ${error.message}`);alert(`백업을 복원하지 못했습니다.\n${error.message}`)}
   finally{backupBusy=false;button.disabled=false;$('create-backup').disabled=false}
 }
@@ -594,7 +609,7 @@ async function syncPdfToSource(page,x,y){
     editor.scrollTop=constrain(editor.scrollTop+initialCoordinates.top-targetTop,0,Math.max(0,editor.scrollHeight-editor.clientHeight));
     requestAnimationFrame(()=>showSourceSyncHighlight(start));
     sendCursor();
-  }catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>PDF 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
+  }catch(error){notify(error.message,{title:'PDF 위치 연결 오류',tone:'error'})}
 }
 async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
   const renderGeneration=++pdfRenderGeneration;
@@ -719,7 +734,8 @@ async function showAssetPreview(path){let asset=state.assets[path];if(!asset)ret
 const hasLocalFiles=event=>Array.from(event.dataTransfer?.types||[]).includes('Files');
 const assetDataLimit=8*1024*1024;
 function ensureFolderChain(path){let current='';for(const segment of path.split('/').filter(Boolean)){current=current?`${current}/${segment}`:segment;ensureFolder(current)}}
-function uniqueProjectPath(path){if(!state.files[path]&&!state.assets[path])return path;const folder=parentPath(path);const name=baseName(path);const dot=name.lastIndexOf('.');const stem=dot>0?name.slice(0,dot):name;const extension=dot>0?name.slice(dot):'';let index=2,candidate;do{candidate=`${folder?`${folder}/`:''}${stem} (${index})${extension}`;index+=1;}while(state.files[candidate]||state.assets[candidate]);return candidate}
+function projectPathExists(path){return Object.hasOwn(state.files,path)||Object.hasOwn(state.assets,path)||state.folders.includes(path)}
+function uniqueProjectPath(path){if(!projectPathExists(path))return path;const folder=parentPath(path);const name=baseName(path);const dot=name.lastIndexOf('.');const stem=dot>0?name.slice(0,dot):name;const extension=dot>0?name.slice(dot):'';let index=2,candidate;do{candidate=`${folder?`${folder}/`:''}${stem} (${index})${extension}`;index+=1;}while(projectPathExists(candidate));return candidate}
 function fileToDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file);})}
 async function readDropEntry(entry,prefix=''){if(entry.isFile)return new Promise(resolve=>entry.file(file=>resolve([{file,relativePath:`${prefix}${file.name}`}]),()=>resolve([])));if(!entry.isDirectory)return[];const reader=entry.createReader();const children=[];for(;;){const batch=await new Promise(resolve=>reader.readEntries(resolve,()=>resolve([])));if(!batch.length)break;children.push(...batch)}const nested=await Promise.all(children.map(child=>readDropEntry(child,`${prefix}${entry.name}/`)));return nested.flat()}
 async function droppedLocalFiles(dataTransfer){const items=Array.from(dataTransfer.items||[]);const entries=items.map(item=>item.webkitGetAsEntry?.()).filter(Boolean);if(entries.length)return (await Promise.all(entries.map(entry=>readDropEntry(entry)))).flat();return Array.from(dataTransfer.files||[]).map(file=>({file,relativePath:file.webkitRelativePath||file.name}))}
@@ -744,11 +760,12 @@ let editorEventsBound=false;
 const autoSaveDelayMs=1000;
 function scheduleCompileAfterSave(){if(!workspaceReadyForCompile)return;workspaceContentRevision+=1;clearTimeout(window.saveTimer);window.saveTimer=setTimeout(()=>{if(save())compileAfterSave()},autoSaveDelayMs)}
 function markCompileInputsChanged(){setPdfFreshness(Boolean(renderedPdfUrl));scheduleCompileAfterSave()}
-function updateEditorMetadata(){if(isLockedProjectFile())return;const value=editorValue();state.files[state.current]=value;$('word-count').textContent=`${value.trim().split(/\s+/).filter(Boolean).length} words`;$('save-state').textContent='저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();scheduleCompileAfterSave()}
+function updateWordCount(value=editorValue()){const count=value.trim().split(/\s+/).filter(Boolean).length;window.PaperI18n.setText($('word-count'),count===1?'workspace.editor.oneWord':'workspace.editor.words',{count})}
+function updateEditorMetadata(){if(isLockedProjectFile())return;const value=editorValue();state.files[state.current]=value;updateWordCount(value);$('save-state').textContent='저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();scheduleCompileAfterSave()}
 function installEditorShortcuts(){document.addEventListener('keydown',event=>{const modifier=event.metaKey||event.ctrlKey;if(!modifier)return;const key=event.key.toLowerCase();if(key==='s'){event.preventDefault();if(isLockedProjectFile()){$('save-state').textContent='수정 잠김';return}state.files[state.current]=editorValue();clearTimeout(window.saveTimer);if(save()){$('save-state').textContent='저장됨';compileAfterSave()}return}if(!richEditor?.focusWithin())return;if(key==='z')return;if(key==='y')return;if(event.altKey&&key==='c'){event.preventDefault();captureEditorSelection();prepareInlineComment();return}if(event.altKey&&key==='a'){event.preventDefault();captureEditorSelection();prepareCodexRequest();return}})}
 let cursorTimer=0,lastCursorPayload='';
 function sendCursor(){clearTimeout(cursorTimer);cursorTimer=setTimeout(()=>{const selection=editorSelection(),position=selection.start;const payload=JSON.stringify({file:state.current,selection:[position,selection.end]});if(payload===lastCursorPayload)return;lastCursorPayload=payload;collabSession.setCursor(state.current,position,selection.end)},50)}
-function setEditor(){activeAsset='';$('editor-panel').classList.remove('asset-mode');$('asset-viewer').hidden=true;const editor=$('editor');bindSharedFile(state.current);richEditor.setDocument(state.current,state.files[state.current]);$('editor').value=richEditor.getValue();const locked=isLockedProjectFile();editor.readOnly=locked;richEditor.contentDOM.contentEditable=locked?'false':'true';richEditor.contentDOM.setAttribute('aria-readonly',String(locked));$('editor-panel').classList.toggle('source-locked',locked);$('active-file').textContent=`${state.current}${locked?'  🔒':''}`;$('project-title').readOnly=isLockedProjectFile('paper/main.tex');if(locked)$('save-state').textContent='수정 잠김';if(!editorEventsBound){editor.addEventListener('beforeinput',event=>{if(isLockedProjectFile())event.preventDefault()});editor.addEventListener('input',()=>{if(isLockedProjectFile()){setEditorValueWithoutActivity(state.files[state.current]);return}const value=editorValue();state.files[state.current]=value;if(!projectBootstrapComplete)bootstrapEdits.set(state.current,value);if(!suppressProjectActivity)markProjectActivity('edit');syncCurrentFileToShared();markCollaborationChange();$('save-state').textContent=collabReady?'공동 편집 전송 중…':'로컬 저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();renderCommentAnchors();scheduleCompileAfterSave();$('word-count').textContent=`${value.trim().split(/\s+/).filter(Boolean).length} words`;});editor.addEventListener('click',sendCursor);editor.addEventListener('keyup',sendCursor);editorEventsBound=true}$('word-count').textContent=`${editorValue().trim().split(/\s+/).filter(Boolean).length} words`;renderCommentAnchors()}
+function setEditor(){activeAsset='';$('editor-panel').classList.remove('asset-mode');$('asset-viewer').hidden=true;const editor=$('editor');bindSharedFile(state.current);suppressProjectActivity=true;try{richEditor.setDocument(state.current,state.files[state.current]);editor.value=richEditor.getValue()}finally{suppressProjectActivity=false}const locked=isLockedProjectFile();editor.readOnly=locked;richEditor.contentDOM.contentEditable=locked?'false':'true';richEditor.contentDOM.setAttribute('aria-readonly',String(locked));$('editor-panel').classList.toggle('source-locked',locked);$('active-file').textContent=`${state.current}${locked?'  🔒':''}`;$('project-title').readOnly=isLockedProjectFile('paper/main.tex');if(locked)$('save-state').textContent='수정 잠김';if(!editorEventsBound){editor.addEventListener('beforeinput',event=>{if(isLockedProjectFile())event.preventDefault()});editor.addEventListener('input',()=>{if(isLockedProjectFile()){setEditorValueWithoutActivity(state.files[state.current]);return}const value=editorValue();state.files[state.current]=value;if(!projectBootstrapComplete)bootstrapEdits.set(state.current,value);if(!suppressProjectActivity)markProjectActivity('edit');syncCurrentFileToShared();markCollaborationChange();$('save-state').textContent=collabReady?'공동 편집 전송 중…':'로컬 저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();renderCommentAnchors();scheduleCompileAfterSave();updateWordCount(value);});editor.addEventListener('click',sendCursor);editor.addEventListener('keyup',sendCursor);editorEventsBound=true}updateWordCount();renderCommentAnchors()}
 let activeSelection=null;
 function selectedEditorRange(){const selection=editorSelection(),value=editorValue();if(selection.end>selection.start){activeSelection={file:state.current,start:selection.start,end:selection.end,text:value.slice(selection.start,selection.end)};return activeSelection}if(activeSelection&&activeSelection.file===state.current&&value.slice(activeSelection.start,activeSelection.end)===activeSelection.text)return activeSelection;return null}
 function resetInlineCodexComposer(){const toolbar=$('selection-toolbar');toolbar.classList.remove('composing','sending');toolbar.style.width='';for(const composer of toolbar.querySelectorAll('.selection-codex-composer'))composer.hidden=true;$('selection-codex-prompt').value='';$('selection-comment-prompt').value=''}
@@ -765,23 +782,56 @@ function sendInlineCodexRequest(){const selection=activeSelection;const prompt=$
 function addCommentForSelection(selection,body){const comment={id:crypto.randomUUID(),anchor:selection.text.slice(0,90),body,file:selection.file,start:selection.start,end:selection.end,revision:Date.now(),actor:actor.name,color:actor.color,...collabSession.encodeRange(selection.file,selection.start,selection.end)};if(sharedMetadataReady)sharedComments.set(comment.id,comment);else state.comments.unshift(comment);listFiles();renderComments();save();markProjectActivity('comment')}
 function sendInlineComment(){const selection=activeSelection,prompt=$('selection-comment-prompt'),body=prompt.value.trim();if(!body){prompt.focus();return}if(!selection||state.current!==selection.file||$('editor').value.slice(selection.start,selection.end)!==selection.text){hideSelectionToolbar();alert('선택한 원문이 변경되었습니다. 문장을 다시 선택해 주세요.');return}addCommentForSelection(selection,body);$('selection-comment-send').textContent='✓ 등록됨';hideSelectionToolbar();$('selection-comment-send').textContent='등록';activeSelection=null}
 const codexProfiles={"luna-medium":{label:'Luna medium',model:'gpt-5.6-luna',reasoning:'medium'},"luna-high":{label:'Luna high',model:'gpt-5.6-luna',reasoning:'high'},"sol-high":{label:'Sol high',model:'gpt-5.6-sol',reasoning:'high'}};
-let codexProfile=codexProfiles[localStorage.getItem('paper-codex-profile')]?localStorage.getItem('paper-codex-profile'):'luna-medium';
+const storedCodexProfile=preferences.get('paper-codex-profile');let codexProfile=codexProfiles[storedCodexProfile]?storedCodexProfile:'luna-medium';
 function selectedCodexProfile(){return codexProfiles[codexProfile]||codexProfiles['luna-medium']}
-function setCodexProfile(profile){if(!codexProfiles[profile])return;codexProfile=profile;localStorage.setItem('paper-codex-profile',profile);$('selected-model-label').textContent=selectedCodexProfile().label;for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.checked=input.value===profile}
+function setCodexProfile(profile){if(!codexProfiles[profile])return;codexProfile=profile;preferences.set('paper-codex-profile',profile);$('selected-model-label').textContent=selectedCodexProfile().label;for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.checked=input.value===profile}
 function installCodexProfileSettings(){const instruction=$('instruction');setCodexProfile(codexProfile);instruction.placeholder=['어떻게 다듬을까요?','예: 주장 범위는 유지하고 학술 문체로 간결하게 수정해줘'].join('\n');instruction.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229)return;event.preventDefault();if(!$('ask').disabled)$('ask').click()});for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.onchange=()=>{if(input.checked)setCodexProfile(input.value)}}
 function ensureCodexThread(){let thread=$('codex-thread');if(thread)return thread;thread=document.createElement('div');thread.id='codex-thread';thread.className='codex-thread';thread.setAttribute('aria-live','polite');thread.hidden=true;$('codex-request-summary').after(thread);return thread}
 function showSentCodexRequest(){$('codex-request-form').hidden=true;$('codex-request-summary').hidden=false;$('codex-request-text').hidden=true;$('codex-request-summary').querySelector('.codex-sent-badge').textContent='Codex 대화';$('codex-new-request').textContent='새 대화';$('codex-request-model').textContent=selectedCodexProfile().label;ensureCodexThread();window.WorkspaceI18n?.localize($('codex-request-summary'))}
-let codexConversation=[],codexVisibleTurns=[],codexConversationEpoch=0;
+let codexConversation=[],codexVisibleTurns=[],codexConversationEpoch=0,codexRequestController=null;
 function codexTurnNode(turn,proposalNumber){const article=document.createElement('article');article.className=`codex-thread-turn codex-thread-turn-${turn.role}`;const head=document.createElement('header');head.className='codex-thread-turn-head';const label=document.createElement('strong');label.textContent=turn.role==='user'?'내 요청':'Codex 제안';const meta=document.createElement('small');meta.textContent=turn.role==='assistant'?`${proposalNumber} · ${turn.profile||''}`:turn.profile||'';head.append(label,meta);article.append(head);if(turn.role==='assistant'){const proposal=document.createElement('div');proposal.className='latex-preview codex-thread-proposal';proposal.innerHTML=latexPreview(turn.replacement||'');article.append(proposal);if(turn.summary){const summary=document.createElement('p');summary.className='codex-thread-summary';summary.textContent=turn.summary;article.append(summary)}}else{const request=document.createElement('p');request.className='codex-thread-request';request.textContent=turn.content;article.append(request)}return article}
 function renderCodexThread({excludeLatestAssistant=false}={}){const thread=ensureCodexThread();let turns=codexVisibleTurns;if(excludeLatestAssistant&&turns.at(-1)?.role==='assistant')turns=turns.slice(0,-1);let proposalNumber=0;const nodes=turns.map(turn=>codexTurnNode(turn,turn.role==='assistant'?++proposalNumber:proposalNumber));thread.replaceChildren(...nodes);thread.hidden=!nodes.length;window.WorkspaceI18n?.localize(thread)}
-function startNewCodexRequest(){codexConversationEpoch+=1;stopCodexThinking();codexConversation=[];codexVisibleTurns=[];$('codex-request-summary').hidden=true;$('codex-request-form').hidden=false;$('instruction').value='';ensureCodexThread().replaceChildren();ensureCodexThread().hidden=true;$('suggestion').replaceChildren();requestAnimationFrame(()=>$('instruction').focus())}
+function startNewCodexRequest(){codexConversationEpoch+=1;codexRequestController?.abort();codexRequestController=null;stopCodexThinking();$('ask').disabled=false;codexConversation=[];codexVisibleTurns=[];$('codex-request-summary').hidden=true;$('codex-request-form').hidden=false;$('instruction').value='';ensureCodexThread().replaceChildren();ensureCodexThread().hidden=true;$('suggestion').replaceChildren();requestAnimationFrame(()=>$('instruction').focus())}
 let codexThinkingTimer=0,codexElapsedTimer=0;
 const codexThinkingStages=['선택한 문장의 구조와 의도를 읽고 있습니다','현재 파일 문맥과 LaTeX 표현을 확인하고 있습니다','요청에 맞는 수정안을 구성하고 있습니다','원문의 의미와 변경 범위를 다시 검토하고 있습니다'];
 function stopCodexThinking(){clearInterval(codexThinkingTimer);clearInterval(codexElapsedTimer);codexThinkingTimer=0;codexElapsedTimer=0}
 function startCodexThinking(){stopCodexThinking();let stage=0,elapsed=0;$('suggestion').innerHTML=`<div class="suggestion codex-loading" role="status" aria-live="polite"><div class="codex-thinking-head"><span class="codex-thinking-spinner" aria-hidden="true"></span><span class="codex-thinking-copy"><strong>Codex가 원고를 검토하고 있습니다<span class="codex-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></strong><small id="codex-thinking-stage" class="codex-thinking-stage">${codexThinkingStages[0]}</small><small id="codex-thinking-elapsed" class="codex-thinking-elapsed">0초 경과</small></span></div><div class="codex-thinking-progress" aria-hidden="true"></div></div>`;codexThinkingTimer=setInterval(()=>{stage=(stage+1)%codexThinkingStages.length;const target=$('codex-thinking-stage');if(!target)return;target.classList.remove('stage-changing');void target.offsetWidth;target.textContent=codexThinkingStages[stage];target.classList.add('stage-changing')},1800);codexElapsedTimer=setInterval(()=>{elapsed+=1;const target=$('codex-thinking-elapsed');if(target)target.textContent=`${elapsed}초 경과`},1000)}
 function renderCodexResult(selection,result){const proposalNumber=Math.max(1,codexVisibleTurns.filter(turn=>turn.role==='assistant').length);$('suggestion').innerHTML=`<article class="suggestion codex-result"><header class="codex-result-head"><span class="codex-result-icon" aria-hidden="true">✦</span><span class="codex-result-head-text"><strong>Codex 수정안</strong><small>${esc(selectedCodexProfile().label)} · 원문을 바꾸기 전 검토하세요</small></span></header><div class="latex-preview codex-proposal">${latexPreview(result.replacement)}</div><details class="codex-change-details"><summary>원문과 변경 비교</summary><div class="codex-diff"><div class="diff-block diff-before">− ${esc(selection.text)}</div><div class="diff-block diff-after">+ ${esc(result.replacement)}</div></div></details>${result.summary?`<div class="codex-summary">${esc(result.summary)}</div>`:''}<div class="codex-followup"><div class="codex-followup-head"><strong>이 수정안을 더 다듬기</strong><span>${proposalNumber}번째 제안</span></div><div class="codex-followup-row"><textarea id="codex-followup-input" aria-label="Codex 후속 요청" placeholder="예: 좋긴 한데 너무 비슷해. 다른 제목 3개를 제안해줘"></textarea><button id="codex-followup-send" type="button">이어서 요청</button></div><div id="codex-followup-status" class="codex-followup-status" aria-live="polite">현재 선택과 이전 제안을 이어서 기억합니다.</div></div><div class="codex-result-actions"><button id="apply-codex">검토한 수정안을 원문에 적용</button></div></article>`;$('apply-codex').onclick=()=>applyCodexRevision(selection,result.replacement);$('codex-followup-send').onclick=()=>sendCodexFollowup(selection);$('codex-followup-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();sendCodexFollowup(selection)}})}
 function sendCodexFollowup(selection){const input=$('codex-followup-input'),instruction=input.value.trim();if(!instruction){input.focus();return}requestCodexRevision(selection,instruction,{continuation:true})}
-async function requestCodexRevision(selection,instruction,{handoff=false,continuation=false,displayInstruction=instruction}={}){if(!selection){alert('본문에서 수정할 문장을 먼저 선택해 주세요.');return}const epoch=codexConversationEpoch;activateAssistantTab('assist',{handoff});hideSelectionToolbar();const history=continuation?codexConversation.slice(-4).map(turn=>({...turn,content:turn.content.slice(0,5000)})):[];if(!continuation){codexConversation=[];codexVisibleTurns=[];showSentCodexRequest()}const profile=selectedCodexProfile().label;codexConversation.push({role:'user',content:instruction});codexVisibleTurns.push({role:'user',content:displayInstruction,profile});renderCodexThread();const button=continuation?$('codex-followup-send'):$('ask');button.disabled=true;startCodexThinking();try{const response=await fetch('/api/codex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:selection.file,selection:selection.text,instruction,source:state.files[selection.file],actor_id:actor.id,profile:codexProfile,history})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Codex 요청 실패');if(epoch!==codexConversationEpoch)return;stopCodexThinking();codexConversation.push({role:'assistant',content:JSON.stringify({replacement:result.replacement,summary:result.summary||''})});codexVisibleTurns.push({role:'assistant',replacement:result.replacement,summary:result.summary||'',profile});renderCodexThread({excludeLatestAssistant:true});renderCodexResult(selection,result)}catch(error){if(epoch!==codexConversationEpoch)return;stopCodexThinking();codexConversation.pop();codexVisibleTurns.pop();renderCodexThread();$('suggestion').innerHTML=`<div class="suggestion"><strong>Codex 연결 오류</strong><br>${esc(error.message)}</div>`}finally{if(epoch===codexConversationEpoch){stopCodexThinking();button.disabled=false}}}
+async function requestCodexRevision(selection,instruction,{handoff=false,continuation=false,displayInstruction=instruction}={}){
+  if(!selection){alert('본문에서 수정할 문장을 먼저 선택해 주세요.');return}
+  codexRequestController?.abort();
+  const controller=new AbortController();
+  codexRequestController=controller;
+  if(!continuation)codexConversationEpoch+=1;
+  const epoch=codexConversationEpoch;
+  const superseded=()=>epoch!==codexConversationEpoch||codexRequestController!==controller;
+  activateAssistantTab('assist',{handoff});hideSelectionToolbar();
+  const history=continuation?codexConversation.slice(-4).map(turn=>({...turn,content:turn.content.slice(0,5000)})):[];
+  if(!continuation){codexConversation=[];codexVisibleTurns=[];showSentCodexRequest()}
+  const profile=selectedCodexProfile().label;
+  codexConversation.push({role:'user',content:instruction});
+  codexVisibleTurns.push({role:'user',content:displayInstruction,profile});
+  renderCodexThread();
+  const button=continuation?$('codex-followup-send'):$('ask');
+  button.disabled=true;startCodexThinking();
+  try{
+    const response=await fetch('/api/codex',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({file:selection.file,selection:selection.text,instruction,source:state.files[selection.file],actor_id:actor.id,profile:codexProfile,history})});
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.error||'Codex 요청 실패');
+    if(superseded())return;
+    stopCodexThinking();
+    codexConversation.push({role:'assistant',content:JSON.stringify({replacement:result.replacement,summary:result.summary||''})});
+    codexVisibleTurns.push({role:'assistant',replacement:result.replacement,summary:result.summary||'',profile});
+    renderCodexThread({excludeLatestAssistant:true});renderCodexResult(selection,result);
+  }catch(error){
+    if(superseded())return;
+    stopCodexThinking();codexConversation.pop();codexVisibleTurns.pop();renderCodexThread();
+    $('suggestion').innerHTML=`<div class="suggestion"><strong>Codex 연결 오류</strong><br>${esc(error.message)}</div>`;
+  }finally{
+    if(!superseded()){stopCodexThinking();button.disabled=false;codexRequestController=null}
+  }
+}
 function installSelectionTools(){const editor=$('editor'),surface=richEditor.contentDOM,toolbar=$('selection-toolbar');let selectionDrag=null;const finishSelectionDrag=event=>{if(!selectionDrag||event.pointerId!==selectionDrag.pointerId)return;const moved=selectionDrag.moved;selectionDrag=null;const selection=editorSelection();if(moved&&selection.end>selection.start)captureEditorSelection(event);else hideSelectionToolbar()};const cancelSelectionDrag=event=>{if(!selectionDrag||event.pointerId!==selectionDrag.pointerId)return;selectionDrag=null;hideSelectionToolbar()};surface.addEventListener('pointerdown',event=>{if(event.button!==0)return;selectionDrag={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,moved:false};hideSelectionToolbar()});document.addEventListener('pointermove',event=>{if(!selectionDrag||event.pointerId!==selectionDrag.pointerId||event.buttons!==1)return;selectionPointer={x:event.clientX,y:event.clientY};if(Math.hypot(event.clientX-selectionDrag.startX,event.clientY-selectionDrag.startY)>=3)selectionDrag.moved=true});document.addEventListener('pointerup',finishSelectionDrag);document.addEventListener('pointercancel',cancelSelectionDrag);surface.addEventListener('keyup',event=>{const selection=editorSelection();if(event.shiftKey&&selection.end>selection.start)captureEditorSelection()});editor.addEventListener('input',hideSelectionToolbar);editor.addEventListener('scroll',hideSelectionToolbar);toolbar.addEventListener('pointerdown',event=>{if(!event.target.closest('input'))event.preventDefault()});$('selection-comment').onclick=prepareInlineComment;$('selection-comment-send').onclick=sendInlineComment;$('selection-comment-close').onclick=closeInlineCodexComposer;$('selection-comment-prompt').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();sendInlineComment()}else if(event.key==='Escape'){event.preventDefault();closeInlineCodexComposer()}});$('selection-codex').onclick=prepareCodexRequest;$('selection-codex-send').onclick=sendInlineCodexRequest;$('selection-codex-close').onclick=closeInlineCodexComposer;$('selection-codex-prompt').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();sendInlineCodexRequest()}else if(event.key==='Escape'){event.preventDefault();closeInlineCodexComposer()}});document.addEventListener('pointerdown',event=>{if(!surface.contains(event.target)&&!toolbar.contains(event.target))hideSelectionToolbar()})}
 function goToSourceLocation(file,line=1,column=0){
   const candidates=[file,`paper/${String(file).replace(/^paper\//,'')}`,...Object.keys(state.files).filter(path=>path.endsWith(`/${baseName(file)}`))];
@@ -807,7 +857,7 @@ async function requestSynctex(path,payload){
 async function syncSourceToPdf(){
   if(!renderedSynctex||!state.current.endsWith('.tex')||!canUseRenderedSynctex())return;
   const value=editorValue(),selection=editorSelection();const line=value.slice(0,selection.start).split('\n').length;const column=selection.start-(value.lastIndexOf('\n',selection.start-1)+1);
-  try{const {response,result}=await requestSynctex('/api/synctex-view',{file:state.current.replace(/^paper\//,''),line,column});if(!response.ok)throw new Error(result.error||'PDF 위치 검색 실패');const page=document.querySelector(`.pdf-page[data-page="${result.page}"]`);if(!page)throw new Error('렌더링된 PDF 페이지를 찾지 못했습니다.');page.scrollIntoView({behavior:'smooth',block:'center'});document.querySelectorAll('.pdf-source-highlight').forEach(marker=>marker.remove());const marker=document.createElement('span');marker.className='pdf-source-highlight';const scale=Number(page.dataset.scale)||1;marker.style.left=`${Math.max(0,result.x*scale)}px`;marker.style.top=`${Math.max(0,result.y*scale)}px`;marker.style.width=`${Math.max(24,result.width*scale)}px`;marker.style.height=`${Math.max(10,result.height*scale)}px`;page.append(marker);setTimeout(()=>marker.remove(),700)}catch(error){$('suggestion').innerHTML=`<div class="suggestion"><strong>소스 위치 연결 오류</strong><br>${esc(error.message)}</div>`}
+  try{const {response,result}=await requestSynctex('/api/synctex-view',{file:state.current.replace(/^paper\//,''),line,column});if(!response.ok)throw new Error(result.error||'PDF 위치 검색 실패');const page=document.querySelector(`.pdf-page[data-page="${result.page}"]`);if(!page)throw new Error('렌더링된 PDF 페이지를 찾지 못했습니다.');page.scrollIntoView({behavior:'smooth',block:'center'});document.querySelectorAll('.pdf-source-highlight').forEach(marker=>marker.remove());const marker=document.createElement('span');marker.className='pdf-source-highlight';const scale=Number(page.dataset.scale)||1;marker.style.left=`${Math.max(0,result.x*scale)}px`;marker.style.top=`${Math.max(0,result.y*scale)}px`;marker.style.width=`${Math.max(24,result.width*scale)}px`;marker.style.height=`${Math.max(10,result.height*scale)}px`;page.append(marker);setTimeout(()=>marker.remove(),700)}catch(error){notify(error.message,{title:'소스 위치 연결 오류',tone:'error'})}
 }
 function lineForOffset(source,offset){return source.slice(0,Math.max(0,offset)).split('\n').length}
 function sourceLocationFor(pattern){for(const [file,source] of Object.entries(state.files)){if(typeof source!=='string')continue;const match=typeof pattern==='string'?{index:source.indexOf(pattern)}:pattern.exec(source);if(match&&match.index>=0)return {file,line:lineForOffset(source,match.index)}}return null}
@@ -851,7 +901,7 @@ async function createFile(folder='paper'){
   const name=cleanSegment(await actionDialog({title:'새 파일',message:`${folder||'프로젝트'}에 만들 파일 이름을 입력하세요.`,value:'section.tex',confirmLabel:'만들기'}));
   if(!name)return;
   const path=folder?`${folder}/${name}`:name;
-  if(state.files[path]||state.assets[path]||state.folders.includes(path))return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
+  if(projectPathExists(path))return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
   state.files[path]='% 새 파일';state.current=path;
   for(let parent=folder;parent;parent=parentPath(parent))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==parent);
   publishSharedTree();setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('file')
@@ -860,7 +910,7 @@ async function createFolder(parent=''){
   const name=cleanSegment(await actionDialog({title:'새 폴더',message:`${parent||'프로젝트 루트'} 아래에 만들 폴더 이름을 입력하세요.`,value:parent?'results':'experiments',confirmLabel:'만들기'}));
   if(!name)return;
   const path=parent?`${parent}/${name}`:name;
-  if(state.folders.includes(path)||state.files[path]||state.assets[path])return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
+  if(projectPathExists(path))return notify('같은 이름의 항목이 이미 있습니다.',{tone:'error'});
   state.folders.push(path);
   for(let folder=parent;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);
   publishSharedTree();listFiles();save();markProjectActivity('folder')
@@ -868,7 +918,7 @@ async function createFolder(parent=''){
 const pathInTree=(candidate,root)=>candidate===root||candidate.startsWith(`${root}/`);
 const renamedTreePath=(candidate,source,destination)=>pathInTree(candidate,source)?destination+candidate.slice(source.length):candidate;
 function renameHasCollision(type,source,destination){
-  if(type!=='folder')return Boolean(state.files[destination]||state.assets[destination]||state.folders.includes(destination));
+  if(type!=='folder')return projectPathExists(destination);
   const occupied=[...Object.keys(state.files),...Object.keys(state.assets),...state.folders];
   if(occupied.some(candidate=>pathInTree(candidate,destination)&&!pathInTree(candidate,source)))return true;
   const moving=[...Object.keys(state.files),...Object.keys(state.assets),...state.folders].filter(candidate=>pathInTree(candidate,source));
@@ -903,7 +953,7 @@ async function deleteTarget(type,path){
   if(type==='file')delete state.files[path];
   else if(type==='asset'){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);await deleteLocalAsset(path).catch(()=>{})}
   else{state.files=Object.fromEntries(Object.entries(state.files).filter(([file])=>!pathInTree(file,path)));state.assets=Object.fromEntries(Object.entries(state.assets).filter(([file])=>!pathInTree(file,path)));state.uploads=state.uploads.filter(item=>!pathInTree(item,path));state.folders=state.folders.filter(folder=>!pathInTree(folder,path));state.collapsedFolders=state.collapsedFolders.filter(folder=>!pathInTree(folder,path));await reconcileLocalAssets().catch(()=>{})}
-  publishSharedTree();if(!state.files[state.current])state.current=state.files['paper/main.tex']?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('delete')
+  publishSharedTree();if(!Object.hasOwn(state.files,state.current))state.current=Object.hasOwn(state.files,'paper/main.tex')?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('delete')
 }
 $('new-file').onclick=()=>createFile(state.activeFolder||'paper');
 $('new-folder').onclick=()=>createFolder('');

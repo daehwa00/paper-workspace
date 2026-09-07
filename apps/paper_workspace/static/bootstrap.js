@@ -1,10 +1,30 @@
 (() => {
   'use strict'
 
+  const pendingPreferences = new Map()
+  const preferenceStorage = Object.freeze({
+    get: key => {
+      if (pendingPreferences.has(key)) return pendingPreferences.get(key)
+      try { return localStorage.getItem(key) } catch { return null }
+    },
+    set: (key, value) => {
+      const text = String(value)
+      try {
+        localStorage.setItem(key, text)
+        pendingPreferences.delete(key)
+        return true
+      } catch {
+        pendingPreferences.set(key, text)
+        return false
+      }
+    }
+  })
+  window.PaperPreferenceStorage = preferenceStorage
+
   const page = document.currentScript?.dataset.paperPage || 'hub'
   try {
     const queryLanguage = new URLSearchParams(location.search).get('lang')
-    const savedLanguage = localStorage.getItem('paper-workspace-language')
+    const savedLanguage = preferenceStorage.get('paper-workspace-language')
     const browserLanguage = (navigator.languages || [navigator.language])
       .map(value => String(value || '').toLowerCase().split('-')[0])
       .find(value => value === 'en' || value === 'ko')
@@ -13,7 +33,7 @@
       : ['en', 'ko'].includes(savedLanguage) ? savedLanguage : browserLanguage || 'en'
     document.documentElement.lang = language
     document.documentElement.dataset.language = language
-    const theme = localStorage.getItem('paper-workspace-theme') || 'system'
+    const theme = preferenceStorage.get('paper-workspace-theme') || 'system'
     const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme:dark)').matches)
     document.documentElement.dataset.theme = theme
     document.documentElement.dataset.colorScheme = dark ? 'dark' : 'light'
