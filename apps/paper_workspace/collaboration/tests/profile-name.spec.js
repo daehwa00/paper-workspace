@@ -1,0 +1,117 @@
+import { test, expect } from '@playwright/test'
+
+const uniquePath = label => `/p/profile-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+test('a first visit requires an identifiable name and remembers it across reloads', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-language', 'ko'))
+  await page.goto(uniquePath('new'))
+  const dialog = page.locator('#name-dialog')
+  const input = page.locator('#name-input')
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('data-required', 'true')
+  await expect(input).toBeFocused()
+  await expect(input).toHaveAttribute('required', '')
+  await expect(page.locator('#cancel-name')).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  await page.locator('#save-name').click()
+  await expect(dialog).toBeVisible()
+  for (const invalid of ['나', 'Me', '   ', '\u200b']) {
+    await input.fill(invalid)
+    await page.locator('#save-name').click()
+    await expect(dialog).toBeVisible()
+    expect(await input.evaluate(element => element.validity.valid)).toBe(false)
+  }
+  await page.waitForFunction(() => sharedMetadataReady)
+  expect(await page.evaluate(() => collabSession.provider.awareness.getLocalState().user)).toBeNull()
+  await input.fill('김연구')
+  await page.locator('#save-name').click()
+  await expect(dialog).not.toBeVisible()
+  expect(await page.evaluate(() => ({ name: actor.name, saved: localStorage.getItem('collab-name'), published: collabSession.provider.awareness.getLocalState().user.name }))).toEqual({ name: '김연구', saved: '김연구', published: '김연구' })
+  await page.reload()
+  await page.waitForFunction(() => projectBootstrapComplete)
+  await expect(dialog).not.toBeVisible()
+  expect(await page.evaluate(() => actor.name)).toBe('김연구')
+})
+
+for (const name of ['나', 'Me']) {
+  test(`an old saved default profile (${name}) must choose a name again`, async ({ page }) => {
+    await page.addInitScript(name => {
+      localStorage.setItem('collab-name', name)
+      localStorage.setItem('collab-name-user-set', '1')
+    }, name)
+    await page.goto(uniquePath('old'))
+    await expect(page.locator('#name-dialog')).toBeVisible()
+    await expect(page.locator('#name-input')).toHaveValue('')
+    await expect(page.locator('#cancel-name')).toBeHidden()
+  })
+}
+
+test('a returning custom name remains valid and optional edits can be cancelled', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('collab-name', 'KDH'))
+  await page.goto(uniquePath('returning'))
+  await page.waitForFunction(() => projectBootstrapComplete)
+  await expect(page.locator('#name-dialog')).not.toBeVisible()
+  await page.locator('#collab-name').click()
+  await expect(page.locator('#cancel-name')).toBeVisible()
+  await page.locator('#name-input').fill('Another Name')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#name-dialog')).not.toBeVisible()
+  expect(await page.evaluate(() => actor.name)).toBe('KDH')
+  await page.locator('#collab-name').click()
+  await page.locator('#name-input').fill('')
+  await page.locator('#cancel-name').click()
+  await expect(page.locator('#name-dialog')).not.toBeVisible()
+  expect(await page.evaluate(() => actor.name)).toBe('KDH')
+})
+
+test('unnamed visitors stay out of peer lists and the chosen name updates other tabs', async ({ browser }) => {
+  const observerContext = await browser.newContext()
+  const newcomerContext = await browser.newContext()
+  try {
+    await observerContext.addInitScript(() => localStorage.setItem('collab-name', 'Observer'))
+    const observer = await observerContext.newPage()
+    const route = uniquePath('presence')
+    await observer.goto(route)
+    await observer.waitForFunction(() => sharedMetadataReady && collabReady)
+    const sharedSource = await observer.evaluate(() => editorValue())
+    const newcomer = await newcomerContext.newPage()
+    await newcomer.goto(route)
+    await newcomer.waitForFunction(() => sharedMetadataReady && collabReady)
+    expect(await observer.evaluate(() => [...collaborators.values()].map(person => person.name))).toEqual([])
+    expect(await observer.evaluate(() => editorValue())).toBe(sharedSource)
+    await newcomer.locator('#name-input').fill('새 참여자')
+    await newcomer.locator('#save-name').click()
+    await expect.poll(() => observer.evaluate(() => [...collaborators.values()].map(person => person.name))).toContain('새 참여자')
+    const anotherProject = await newcomerContext.newPage()
+    await anotherProject.goto(uniquePath('another'))
+    await anotherProject.waitForFunction(() => projectBootstrapComplete)
+    await expect(anotherProject.locator('#name-dialog')).not.toBeVisible()
+    expect(await anotherProject.evaluate(() => actor.name)).toBe('새 참여자')
+    await newcomer.locator('#collab-name').click()
+    await newcomer.locator('#name-input').fill('공동저자')
+    await newcomer.locator('#save-name').click()
+    await expect.poll(() => anotherProject.evaluate(() => actor.name)).toBe('공동저자')
+    await expect.poll(() => observer.evaluate(() => [...collaborators.values()].map(person => person.name))).toContain('공동저자')
+  } finally { await Promise.all([observerContext.close(), newcomerContext.close()]) }
+})
+
+test('the required name dialog is localized and usable on mobile', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'en-US', viewport: { width: 390, height: 844 } })
+  try {
+    const page = await context.newPage()
+    await page.goto(uniquePath('mobile'))
+    await expect(page.locator('#name-dialog')).toBeVisible()
+    await expect(page.locator('#name-description')).toContainText('Enter a name or nickname')
+    await expect(page.locator('#name-input')).toHaveAttribute('placeholder', 'Name or nickname')
+    await expect(page.locator('#save-name')).toHaveText('Save and continue')
+    const bounds = await page.locator('#name-dialog').boundingBox()
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.y).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(844)
+    await page.locator('#name-input').fill('Researcher')
+    await page.locator('#save-name').click()
+    await expect(page.locator('#name-dialog')).not.toBeVisible()
+  } finally { await context.close() }
+})

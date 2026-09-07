@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, namedContext } from './fixtures.js'
 
 function pagePdf(pageCount = 1) {
   const contentId = pageCount + 3
@@ -25,7 +25,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('unsupported browser languages fall back to English', async ({ browser }) => {
-  const context = await browser.newContext({ locale: 'fr-FR' })
+  const context = await namedContext(browser, { locale: 'fr-FR' })
   const page = await context.newPage()
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
@@ -1777,7 +1777,7 @@ test('a fresh browser cannot replace an established shared manuscript with the s
   const slug = `fresh-client-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
   const workspaceUrl = `/p/${slug}`
   const marker = `% shared manuscript survives ${slug}`
-  const contexts = await Promise.all([browser.newContext(), browser.newContext()])
+  const contexts = await Promise.all([namedContext(browser), namedContext(browser)])
   const pages = await Promise.all(contexts.map(context => context.newPage()))
   const routeProjectFiles = page => page.route(`**/p/${slug}/project/**`, async route => {
     const requestUrl = new URL(route.request().url())
@@ -1927,7 +1927,7 @@ test('overlapping server changes replace the active manuscript and preserve the 
 })
 
 test('compile cancellation identity is isolated per tab and stable across reloads', async ({ browser }) => {
-  const context = await browser.newContext()
+  const context = await namedContext(browser)
   const first = await context.newPage()
   await first.goto('/')
   await first.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))

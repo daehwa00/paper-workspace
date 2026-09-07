@@ -145,13 +145,15 @@ function projectFileUrl(path,manifest=projectManifest){return buildProjectFileUr
 async function fetchPreviewArtifact(){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(projectFileUrl(projectManifest.preview_pdf),{cache:'no-store'});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(projectFileUrl(projectManifest.preview_synctex),{cache:'no-store'});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
 function ensureFolder(path){if(!state.folders.includes(path))state.folders.push(path)}
 const collaboratorPalette=['#2457d6','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#db2777'];
+const normalizeDisplayName=value=>String(value??'').trim().slice(0,32);
+function hasDisplayName(value){const name=normalizeDisplayName(value);return Boolean(name.replace(/[\s\u200b-\u200d\ufeff]/gu,''))&&!['나','me','secondary_host'].includes(name.toLowerCase())}
 function collaboratorColor(id){let hash=0;for(const character of id)hash=(hash*31+character.charCodeAt(0))|0;return collaboratorPalette[Math.abs(hash)%collaboratorPalette.length]}
 function collaboratorInitial(name){const words=name.trim().split(/\s+/).filter(Boolean);return (words.length>1?words.slice(0,2).map(word=>word[0]).join(''):words[0]?.slice(0,2)||'?').toUpperCase()}
-const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=localStorage.getItem('collab-id')||crypto.randomUUID();const storedColor=localStorage.getItem('collab-color');let storedActorName=localStorage.getItem('collab-name');if(!localStorage.getItem('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:(storedActorName||defaultActorName).trim()||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};localStorage.setItem('collab-id',actor.id);localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=collaboratorInitial(actor.name);$('collab-name').style.background=actor.color;const collaborators=new Map();
-if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true;
+const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=localStorage.getItem('collab-id')||crypto.randomUUID();const storedColor=localStorage.getItem('collab-color');let storedActorName=localStorage.getItem('collab-name');if(!localStorage.getItem('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:normalizeDisplayName(storedActorName)||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};localStorage.setItem('collab-id',actor.id);localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=hasDisplayName(actor.name)?collaboratorInitial(actor.name):'?';$('collab-name').style.background=actor.color;const collaborators=new Map();
+$('name-toast').hidden=true;
 let projectActivityTimer=0,pendingProjectActivityReason='edit',suppressProjectActivity=false;
-async function recordProjectActivity(reason=pendingProjectActivityReason){clearTimeout(projectActivityTimer);projectActivityTimer=0;pendingProjectActivityReason=reason;try{await fetch(`/api/backups/projects/${backupProjectId()}/activity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor:actor.name,reason}),keepalive:true})}catch{}}
-function markProjectActivity(reason='edit'){pendingProjectActivityReason=reason;try{localStorage.setItem(`paper-workspace:last-active:${projectSlug}`,String(Date.now()))}catch{}clearTimeout(projectActivityTimer);projectActivityTimer=setTimeout(()=>recordProjectActivity(reason),900)}
+async function recordProjectActivity(reason=pendingProjectActivityReason){clearTimeout(projectActivityTimer);projectActivityTimer=0;if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;try{await fetch(`/api/backups/projects/${backupProjectId()}/activity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor:actor.name,reason}),keepalive:true})}catch{}}
+function markProjectActivity(reason='edit'){if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;try{localStorage.setItem(`paper-workspace:last-active:${projectSlug}`,String(Date.now()))}catch{}clearTimeout(projectActivityTimer);projectActivityTimer=setTimeout(()=>recordProjectActivity(reason),900)}
 function setEditorValueWithoutActivity(value){suppressProjectActivity=true;try{setEditorValue(value)}finally{suppressProjectActivity=false}}
 window.addEventListener('pagehide',()=>{if(projectActivityTimer)recordProjectActivity(pendingProjectActivityReason)});
 function collaboratorPosition(person){return Array.isArray(person.selection)?Math.max(0,Number(person.selection[1]??person.selection[0])||0):0}
@@ -230,7 +232,7 @@ function handleCollaborationStatus(status){
   setCollaborationStatus('connecting',retrying||status==='disconnected'?'공동 편집 다시 연결 중':status==='connected'?'공동 편집 문서 동기화 중':'공동 편집 서버 연결 중');
   armCollaborationWatchdog()
 }
-collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor:hasDisplayName(actor.name)?actor:null,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
 function retryCollaboration(){
   if(!collabSession?.provider)return;
   collaborationWatchdogFailed=false;collaborationReconnectAttempted=true;clearCollaborationWatchdog();
@@ -367,7 +369,33 @@ function canUseRenderedSynctex(){if(!renderedPdfStale)return true;notify('원고
 function refreshEditorLayout(){richEditor?.view?.requestMeasure?.();if(innerWidth<768&&richEditor?.scrollDOM)richEditor.scrollDOM.scrollLeft=0}
 function activateFocusMode(focus){const shell=document.querySelector('.shell');shell.dataset.focus=focus;for(const item of $('focus-modes').querySelectorAll('button')){const active=item.dataset.focus===focus;item.setAttribute('aria-pressed',String(active));item.classList.toggle('is-active',active)}if(focus==='assistant')setAssistantCollapsed(false);requestAnimationFrame(()=>{refreshEditorLayout();schedulePdfPageIndicatorUpdate();renderRemoteCursors();renderCommentAnchors()})}
 function installFocusModes(){document.querySelector('.shell').dataset.focus='source';$('focus-modes')?.querySelectorAll('button').forEach(button=>button.onclick=()=>activateFocusMode(button.dataset.focus))}
-function syncLocalProfile(){const name=(localStorage.getItem('collab-name')||actor.name).trim();const color=localStorage.getItem('collab-color');if(name)actor.name=name.slice(0,32);if(collaboratorPalette.includes(color))actor.color=color;$('collab-name').textContent=collaboratorInitial(actor.name);$('collab-name').style.background=actor.color;collabSession.updateActor(actor)}
+function openNameSettings(){
+  const dialog=$('name-dialog');
+  if(dialog.open)return;
+  const required=!hasDisplayName(actor.name);
+  dialog.dataset.required=String(required);
+  dialog.returnValue='';
+  $('name-input').value=required?'':actor.name;
+  $('name-input').setCustomValidity('');
+  $('cancel-name').hidden=required;
+  window.PaperI18n.setText($('name-description'),required?'공동저자가 구분할 수 있도록 이름이나 닉네임을 입력해 주세요. 이 브라우저에서 기억합니다.':'공동 편집자에게 보이는 이름과 프로필 색상입니다.');
+  window.PaperI18n.setText($('save-name'),required?'저장하고 계속':'저장');
+  const selected=document.querySelector(`input[name="profile-color"][value="${actor.color}"]`);
+  if(selected)selected.checked=true;
+  dialog.showModal();
+  $('name-input').focus();
+}
+function syncLocalProfile(){
+  actor.name=normalizeDisplayName(localStorage.getItem('collab-name')??actor.name)||defaultActorName;
+  const color=localStorage.getItem('collab-color');
+  if(collaboratorPalette.includes(color))actor.color=color;
+  const configured=hasDisplayName(actor.name);
+  $('collab-name').textContent=configured?collaboratorInitial(actor.name):'?';
+  $('collab-name').style.background=actor.color;
+  collabSession.updateActor(configured?actor:null);
+  if(!configured)openNameSettings();
+  else if($('name-dialog').open&&$('name-dialog').dataset.required==='true')$('name-dialog').close();
+}
 function installStatusCenter(){
   const panel=$('status-center'),toggle=$('status-center-toggle'),closeButton=$('status-center-close');
   const collabAction=$('health-collab-action'),pdfAction=$('health-pdf-action'),backupAction=$('health-backup-action');
@@ -401,8 +429,36 @@ function installStatusCenter(){
 }
 window.addEventListener('storage',event=>{if(event.key==='collab-name'||event.key==='collab-color')syncLocalProfile()});
 window.addEventListener('focus',syncLocalProfile);
-$('collab-name').onclick=()=>{$('name-input').value=actor.name;const selected=document.querySelector(`input[name="profile-color"][value="${actor.color}"]`);if(selected)selected.checked=true;$('name-dialog').showModal();};$('name-dialog').addEventListener('close',()=>{if($('name-dialog').returnValue!=='confirm')return;const name=$('name-input').value.trim();const color=document.querySelector('input[name="profile-color"]:checked')?.value;if(!name)return;actor.name=name.slice(0,32);if(collaboratorPalette.includes(color))actor.color=color;localStorage.setItem('collab-name',actor.name);localStorage.setItem('collab-name-user-set','1');localStorage.setItem('collab-color',actor.color);$('collab-name').textContent=collaboratorInitial(actor.name);$('collab-name').style.background=actor.color;$('name-toast').hidden=true;collabSession.updateActor(actor);});
-$('open-name-settings').onclick=()=>{$('name-toast').hidden=true;$('collab-name').click();};
+$('collab-name').onclick=openNameSettings;
+$('name-input').addEventListener('input',()=>$('name-input').setCustomValidity(''));
+$('name-dialog').querySelector('form').addEventListener('submit',event=>{
+  if(event.submitter?.value==='cancel'){
+    if(!hasDisplayName(actor.name))event.preventDefault();
+    return;
+  }
+  const name=normalizeDisplayName($('name-input').value);
+  if(!hasDisplayName(name)){
+    event.preventDefault();
+    $('name-input').setCustomValidity(window.PaperI18n.t('기본 이름 대신 본인의 이름이나 닉네임을 입력해 주세요.'));
+    $('name-input').reportValidity();
+    return;
+  }
+  actor.name=name;
+  const color=document.querySelector('input[name="profile-color"]:checked')?.value;
+  if(collaboratorPalette.includes(color))actor.color=color;
+  localStorage.setItem('collab-name',actor.name);
+  localStorage.setItem('collab-name-user-set','1');
+  localStorage.setItem('collab-color',actor.color);
+  $('collab-name').textContent=collaboratorInitial(actor.name);
+  $('collab-name').style.background=actor.color;
+  $('name-toast').hidden=true;
+  collabSession.updateActor(actor);
+  if(backupInitialized)createServerBackup('auto',{quiet:true});
+});
+$('name-dialog').addEventListener('cancel',event=>{if(!hasDisplayName(actor.name))event.preventDefault()});
+$('name-dialog').addEventListener('close',()=>{if(!hasDisplayName(actor.name))openNameSettings()});
+$('open-name-settings').onclick=()=>{$('name-toast').hidden=true;openNameSettings()};
+if(!hasDisplayName(actor.name))openNameSettings();
 function persistedFiles({compactDrafts=false}={}){if(!compactDrafts)return {...state.files};const entries=Object.entries(state.files),drafts=entries.filter(([path])=>path.startsWith('paper/drafts/'));const retainedDrafts=new Set(drafts.slice(-3).map(([path])=>path));if(state.current?.startsWith('paper/drafts/'))retainedDrafts.add(state.current);return Object.fromEntries(entries.filter(([path])=>!path.startsWith('paper/drafts/')||retainedDrafts.has(path)))}
 function persistedState(options={}){const {recovery,browserStateVersion,indexedSavedAt,...durableState}=state;return {...durableState,files:persistedFiles(options),assets:{},serverMainSnapshot:compactSourceSnapshot(state.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(state.serverSourceSnapshots||{}).map(([path,snapshot])=>[path,compactSourceSnapshot(snapshot)]))};}
 const save=()=>{syncCurrentFileToShared();return workspacePersistence.save({synced:collabReady})};
@@ -437,6 +493,7 @@ async function loadBackupHistory(){
   catch(error){renderBackupHistory([]);setBackupStatus(`연결 오류 · ${error.message}`)}
 }
 async function createServerBackup(reason='manual',{quiet=false}={}){
+  if(!hasDisplayName(actor.name))return false;
   if(backupBusy){if(reason!=='pre-restore')return false;await backupIdlePromise;return createServerBackup(reason,{quiet})}
   const snapshot=backupPayload();
   backupBusy=true;backupIdlePromise=new Promise(resolve=>{resolveBackupIdle=resolve});$('create-backup').disabled=true;setBackupStatus(reason==='pre-restore'?'현재 상태를 보존하는 중…':'서버에 저장하는 중…');
@@ -781,7 +838,7 @@ function addTask(){const input=$('task-title');const title=input.value.trim();if
 async function createProjectZip({verifyCompile=false}={}){state.files[state.current]=editorValue();if(verifyCompile){const compiled=await runUpdate({fullBuild:true});if(!compiled)throw new Error('현재 소스가 컴파일되지 않아 제출 패키지를 만들지 않았습니다. 오류를 먼저 해결해 주세요.')}const payload=await compilePayload(),response=await fetch('/api/package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),result=await response.json();if(!response.ok)throw new Error(result.error||'ZIP 생성 실패');const bytes=Uint8Array.from(atob(result.zip_base64),char=>char.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:'application/zip'})),link=document.createElement('a');link.href=url;link.download=`${projectSlug}-source-${new Date().toISOString().slice(0,10)}.zip`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return result}
 async function downloadSourcePackage(){const button=$('download-source-package');button.disabled=true;button.textContent='깨끗한 컴파일 확인 중…';try{const result=await createProjectZip({verifyCompile:true});$('submission-check-summary').textContent=`Source ZIP 생성 완료 · ${result.file_count}개 파일`}catch(error){alert(`제출 패키지를 만들지 못했습니다.\n${error.message}`)}finally{button.disabled=false;button.textContent='Source ZIP 만들기'}}
 async function downloadProjectZip(){const button=$('download-project-zip');button.disabled=true;button.classList.add('loading');button.setAttribute('aria-busy','true');try{await createProjectZip();notify('현재 프로젝트 코드를 ZIP으로 저장했습니다.',{title:'코드 ZIP 준비 완료'})}catch(error){notify(error.message,{title:'코드 ZIP 생성 실패',tone:'error'})}finally{button.disabled=false;button.classList.remove('loading');button.removeAttribute('aria-busy')}}
-function installAuthoringTools(){$('bibtex-import').setAttribute('aria-label','가져올 BibTeX 항목');$('task-title').setAttribute('aria-label','새 할 일 제목');$('name-input').setAttribute('aria-label','표시 이름');document.querySelectorAll('input[name="profile-color"]').forEach(input=>input.setAttribute('aria-label',input.closest('label')?.title||'프로필 색상'));$('action-dialog-input').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('action-dialog-confirm').click()}});$('name-input').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('save-name').click()}});$('run-submission-checks').onclick=runSubmissionChecks;$('download-source-package').onclick=downloadSourcePackage;$('download-project-zip').onclick=downloadProjectZip;$('import-bibtex').onclick=importBibtex;$('add-task').onclick=addTask;$('task-title').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addTask()}});richEditor.contentDOM.addEventListener('click',event=>{if(event.metaKey||event.ctrlKey){event.preventDefault();syncSourceToPdf()}});renderTaskBoard();renderAssetInventory();renderReferenceInventory()}
+function installAuthoringTools(){$('bibtex-import').setAttribute('aria-label','가져올 BibTeX 항목');$('task-title').setAttribute('aria-label','새 할 일 제목');$('name-input').setAttribute('aria-label','표시 이름');document.querySelectorAll('input[name="profile-color"]').forEach(input=>input.setAttribute('aria-label',input.closest('label')?.title||'프로필 색상'));$('action-dialog-input').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();$('action-dialog-confirm').click()}});$('name-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();$('save-name').click()}});$('run-submission-checks').onclick=runSubmissionChecks;$('download-source-package').onclick=downloadSourcePackage;$('download-project-zip').onclick=downloadProjectZip;$('import-bibtex').onclick=importBibtex;$('add-task').onclick=addTask;$('task-title').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();addTask()}});richEditor.contentDOM.addEventListener('click',event=>{if(event.metaKey||event.ctrlKey){event.preventDefault();syncSourceToPdf()}});renderTaskBoard();renderAssetInventory();renderReferenceInventory()}
 let compileQueue=Promise.resolve(),compileRevision=0,compileController=null,compileRequestGeneration=0;
 function compileAfterSave(){const revision=++compileRevision;compileController?.abort();compileQueue=compileQueue.finally(()=>revision===compileRevision?runUpdate():undefined);return compileQueue}
 function setRenderStateCompiling(file){const target=$('render-state'),label=window.PaperI18n.t('workspace.compile.compiling',{file});target.classList.add('compiling');target.removeAttribute('data-i18n');target.removeAttribute('data-i18n-variables');target.setAttribute('aria-label',label);target.innerHTML=`<span class="render-state-spinner" aria-hidden="true"></span><span class="render-state-label">${esc(label)}</span>`}

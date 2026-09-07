@@ -415,12 +415,13 @@ def test_profile_color_can_be_selected_and_persisted() -> None:
     assert "$('collab-name').style.background=actor.color" in app
 
 
-def test_profile_defaults_to_me_and_never_to_a_specific_person() -> None:
+def test_profile_requires_a_name_instead_of_publishing_a_default_person() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
 
     assert "const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me'" in app
-    assert "if(localStorage.getItem('collab-name-user-set'))$('name-toast').hidden=true" in app
+    assert "actor:hasDisplayName(actor.name)?actor:null" in app
+    assert "if(!hasDisplayName(actor.name))openNameSettings()" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in app
     assert "localStorage.setItem('collab-name-user-set','1')" in hub
     assert "?'secondary_host':storedActorName" not in app

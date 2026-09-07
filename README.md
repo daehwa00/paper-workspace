@@ -72,6 +72,7 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 ### Realtime collaboration and review
 
 - Merge concurrent text changes with Yjs and show collaborator presence, names, colors, cursors, and active-file locations.
+- Choose a name or nickname on first entry. Default “Me”/“나” profiles must be renamed; this browser remembers the choice across projects and only publishes named presence.
 - Keep local edits available while collaboration reconnects, then merge queued work before claiming it is shared.
 - Attach comments to a selected passage and revision, show inline comment anchors, jump back to context, and resolve completed threads.
 - Turn selected text into shared tasks with completion state, assignee context, file location, and direct source navigation.

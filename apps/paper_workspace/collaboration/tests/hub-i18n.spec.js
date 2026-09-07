@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, namedContext } from './fixtures.js'
 
 test('hub falls back to English and persists a language-picker choice', async ({ browser }) => {
-  const context = await browser.newContext({ locale: 'fr-FR' })
+  const context = await namedContext(browser, { locale: 'fr-FR' })
   const page = await context.newPage()
   await page.goto('/hub.html')
 
@@ -100,7 +100,7 @@ test('recent activity uses server timestamps and shows the latest editor', async
 })
 
 test('a supported browser locale is used when no explicit preference exists', async ({ browser }) => {
-  const context = await browser.newContext({ locale: 'ko-KR' })
+  const context = await namedContext(browser, { locale: 'ko-KR' })
   const page = await context.newPage()
   await page.goto('/hub.html')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko')

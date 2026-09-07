@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, namedContext } from './fixtures.js'
 
 test('backup restore applies comments, tasks, and manuscript together', async ({ page }) => {
   const source = '\\documentclass{article}\n\\begin{document}restored\\end{document}'
@@ -34,7 +34,7 @@ for (const withRuntime of [false, true]) {
       sharedComments.clear()
       sharedTasks.clear()
     }, withRuntime)
-    const context = await browser.newContext()
+    const context = await namedContext(browser)
     try {
       await context.addInitScript(slug => {
         localStorage.setItem(`paper-workspace:${slug}`, JSON.stringify({ fileTreeVersion: 1, files: { 'paper/main.tex': '\\documentclass{article}\n\\begin{document}stale browser\\end{document}' }, folders: ['paper'], current: 'paper/main.tex', comments: [{ id: 'resolved-elsewhere', text: 'Stale comment', revision: 1 }], tasks: [{ id: 'deleted-elsewhere', title: 'Stale task', done: false }] }))

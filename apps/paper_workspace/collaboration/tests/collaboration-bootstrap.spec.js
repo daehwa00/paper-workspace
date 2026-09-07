@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, namedContext } from './fixtures.js'
 
 test('a delayed fresh client preserves an established dummy manuscript', async ({ browser }) => {
   const room = `bootstrap-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const marker = `% dummy shared manuscript ${room}`
-  const contexts = await Promise.all([browser.newContext(), browser.newContext()])
+  const contexts = await Promise.all([namedContext(browser), namedContext(browser)])
   const [established, fresh] = await Promise.all(contexts.map(context => context.newPage()))
 
   try {
@@ -48,8 +48,8 @@ test('a delayed fresh client preserves an established dummy manuscript', async (
 for (const inputKind of ['body', 'title']) {
 test(`${inputKind} input before initial synchronization survives as a draft without replacing shared source`, async ({ browser }) => {
   const slug = `connecting-draft-${Date.now()}`
-  const first = await browser.newContext()
-  const second = await browser.newContext()
+  const first = await namedContext(browser)
+  const second = await namedContext(browser)
   try {
     const established = await first.newPage()
     await established.goto(`/p/${slug}`)
