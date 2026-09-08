@@ -693,7 +693,7 @@ def test_project_sidebar_can_be_collapsed_and_persisted() -> None:
     assert 'data-resize="sidebar"' in html
     assert "sidebarWidth:224" in app
     assert "minSidebarWidth=180" in app
-    assert "maxSidebarWidth=420" in app
+    assert "maxSidebarWidth=320" in app
     assert "--sidebar-width" in html
     assert "drag.sidebarWidth+event.clientX-drag.startX" in app
     assert "#files{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto" in components

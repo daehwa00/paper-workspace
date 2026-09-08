@@ -198,7 +198,7 @@
     backupItems, backupProjectId, baseName, buildCompilePayload, cleanSegment, compactSourceSnapshot,
     compareBackupFiles, compileAssetExtensions, compileTextExtensions, compilePayloadFingerprint, constrain, extensionOf, extractBackupSnapshot,
     isCompileAssetPath, isCompileInputPath,
-    manifestItemIsAsset, normalizeManifest, normalizeState, parentPath, parseLatexDiagnostics,
+    manifestItemIsAsset, normalizeManifest, normalizeState, parallelLimit, parentPath, parseLatexDiagnostics,
     projectFileUrl, runtimeFileRevision, serverManagedManifestItems, sourceFingerprint,
     sourceSnapshotMatches, storedJson, validateBackupSnapshot, validProjectPath
   })

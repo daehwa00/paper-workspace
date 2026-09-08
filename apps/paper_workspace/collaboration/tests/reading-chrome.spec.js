@@ -1,0 +1,33 @@
+import { expect, test } from './fixtures.js'
+
+test('reading layout limits the sidebar while preserving saved zoom', async ({ page }) => {
+  await page.setViewportSize({ width: 2048, height: 1000 })
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-layout', JSON.stringify({ sidebarWidth: 420, editorZoom: .7, pdfZoom: .6, assistantCollapsed: true })))
+  await page.goto('/?lang=ko')
+  await page.waitForFunction(() => workspaceReadyForCompile)
+  const values = await page.evaluate(() => ({ sidebar: document.querySelector('.sidebar').getBoundingClientRect().width, editor: layout.editorZoom, pdf: layout.pdfZoom, maximum: document.getElementById('sidebar-resizer').getAttribute('aria-valuemax') }))
+  expect(values).toEqual({ sidebar: 320, editor: .7, pdf: .6, maximum: '320' })
+  await expect(page.locator('.assistant-rail-label')).toBeVisible()
+  await expect(page.locator('.assistant-rail-label')).toHaveText('도우미')
+  const title = await page.locator('#project-title').boundingBox()
+  const controls = await page.locator('.project-name').boundingBox()
+  expect(title.width).toBeGreaterThan(900)
+  expect(title.x + title.width).toBeLessThanOrEqual(controls.x)
+  await page.locator('#toggle-assistant').click()
+  await expect(page.locator('.assistant-rail-label')).toBeHidden()
+  await expect(page.locator('#assistant-panel .assistant-title')).toBeVisible()
+})
+
+test('compact desktop files and mobile touch rows remain distinct', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.goto('/?lang=en')
+  await page.waitForFunction(() => sharedMetadataReady)
+  const row = page.locator('#files .file').first()
+  expect((await row.boundingBox()).height).toBeLessThanOrEqual(32)
+  await expect(row.locator('.file-label')).toHaveCSS('font-size', '13px')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('[data-focus="files"]').click()
+  expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44)
+  const controls = await page.locator('.topbar').evaluate(element => ({ width: element.clientWidth, scroll: element.scrollWidth }))
+  expect(controls.scroll).toBeLessThanOrEqual(controls.width)
+})

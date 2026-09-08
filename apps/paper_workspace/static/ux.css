@@ -173,11 +173,26 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
 }
 
 /* Collapsed navigation is a rail; its hidden controls must leave the tab order. */
+.assistant-rail-label{display:none}
 @media(min-width:768px){
+  .topbar .project-title{flex:1;min-width:0;width:auto;max-width:none}
+  .sidebar .file,.sidebar .folder-row{min-height:30px;padding-block:4px}
+  .sidebar .file-label,.sidebar .folder-name{font-size:13px;line-height:1.4}
+  .workspace.assistant-collapsed .assistant-panel>.panel-header{height:auto;min-height:132px;align-items:flex-start;border-bottom:0}
+  .workspace.assistant-collapsed .assistant-toggle{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;width:40px;height:auto;min-height:124px;padding:14px 3px;gap:12px}
+  .workspace.assistant-collapsed .assistant-rail-label{display:block;writing-mode:vertical-rl;text-orientation:mixed;color:var(--theme-text-muted);font-size:12px;font-weight:650;line-height:1.4}
   .shell.sidebar-collapsed .sidebar{padding:0 4px}
   .shell.sidebar-collapsed .side-heading{height:48px;min-height:48px;padding:0}
   .shell.sidebar-collapsed .file-search{display:none}
 }
+.quick-nav{flex:0 0 auto;margin:0 3px 12px;padding-bottom:10px;border-bottom:1px solid var(--theme-border-soft);display:flex;flex-wrap:wrap;gap:5px}
+.quick-nav[hidden],.shell.sidebar-collapsed .quick-nav{display:none}
+.quick-nav-link{display:inline-block;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:30px;padding:5px 8px;border:1px solid var(--theme-border);border-radius:6px;background:transparent;color:var(--theme-text-muted);font-size:11px;font-weight:600;line-height:1.2}
+.quick-nav-link:hover{background:var(--theme-accent-soft);color:var(--theme-text-strong)}
+.quick-nav-link:focus-visible{outline:2px solid #84adff;outline-offset:1px}
+.quick-nav-link[aria-current="page"]{border-color:var(--theme-accent-border);background:var(--theme-accent-soft);color:var(--theme-text-strong)}
+.quick-nav-current{flex:1 0 100%;text-align:left}
+.quick-nav button:disabled{cursor:default;opacity:.5}
 .folder-children.collapsed{visibility:hidden}
 .folder-chevron{transition-duration:var(--motion-ui)}
 .side-heading .sidebar-toggle:focus-visible,.zoom-controls button:focus-visible,.pdf-control:focus-visible{outline:2px solid #84adff;outline-offset:-2px}
@@ -197,6 +212,8 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .shell[data-focus="files"].sidebar-collapsed #new-folder,.shell[data-focus="files"].sidebar-collapsed #new-file{display:grid}
   .shell[data-focus="files"].sidebar-collapsed #files{display:block}
   .sidebar #toggle-sidebar{display:none}
+  .shell[data-focus="files"].sidebar-collapsed .quick-nav:not([hidden]){display:flex}
+  .quick-nav-link{min-height:44px;font-size:12px}
   .dialog-actions button,.file-search button,.source-conflict button,.status-action,.pdf-error-state button{min-height:44px}
   .file-search button{flex-basis:44px;width:44px}
   .file-search input{height:44px}

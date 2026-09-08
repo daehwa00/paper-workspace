@@ -56,6 +56,11 @@
 - Test 320px and 390px mobile widths plus 1024px and 1600px desktop layouts.
 - Mobile headers may stack file and status text while keeping all actions within the viewport.
 - A collapsed sidebar is a deliberate rail with a discoverable expand control; hidden search and file controls must not shrink into the rail.
+- The workspace reserves more width for source and PDF: sidebar widths remain resizable between 180px and 320px, with a 224px default. Existing wider settings are constrained to the new maximum without resetting unrelated preferences.
+- Desktop file rows use a compact 30px rhythm with 13px labels and full-path tooltips; touch rows retain 44px targets.
+- Show shortcuts only for real project entries (manifest entrypoint, available body folder, bibliography). Revealing the current file clears filtering and expands only its ancestors; startup preserves the user's folder choices.
+- Zoom shortcuts are explicit actions: restore the source to 100% or the PDF to its existing fit-width baseline. Loading, switching documents, and resizing must not reset a stored custom zoom.
+- Let the project title use available header width, and name the collapsed assistant rail. These controls preserve keyboard focus, editing selection, and document state.
 - The project hub uses a 1440px maximum content width with responsive grid tracks of at least 300px where space permits. Incomplete rows start at the left, and filtered results retain the same track widths.
 - Keep full-page previews contained in a compact neutral well (144px maximum paper width; 128px on small screens). Titles and recent activity take priority over decorative cover area.
 - Hub titles use a readable three-line desktop allocation, descriptions use at most two lines, and activity/page metadata remains at least 12px. Card rows and metadata align despite varied copy lengths.

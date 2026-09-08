@@ -5,18 +5,18 @@
     '논문 허브': 'Paper hub', '논문 허브로 돌아가기': 'Back to paper hub', '논문 제목': 'Paper title',
     '작업공간 상태 보기': 'View workspace status', '연결 중': 'Connecting', '화면 모드 설정': 'Appearance settings',
     '표시 이름 변경': 'Change display name', '접속 중인 공동 편집자': 'Active collaborators', '작업 화면': 'Workspace view',
-    '파일': 'Files', '원고': 'Source', '도우미': 'Assistant', '프로젝트 파일': 'Project files',
+    '파일': 'Files', '원고': 'Source', '도우미': 'Assistant', '프로젝트 파일': 'Project files', '빠른 이동': 'Quick navigation', '본문': 'Body', '참고문헌': 'References', '현재 파일 찾기': 'Find current file',
     '프로젝트 파일 접기': 'Collapse project files', '프로젝트 파일 펼치기': 'Expand project files', '새 폴더': 'New folder', '새 파일': 'New file',
     '여기에 놓아 추가': 'Drop to add', '파일과 폴더를 프로젝트로 가져옵니다': 'Import files and folders into this project', '논문 파일': 'Paper files',
     '프로젝트 파일 패널 폭 조절': 'Resize project files panel', '로컬 원고 불러오는 중': 'Loading local source',
-    '편집기 확대·축소': 'Editor zoom', '편집기 축소': 'Zoom editor out', '편집기 확대': 'Zoom editor in',
+    '편집기 확대·축소': 'Editor zoom', '편집기 축소': 'Zoom editor out', '편집기 확대': 'Zoom editor in', '원고를 100%로 보기': 'View source at 100%',
     '서버 원본이 변경되었습니다': 'The server source changed', '브라우저 초안은 drafts에 보존하고 최신 서버 원본을 열었습니다.': 'Your browser draft was preserved in drafts and the latest server source was opened.',
     '보존한 초안 열기': 'Open preserved draft', '서버 원본 변경 안내 닫기': 'Dismiss server source change notice', 'LaTeX 편집기': 'LaTeX editor', '현재 파일의 댓글 위치': 'Comment locations in the current file',
     '그림 미리보기': 'Asset preview', '그림 확대·축소': 'Asset zoom', '그림 축소': 'Zoom asset out', '그림 확대': 'Zoom asset in',
     '다운로드': 'Download', '브라우저 미리보기를 지원하지 않는 파일': 'Browser preview is unavailable for this file',
     '파일을 다운로드해 외부 앱에서 열 수 있습니다.': 'Download the file to open it in another application.',
     '편집기와 PDF 미리보기 사이 폭 조절': 'Resize source and PDF panels', '렌더링 대기': 'Waiting to render', '현재 PDF 페이지': 'Current PDF page',
-    'PDF 확대·축소': 'PDF zoom', 'PDF 축소': 'Zoom PDF out', 'PDF 확대': 'Zoom PDF in', '렌더링된 PDF 다운로드': 'Download rendered PDF', 'PDF 새로고침': 'Refresh PDF', '프로젝트 코드 ZIP 다운로드': 'Download project code ZIP',
+    'PDF 확대·축소': 'PDF zoom', 'PDF 축소': 'Zoom PDF out', 'PDF 확대': 'Zoom PDF in', 'PDF를 너비에 맞추기': 'Fit PDF to width', '렌더링된 PDF 다운로드': 'Download rendered PDF', 'PDF 새로고침': 'Refresh PDF', '프로젝트 코드 ZIP 다운로드': 'Download project code ZIP',
     '현재 PDF는 마지막 정상 빌드이며 최신 원고와 다릅니다.': 'This is the last successful PDF and does not match the latest source.',
     '논문 미리보기': 'Paper preview', 'PDF 준비 중': 'Preparing PDF', '원고를 렌더링하고 있습니다': 'Rendering the manuscript', '첫 페이지 준비 중': 'Preparing first page', '첫 페이지를 먼저 표시합니다': 'Rendering the first page first', 'PDF 렌더링을 실행하면 여기에 표시됩니다': 'The rendered PDF will appear here.', 'PDF 렌더링을 시작하면 여기에 표시됩니다': 'The rendered PDF will appear here.',
     'PDF 미리보기와 논문 도우미 사이 폭 조절': 'Resize PDF and assistant panels', '논문 도우미': 'Paper assistant',
@@ -104,6 +104,7 @@
   })
 
   const patterns = [
+    [/^(본문|참고문헌|현재 파일 찾기): (.+)$/, (_, label, path) => `${en[label]}: ${path}`],
     [/^(\d+)개 검사 · 오류 (\d+) · 확인 필요 (\d+)$/, (_, total, errors, warnings) => i18n.getLanguage() === 'ko' ? `${total}개 검사 · 오류 ${errors} · 확인 필요 ${warnings}` : `${total} checks · ${errors} errors · ${warnings} warnings`],
     [/^최근 백업 (.+)$/, (_, date) => i18n.getLanguage() === 'ko' ? `최근 백업 ${date}` : `Latest backup ${date}`],
     [/^(\d+)개 항목을 (.*)에 추가했습니다\.$/, (_, count, file) => i18n.getLanguage() === 'ko' ? `${count}개 항목을 ${file}에 추가했습니다.` : `Added ${count} entries to ${file}.`]

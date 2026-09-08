@@ -1,5 +1,5 @@
 const initial = '';
-const {backupItems,backupProjectId:backupManifestId,baseName,buildCompilePayload,cleanSegment,compactSourceSnapshot,compareBackupFiles,compileAssetExtensions,compileTextExtensions,compilePayloadFingerprint,constrain,extensionOf,extractBackupSnapshot,isCompileAssetPath,isCompileInputPath,manifestItemIsAsset,normalizeManifest,normalizeState,parentPath,parseLatexDiagnostics:parseCompileDiagnostics,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems,sourceFingerprint,sourceSnapshotMatches,storedJson,validateBackupSnapshot}=window.PaperWorkspaceCore;
+const {backupItems,backupProjectId:backupManifestId,baseName,buildCompilePayload,cleanSegment,compactSourceSnapshot,compareBackupFiles,compileAssetExtensions,compileTextExtensions,compilePayloadFingerprint,constrain,extensionOf,extractBackupSnapshot,isCompileAssetPath,isCompileInputPath,manifestItemIsAsset,normalizeManifest,normalizeState,parallelLimit,parentPath,parseLatexDiagnostics:parseCompileDiagnostics,projectFileUrl:buildProjectFileUrl,runtimeFileRevision,serverManagedManifestItems,sourceFingerprint,sourceSnapshotMatches,storedJson,validateBackupSnapshot}=window.PaperWorkspaceCore;
 const {createWorkspacePersistence,workspaceAssetStore}=window.PaperWorkspaceStorage;
 const preferences=window.PaperPreferenceStorage;
 const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
@@ -106,7 +106,7 @@ const defaultLayout={editorWidth:null,assistantWidth:292,assistantCollapsed:fals
 const hasStoredLayout=preferences.get(layoutKey)!==null;
 const layout={...defaultLayout,...storedJson(layoutKey,{})};
 if(!hasStoredLayout&&innerWidth<1600)layout.assistantCollapsed=true;
-const minEditorWidth=390, minPreviewWidth=390, minAssistantWidth=240, maxAssistantWidth=500, minSidebarWidth=180, maxSidebarWidth=420, resizerWidth=20;
+const minEditorWidth=390, minPreviewWidth=390, minAssistantWidth=240, maxAssistantWidth=500, minSidebarWidth=180, maxSidebarWidth=320, resizerWidth=20;
 function persistLayout(){preferences.set(layoutKey,JSON.stringify(layout))}
 function layoutLimits(){const workspace=$('workspace')||document.querySelector('.workspace');const width=workspace.clientWidth;const assistantMax=Math.min(maxAssistantWidth,width-minEditorWidth-minPreviewWidth-resizerWidth);return {editorMax:width-(layout.assistantWidth||defaultLayout.assistantWidth)-minPreviewWidth-resizerWidth,assistantMax:Math.max(minAssistantWidth,assistantMax)};}
 function updateResizerAria(){const limits=layoutLimits();document.querySelectorAll('.panel-resizer').forEach(resizer=>{const assistant=resizer.dataset.resize==='preview-assistant';const value=assistant?layout.assistantWidth:(layout.editorWidth||Math.round($('editor-panel').getBoundingClientRect().width));resizer.setAttribute('aria-valuenow',String(Math.round(value)));resizer.setAttribute('aria-valuemin',String(assistant?minAssistantWidth:minEditorWidth));resizer.setAttribute('aria-valuemax',String(Math.round(assistant?limits.assistantMax:limits.editorMax)));});const sidebar=$('sidebar-resizer');sidebar.setAttribute('aria-valuenow',String(Math.round(layout.sidebarWidth)));sidebar.setAttribute('aria-valuemin',String(minSidebarWidth));sidebar.setAttribute('aria-valuemax',String(maxSidebarWidth))}
@@ -553,25 +553,26 @@ function schedulePdfPageIndicatorUpdate(){if(pdfPageIndicatorFrame)return;pdfPag
 function installPdfPageIndicator(){const panel=document.querySelector('.preview-panel');panel.addEventListener('scroll',schedulePdfPageIndicatorUpdate,{passive:true});new ResizeObserver(schedulePdfPageIndicatorUpdate).observe(panel);window.addEventListener('resize',schedulePdfPageIndicatorUpdate)}
 function setRenderedPdf(binary){renderedPdfBytes=binary;if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl);renderedPdfUrl=URL.createObjectURL(new Blob([binary],{type:'application/pdf'}));$('download-pdf').disabled=false;return renderedPdfUrl}
 function installZoomControls(){
-  const changeEditorZoom=delta=>{
-    layout.editorZoom=constrain(Math.round((layout.editorZoom+delta)*10)/10,.7,1.7);
+  const setEditorZoom=zoom=>{
+    layout.editorZoom=constrain(Math.round(zoom*10)/10,.7,1.7);
     applyLayout({persist:true});
   };
-  const changePdfZoom=delta=>{
+  const setPdfZoom=zoom=>{
     const panel=document.querySelector('.preview-panel');
-    const verticalRange=panel.scrollHeight-panel.clientHeight;
-    const horizontalRange=panel.scrollWidth-panel.clientWidth;
-    const verticalProgress=verticalRange>0?panel.scrollTop/verticalRange:0;
-    const horizontalProgress=horizontalRange>0?panel.scrollLeft/horizontalRange:0;
-    layout.pdfZoom=constrain(Math.round((layout.pdfZoom+delta)*10)/10,.55,2);
+    const pages=Array.from(document.querySelectorAll('.pdf-page'));
+    const snapshot=window.PaperPdfViewport.capture(panel,pages);
+    layout.pdfZoom=constrain(Math.round(zoom*10)/10,.55,2);
     applyLayout({persist:true});
-    panel.scrollTop=verticalProgress*Math.max(0,panel.scrollHeight-panel.clientHeight);
-    panel.scrollLeft=horizontalProgress*Math.max(0,panel.scrollWidth-panel.clientWidth);
+    window.PaperPdfViewport.restore(panel,pages,snapshot);
     schedulePdfPageIndicatorUpdate();
   };
+  const changeEditorZoom=delta=>setEditorZoom(layout.editorZoom+delta);
+  const changePdfZoom=delta=>setPdfZoom(layout.pdfZoom+delta);
   $('editor-zoom-out').onclick=()=>changeEditorZoom(-.1);
+  $('editor-zoom-value').onclick=()=>setEditorZoom(1);
   $('editor-zoom-in').onclick=()=>changeEditorZoom(.1);
   $('pdf-zoom-out').onclick=()=>changePdfZoom(-.1);
+  $('pdf-zoom-value').onclick=()=>setPdfZoom(1);
   $('pdf-zoom-in').onclick=()=>changePdfZoom(.1);
 
   let editorWheelAt=0;
@@ -753,12 +754,45 @@ function selectedPreviewMode(entrypoint=selectedEntrypoint()){const root=project
 async function compilePayload(){const entrypoint=selectedEntrypoint();return buildCompilePayload({files:state.files,assets:state.assets,entrypoint,rootEntrypoint:projectManifest.entrypoint||'main.tex',previewMode:selectedPreviewMode(entrypoint),workspaceId:projectSlug,ensureAssetLoaded})}
 let contextTarget={type:'root',path:''};let pendingUploadFolder='';
 function showTreeMenu(event,type,path){event.preventDefault();event.stopPropagation();contextTarget={type,path};const menu=$('tree-menu');const protectedPaper=(type==='folder'&&path==='paper')||(type==='file'&&path==='paper/main.tex');menu.querySelector('[data-action="new-folder"]').hidden=type==='file';menu.querySelector('[data-action="upload"]').hidden=type==='file';menu.querySelector('[data-action="rename"]').hidden=type==='root'||protectedPaper;menu.querySelector('[data-action="delete"]').hidden=type==='root'||protectedPaper;menu.hidden=false;const width=184,height=220,anchor=event.currentTarget?.getBoundingClientRect?.();const x=event.clientX||anchor?.left||8,y=event.clientY||anchor?.bottom||8;menu.style.left=`${Math.max(8,Math.min(x,innerWidth-width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-height-8))}px`;menu.querySelector('button:not([hidden])')?.focus();}
-function fileButton(path){const item=$('file-template').content.firstElementChild.cloneNode(true),locked=isLockedProjectFile(path);item.dataset.filePath=path;item.classList.toggle('active',!activeAsset&&path===state.current);item.classList.toggle('locked',locked);item.querySelector('.file-label').textContent=`${baseName(path)}${locked?'  🔒':''}`;item.title=locked?`${path} · 수정 잠김`:path;item.draggable=!locked;item.onclick=()=>{disposeAssetPdf();if(!isLockedProjectFile())state.files[state.current]=editorValue();state.current=path;setEditor();listFiles();save();sendCursor();if(innerWidth<768)activateFocusMode('source');if(extensionOf(path)==='tex')compileAfterSave();};item.oncontextmenu=event=>showTreeMenu(event,'file',path);return item}
+function openTextFile(path){if(state.files[path]===undefined)return false;disposeAssetPdf();if(!isLockedProjectFile())state.files[state.current]=editorValue();state.current=path;setEditor();listFiles();save();sendCursor();if(innerWidth<768)activateFocusMode('source');if(extensionOf(path)==='tex')compileAfterSave();return true}
+function fileButton(path){const item=$('file-template').content.firstElementChild.cloneNode(true),locked=isLockedProjectFile(path);item.dataset.filePath=path;item.classList.toggle('active',!activeAsset&&path===state.current);item.classList.toggle('locked',locked);item.querySelector('.file-label').textContent=`${baseName(path)}${locked?'  🔒':''}`;item.title=locked?`${path} · 수정 잠김`:path;item.draggable=!locked;item.onclick=()=>openTextFile(path);item.oncontextmenu=event=>showTreeMenu(event,'file',path);return item}
 function assetButton(path){const item=$('file-template').content.firstElementChild.cloneNode(true);item.dataset.filePath=path;const asset=state.assets[path];item.classList.add('asset');item.classList.toggle('active',path===activeAsset);item.querySelector('.file-icon').textContent=extensionOf(path).slice(0,1).toUpperCase()||'A';item.querySelector('.file-label').textContent=baseName(path);item.title=asset.size?`${path} · ${(asset.size/1024).toFixed(1)} KB`:`${path} · 필요할 때 불러옴`;item.onclick=()=>{disposeAssetPdf();state.files[state.current]=editorValue();showAssetPreview(path);save()};item.oncontextmenu=event=>showTreeMenu(event,'asset',path);return item}
 function clearDropState(){document.querySelector('.sidebar').classList.remove('file-dragging');document.querySelectorAll('.folder-row.drop-target').forEach(row=>row.classList.remove('drop-target'))}
 function folderElement(path,allFolders){const wrapper=document.createElement('div');wrapper.className='folder-node';wrapper.dataset.folderPath=path;const collapsed=state.collapsedFolders.includes(path);const row=document.createElement('button');row.className=`folder-row ${collapsed?'':'open'} ${state.activeFolder===path?'selected':''}`;row.dataset.folder=path;row.title=`${path} 폴더 · 업로드 대상으로 선택`;row.setAttribute('aria-expanded',String(!collapsed));row.innerHTML=`<span class="folder-chevron">▶</span><svg class="folder-icon" viewBox="0 0 24 20" aria-hidden="true"><path d="M2.5 4.5h7l2 2h10v11h-19z"/></svg><span class="folder-name">${esc(baseName(path))}</span>`;const children=document.createElement('div'),inner=document.createElement('div');children.className=`folder-children ${collapsed?'collapsed':''}`;inner.className='folder-children-inner';row.onclick=()=>{state.activeFolder=path;const willCollapse=!children.classList.contains('collapsed');children.classList.toggle('collapsed',willCollapse);row.classList.toggle('open',!willCollapse);row.setAttribute('aria-expanded',String(!willCollapse));const index=state.collapsedFolders.indexOf(path);if(willCollapse&&index<0)state.collapsedFolders.push(path);if(!willCollapse&&index>=0)state.collapsedFolders.splice(index,1);document.querySelectorAll('.folder-row.selected').forEach(item=>item.classList.remove('selected'));row.classList.add('selected');save();};row.oncontextmenu=event=>{state.activeFolder=path;showTreeMenu(event,'folder',path)};row.ondragover=event=>{if(!hasLocalFiles(event))return;event.preventDefault();event.stopPropagation();row.classList.add('drop-target');event.dataTransfer.dropEffect='copy'};row.ondragleave=()=>row.classList.remove('drop-target');row.ondrop=async event=>{if(!hasLocalFiles(event))return;event.preventDefault();event.stopPropagation();clearDropState();state.activeFolder=path;await importLocalFiles(await droppedLocalFiles(event.dataTransfer),path)};[...allFolders].filter(folder=>parentPath(folder)===path).sort().forEach(folder=>inner.append(folderElement(folder,allFolders)));Object.keys(state.files).filter(file=>parentPath(file)===path).sort().forEach(file=>inner.append(fileButton(file)));Object.keys(state.assets).filter(file=>parentPath(file)===path).sort().forEach(file=>inner.append(assetButton(file)));children.append(inner);wrapper.append(row,children);return wrapper}
 function applyFileFilter(){const query=$('file-search').value.trim().toLocaleLowerCase();$('clear-file-search').hidden=!query;const files=$('files');files.querySelectorAll('[data-file-path]').forEach(item=>{item.hidden=Boolean(query&&!item.dataset.filePath.toLocaleLowerCase().includes(query))});const folders=[...files.querySelectorAll('.folder-node')].reverse();for(const folder of folders){const ownMatch=!query||folder.dataset.folderPath.toLocaleLowerCase().includes(query);const childMatch=[...folder.querySelectorAll(':scope > .folder-children > .folder-children-inner > [data-file-path],:scope > .folder-children > .folder-children-inner > .folder-node')].some(item=>!item.hidden);folder.hidden=Boolean(query&&!ownMatch&&!childMatch);const children=folder.querySelector(':scope > .folder-children'),row=folder.querySelector(':scope > .folder-row');if(query&&!folder.hidden){children.classList.remove('collapsed');row.classList.add('open');row.setAttribute('aria-expanded','true')}else if(!query){const collapsed=state.collapsedFolders.includes(folder.dataset.folderPath);children.classList.toggle('collapsed',collapsed);row.classList.toggle('open',!collapsed);row.setAttribute('aria-expanded',String(!collapsed))}}let empty=files.querySelector('.file-search-empty');if(query&&![...files.children].some(item=>!item.hidden)){if(!empty){empty=document.createElement('p');empty.className='file-search-empty';files.append(empty)}empty.textContent='일치하는 파일이 없습니다.'}else empty?.remove()}
-function listFiles(){const files=$('files');files.innerHTML='';const allFolders=new Set(state.folders);for(const file of [...Object.keys(state.files),...Object.keys(state.assets)]){let folder=parentPath(file);while(folder){allFolders.add(folder);folder=parentPath(folder)}}for(const folder of [...state.folders]){let parent=parentPath(folder);while(parent){allFolders.add(parent);parent=parentPath(parent)}}[...allFolders].filter(folder=>!parentPath(folder)).sort((a,b)=>a==='paper'?-1:b==='paper'?1:a.localeCompare(b)).forEach(folder=>files.append(folderElement(folder,allFolders)));Object.keys(state.files).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(fileButton(file)));Object.keys(state.assets).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(assetButton(file)));applyFileFilter();$('uploaded-files').innerHTML=state.uploads.map(name=>`<div class="source-file">${esc(name)}</div>`).join('')||'<p class="hint">아직 업로드한 자료가 없습니다.</p>'}
+function quickNavigationTargets(){const entrypoint=`paper/${projectManifest.entrypoint||'main.tex'}`,paths=[...Object.keys(state.files),...Object.keys(state.assets)],targets=[];if(state.files[entrypoint]!==undefined)targets.push({label:baseName(entrypoint),path:entrypoint,type:'file'});const bodyFolder='paper/sections';if(state.folders.includes(bodyFolder)||paths.some(path=>path.startsWith(`${bodyFolder}/`)))targets.push({label:'본문',path:bodyFolder,type:'folder'});const bibliography=Object.keys(state.files).filter(path=>extensionOf(path)==='bib').sort((left,right)=>Number(right==='paper/references.bib')-Number(left==='paper/references.bib')||left.localeCompare(right))[0];if(bibliography)targets.push({label:'참고문헌',path:bibliography,type:'file'});return targets}
+function treeAncestors(path){const ancestors=[];for(let parent=parentPath(path);parent;parent=parentPath(parent))ancestors.push(parent);return ancestors}
+function locateTreePath(path){const targetPath=String(path||''),search=$('file-search');if(!targetPath)return false;const ancestors=treeAncestors(targetPath),wasCollapsed=state.collapsedFolders.length;search.value='';state.collapsedFolders=state.collapsedFolders.filter(folder=>!ancestors.includes(folder));listFiles();if(wasCollapsed!==state.collapsedFolders.length)save();const target=[...$('files').querySelectorAll('[data-file-path],.folder-row[data-folder]')].find(item=>(item.dataset.filePath||item.dataset.folder)===targetPath);if(!target)return false;target.scrollIntoView({block:'nearest'});target.focus({preventScroll:true});return true}
+function renderQuickNavigation(){
+  const navigation=$('quick-nav'),targets=quickNavigationTargets(),currentPath=activeAsset||state.current;
+  navigation.replaceChildren();
+  navigation.hidden=!targets.length&&!currentPath;
+  if(navigation.hidden)return;
+  for(const target of targets){
+    const item=document.createElement('button');
+    item.type='button';item.className='quick-nav-link quick-nav-entry';
+    item.dataset.shortcutPath=target.path;item.textContent=target.label;item.title=target.path;
+    item.setAttribute('aria-label',`${target.label}: ${target.path}`);
+    if(target.type==='file'&&target.path===currentPath)item.setAttribute('aria-current','page');
+    item.onclick=()=>{
+      if(target.type!=='file')return locateTreePath(target.path);
+      const restoreFocus=document.activeElement===item;
+      if(!openTextFile(target.path)||!restoreFocus)return;
+      if(innerWidth<768)focusEditor();
+      else [...navigation.querySelectorAll('.quick-nav-entry')].find(button=>button.dataset.shortcutPath===target.path)?.focus({preventScroll:true});
+    };
+    navigation.append(item);
+  }
+  if(currentPath){
+    const item=document.createElement('button');
+    item.type='button';item.id='locate-current-file';item.className='quick-nav-link quick-nav-current';
+    item.textContent='현재 파일 찾기';item.title=currentPath;
+    item.setAttribute('aria-label',`현재 파일 찾기: ${currentPath}`);
+    item.onclick=()=>locateTreePath(activeAsset||state.current);
+    navigation.append(item);
+  }
+}
+function listFiles(){const files=$('files');files.innerHTML='';const allFolders=new Set(state.folders);for(const file of [...Object.keys(state.files),...Object.keys(state.assets)]){let folder=parentPath(file);while(folder){allFolders.add(folder);folder=parentPath(folder)}}for(const folder of [...state.folders]){let parent=parentPath(folder);while(parent){allFolders.add(parent);parent=parentPath(parent)}}[...allFolders].filter(folder=>!parentPath(folder)).sort((a,b)=>a==='paper'?-1:b==='paper'?1:a.localeCompare(b)).forEach(folder=>files.append(folderElement(folder,allFolders)));Object.keys(state.files).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(fileButton(file)));Object.keys(state.assets).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(assetButton(file)));applyFileFilter();renderQuickNavigation();$('uploaded-files').innerHTML=state.uploads.map(name=>`<div class="source-file">${esc(name)}</div>`).join('')||'<p class="hint">아직 업로드한 자료가 없습니다.</p>'}
 function commentLocation(comment){const source=state.files[comment.file]||'',relative=comment.anchorRelative&&comment.headRelative?collabSession.resolveRange(comment):null;if(relative)return [Math.min(relative[0],source.length),Math.min(relative[1],source.length)];if(source.slice(comment.start,comment.end)===comment.anchor||source.slice(comment.start,comment.start+comment.anchor.length)===comment.anchor)return [comment.start,Math.min(comment.end,source.length)];const found=source.indexOf(comment.anchor);return found>=0?[found,found+comment.anchor.length]:[Math.min(comment.start,source.length),Math.min(comment.end,source.length)]}
 function renderCommentAnchors(){const container=$('comment-anchors');container.replaceChildren();if(activeAsset)return;const groups=new Map(),height=richEditor?.dom.clientHeight||0;for(const comment of state.comments.filter(item=>item.file===state.current)){const [start]=commentLocation(comment),coordinates=remoteCaretCoordinates(start);if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;const key=Math.round(coordinates.top/coordinates.lineHeight);if(!groups.has(key))groups.set(key,{coordinates,comments:[]});groups.get(key).comments.push(comment)}for(const {coordinates,comments} of groups.values()){const indicator=document.createElement('span');indicator.className='comment-line-indicator';indicator.style.top=`${coordinates.top}px`;indicator.style.height=`${coordinates.lineHeight}px`;const marker=document.createElement('button');marker.type='button';marker.className='comment-anchor-marker';marker.style.top=`${coordinates.top}px`;marker.textContent=String(comments.length);const first=comments[0],more=comments.length>1?` · 외 ${comments.length-1}개`:'';marker.dataset.tooltip=`${first.actor||'공동저자'}: ${first.body}${more}`;marker.setAttribute('aria-label',`${first.actor||'공동저자'}의 댓글${more}. 클릭하여 댓글로 이동`);marker.onclick=()=>{goToComment(first);activateAssistantTab('comments')};container.append(indicator,marker)}}
 function goToComment(comment){if(!state.files[comment.file])return alert('댓글이 연결된 파일을 찾을 수 없습니다.');state.files[state.current]=editorValue();state.current=comment.file;setEditor();listFiles();const [start,end]=commentLocation(comment);focusEditor();setEditorSelection(start,end,{scroll:true});activeSelection={file:comment.file,start,end,text:editorValue().slice(start,end)};sendCursor()}
@@ -1011,14 +1045,15 @@ async function loadProject(){
   syncRemoteManifestAssets(projectManifest,{files:[],runtime_file_revisions:{}});
   for(const path of manifestAssetPaths)delete state.files[path];
   const requiredProjectSources=new Set(serverManagedManifestItems(projectManifest).map(item=>item.path));
-  await Promise.all(projectManifest.files.map(async item=>{
+  // Keep large projects within the gateway's concurrent request capacity.
+  await parallelLimit(projectManifest.files,6,async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
     if(!manifestItemIsAsset(item)){
       const value=await fetchProjectSource(name,projectFileUrl(source),{required:requiredProjectSources.has(item.path)});
       if(typeof value==='string')remoteSources[name]=value;
     }
-  }));
+  });
   // Paint the first usable source immediately. Safari can take longer to
   // finish IndexedDB/Yjs bootstrap for an established profile; manuscript
   // visibility must not depend on that background merge completing.
