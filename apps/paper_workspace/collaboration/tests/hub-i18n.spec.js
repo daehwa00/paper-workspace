@@ -120,31 +120,88 @@ test('a supported browser locale is used when no explicit preference exists', as
   await context.close()
 })
 
-test('project cards share a row height despite different title and description lengths', async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 900 })
+test('project grid uses responsive left-aligned rows while card content stays aligned', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 })
   await page.route('**/projects/index.json', route => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ projects: [
       { slug: 'short', display_name: 'Short Paper', description: 'Short description.', page_count: 1 },
-      { slug: 'long-title', display_name: 'A Much Longer Research Paper Title That Wraps Across Several Lines', description: 'Short description.', page_count: 12 },
+      { slug: 'long-title', display_name: 'A Much Longer Research Paper Title That Uses Every Available Title Line', description: 'Short description.', page_count: 12 },
       { slug: 'long-copy', display_name: 'Medium Paper', description: 'A longer project description that occupies both available lines in the compact gallery card.', page_count: 28 },
       { slug: 'fourth', display_name: 'Fourth Paper', description: 'Another short description.', page_count: 8 },
-      { slug: 'fifth', display_name: 'Fifth Paper', description: 'The final project in an incomplete row.', page_count: 16 }
+      { slug: 'fifth', display_name: 'Fifth Paper With a Deliberately Long Title for Alignment', description: 'The final project in an incomplete row.', page_count: 16 },
+      { slug: 'sixth', display_name: 'Sixth Paper', description: 'A different description length keeps the card row honest.', page_count: 4 },
+      { slug: 'seventh', display_name: 'Seventh Paper', description: 'The final, left-aligned card.', page_count: 16 }
     ] })
+  }))
+  await page.route('**/api/backups/activity', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ projects: [] })
+  }))
+  await page.route('**/projects/*/thumbnail.png', route => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
   }))
 
   await page.goto('/hub.html?lang=en')
-  await expect(page.locator('.project-card')).toHaveCount(5)
-  const boxes = await page.locator('.project-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect()))
-  const metaBoxes = await page.locator('.project-meta').evaluateAll(items => items.map(item => item.getBoundingClientRect()))
-  const copyTops = await page.locator('.project-card-copy p').evaluateAll(items => items.slice(0, 3).map(item => Math.round(item.getBoundingClientRect().top)))
-  const gridBox = await page.locator('.project-grid').evaluate(grid => grid.getBoundingClientRect())
-  expect(new Set(boxes.slice(0, 3).map(box => Math.round(box.height))).size).toBe(1)
-  expect(new Set(boxes.slice(0, 3).map(box => Math.round(box.bottom))).size).toBe(1)
-  expect(new Set(metaBoxes.slice(0, 3).map(box => Math.round(box.bottom))).size).toBe(1)
-  expect(new Set(copyTops).size).toBe(1)
-  expect(Math.abs((boxes[3].left + boxes[4].right) / 2 - (gridBox.left + gridBox.right) / 2)).toBeLessThan(2)
+  await expect(page.locator('.project-card')).toHaveCount(7)
+
+  const layout = async () => page.locator('.project-grid').evaluate(grid => {
+    const box = grid.getBoundingClientRect()
+    const cards = [...grid.querySelectorAll('.project-card')].map(card => {
+      const cardBox = card.getBoundingClientRect()
+      const metaBox = card.querySelector('.project-meta')?.getBoundingClientRect()
+      const copyBox = card.querySelector('.project-card-copy p')?.getBoundingClientRect()
+      return {
+        left: cardBox.left,
+        top: cardBox.top,
+        right: cardBox.right,
+        bottom: cardBox.bottom,
+        height: cardBox.height,
+        metaBottom: metaBox?.bottom,
+        copyTop: copyBox?.top
+      }
+    })
+    return { grid: { left: box.left, right: box.right, width: box.width }, cards }
+  })
+  const rows = result => Object.values(result.cards.reduce((grouped, card) => {
+    const top = Math.round(card.top)
+    grouped[top] = [...(grouped[top] || []), card]
+    return grouped
+  }, {}))
+  const rowCounts = result => rows(result).map(row => row.length)
+  const expectRows = async (viewport, counts) => {
+    await page.setViewportSize(viewport)
+    const result = await layout()
+    expect(rowCounts(result)).toEqual(counts)
+    expect(Math.abs(rows(result).at(-1)[0].left - result.grid.left)).toBeLessThan(2)
+    return result
+  }
+
+  const desktop = await expectRows({ width: 1600, height: 900 }, [4, 3])
+  const firstRow = desktop.cards.slice(0, 4)
+  expect(desktop.grid.width).toBeLessThanOrEqual(1440)
+  expect(new Set(firstRow.map(card => Math.round(card.height))).size).toBe(1)
+  expect(new Set(firstRow.map(card => Math.round(card.bottom))).size).toBe(1)
+  expect(new Set(firstRow.map(card => Math.round(card.metaBottom))).size).toBe(1)
+  expect(new Set(firstRow.map(card => Math.round(card.copyTop))).size).toBe(1)
+  expect(Math.round(await page.locator('.project-thumbnail-wrap').first().evaluate(item => item.getBoundingClientRect().width))).toBe(144)
+  await expect(page.locator('.project-card h3').first()).toHaveCSS('font-size', '18px')
+  await expect(page.locator('.project-activity').first()).toHaveCSS('font-size', '12px')
   await expect(page.locator('.hub-intro')).toHaveCSS('padding-top', '20px')
-  await page.setViewportSize({ width: 390, height: 844 })
+
+  await expectRows({ width: 1200, height: 900 }, [3, 3, 1])
+  await expectRows({ width: 800, height: 900 }, [2, 2, 2, 1])
+  await expectRows({ width: 390, height: 844 }, [1, 1, 1, 1, 1, 1, 1])
+  expect(Math.round(await page.locator('.project-thumbnail-wrap').first().evaluate(item => item.getBoundingClientRect().width))).toBe(128)
   await expect(page.locator('.project-card h3').first()).toHaveCSS('min-height', '0px')
+})
+
+test('stacked search and sort controls keep the chevron inside the select', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 900 })
+  await page.goto('/hub.html?lang=ko')
+  const select = await page.locator('#project-sort').boundingBox()
+  const chevron = await page.locator('.project-sort-label svg').boundingBox()
+  const search = await page.locator('.search').boundingBox()
+  expect(chevron.x + chevron.width).toBeLessThanOrEqual(select.x + select.width)
+  expect(Math.abs(select.width - search.width)).toBeLessThanOrEqual(1)
 })

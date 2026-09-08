@@ -56,6 +56,10 @@
 - Test 320px and 390px mobile widths plus 1024px and 1600px desktop layouts.
 - Mobile headers may stack file and status text while keeping all actions within the viewport.
 - A collapsed sidebar is a deliberate rail with a discoverable expand control; hidden search and file controls must not shrink into the rail.
+- The project hub uses a 1440px maximum content width with responsive grid tracks of at least 300px where space permits. Incomplete rows start at the left, and filtered results retain the same track widths.
+- Keep full-page previews contained in a compact neutral well (144px maximum paper width; 128px on small screens). Titles and recent activity take priority over decorative cover area.
+- Hub titles use a readable three-line desktop allocation, descriptions use at most two lines, and activity/page metadata remains at least 12px. Card rows and metadata align despite varied copy lengths.
+- The hub's decorative arrow points right for internal workspace navigation and moves only horizontally on hover; reduced-motion disables that movement.
 
 ## Interaction states
 - Loading: bound work and preserve the last usable content.

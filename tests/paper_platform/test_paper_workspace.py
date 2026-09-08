@@ -238,6 +238,7 @@ def test_project_hub_uses_safe_first_page_thumbnails() -> None:
 def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     html = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
+    base_css = (ROOT / "apps/paper_workspace/static/hub.css").read_text(encoding="utf-8")
     css = (ROOT / "apps/paper_workspace/static/hub-ux.css").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
 
@@ -257,14 +258,16 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "paper-workspace:last-active:" in app
     assert "markProjectActivity('edit')" in app
     assert "setEditorValueWithoutActivity(value)" in app
-    assert "display:flex;flex-wrap:wrap;justify-content:center;align-items:stretch" in css
-    assert ".project-card{width:100%;min-height:0;max-width:340px;flex:0 1 340px" in css
+    assert "width:min(1440px,calc(100% -" in base_css
+    assert "display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:20px" in base_css
+    assert ".project-grid{display:flex" not in css
+    assert "max-width:340px" not in css
     assert ".project-activity{display:flex" in css
-    assert "min-height:3.6em" in css
+    assert "min-height:3.9em" in css
     assert "-webkit-line-clamp:3" in css
     assert ".project-card h3{min-height:0;font-size:16px}" in css
     assert ".hub-intro{align-items:center;padding:20px 24px" in css
-    assert "max-width:340px" in css
+    assert "max-width:144px" in css
 
 
 def test_asset_selection_opens_a_zoomable_preview_and_download() -> None:

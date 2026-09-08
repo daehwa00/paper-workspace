@@ -316,7 +316,7 @@ function renderProjects() {
     const activityLabel = local.actor && activityTime
       ? i18n.t(activityLoadState === 'unavailable' && !local.hasServerActivity ? 'hub.localActivity' : 'hub.lastEdited', { actor: local.actor, time: activityTime })
       : activityLoadState === 'unavailable' ? i18n.t('hub.activityUnavailable') : i18n.t('hub.noActivity')
-    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></div><div class="project-card-copy"><h3>${title}</h3><p>${description}</p></div><div class="project-activity"><span class="project-activity-dot" aria-hidden="true"></span>${escapeHtml(activityLabel)}</div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
+    return `<a class="project-card" href="/p/${encodeURIComponent(project.slug)}"><div class="project-card-top">${visual}<svg class="project-arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></div><div class="project-card-copy"><h3 title="${title}">${title}</h3><p>${description}</p></div><div class="project-activity"><span class="project-activity-dot" aria-hidden="true"></span>${escapeHtml(activityLabel)}</div>${meta ? `<div class="project-meta">${meta}</div>` : ''}</a>`
   }).join('') || `<div class="empty-card">${escapeHtml(i18n.t('hub.emptyProjects'))}</div>`
   list.querySelectorAll('img[data-project-fallback]').forEach(image => {
     image.addEventListener('error', () => {
