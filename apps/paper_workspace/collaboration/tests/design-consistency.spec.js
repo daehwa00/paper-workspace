@@ -33,8 +33,16 @@ test('dark zoom labels and inactive mobile tabs use the muted theme color', asyn
   await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
   await page.goto('/?lang=ko')
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
-  await expect(page.locator('#editor-zoom-value')).toHaveCSS('color', 'rgb(168, 181, 201)')
-  await expect(page.locator('.focus-modes button:not(.is-active)').first()).toHaveCSS('color', 'rgb(168, 181, 201)')
+  const muted = await page.evaluate(() => {
+    const probe = document.createElement('i')
+    probe.style.color = 'var(--theme-text-muted)'
+    document.body.append(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  await expect(page.locator('#editor-zoom-value')).toHaveCSS('color', muted)
+  await expect(page.locator('.focus-modes button:not(.is-active)').first()).toHaveCSS('color', muted)
 })
 
 test('the editor word count follows language changes without changing the manuscript', async ({ page }) => {

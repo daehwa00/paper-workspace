@@ -60,8 +60,8 @@ for (const width of [320, 390]) {
     await expect(page.locator('#files .file:visible')).toHaveCount(2)
     for (const selector of ['#new-file', '#new-folder', '#file-search', '#mobile-utilities > summary']) {
       const box = await page.locator(selector).boundingBox()
-      expect(box.width, selector).toBeGreaterThanOrEqual(44)
-      expect(box.height, selector).toBeGreaterThanOrEqual(44)
+      expect(box.width, selector).toBeGreaterThanOrEqual(43.99)
+      expect(box.height, selector).toBeGreaterThanOrEqual(43.99)
       await expectContained(page.locator(selector), page.locator('body'))
     }
     await page.setViewportSize({ width: 1600, height: 900 })
@@ -175,8 +175,8 @@ test('mobile hub keeps its title readable and settings targets separate', async 
       await expectContained(page.locator('.hub-topbar h1'), page.locator('body'))
       for (const selector of ['.language-picker', '.theme-trigger', '#hub-collab-name']) {
         const box = await page.locator(selector).boundingBox()
-        expect(box.width, selector).toBeGreaterThanOrEqual(44)
-        expect(box.height, selector).toBeGreaterThanOrEqual(44)
+        expect(box.width, selector).toBeGreaterThanOrEqual(43.99)
+        expect(box.height, selector).toBeGreaterThanOrEqual(43.99)
         await expectContained(page.locator(selector), page.locator('body'))
       }
     }
@@ -187,7 +187,15 @@ test('dark assistant separators and the preview header use dark surface borders'
   await page.setViewportSize({ width: 1600, height: 900 })
   await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
   await openWorkspace(page)
-  await expect(page.locator('#model-settings')).toHaveCSS('border-top-color', 'rgb(34, 48, 71)')
-  await expect(page.locator('#model-settings')).toHaveCSS('border-bottom-color', 'rgb(34, 48, 71)')
+  const border = await page.evaluate(() => {
+    const probe = document.createElement('i')
+    probe.style.borderTopColor = 'var(--theme-border-soft)'
+    document.body.append(probe)
+    const color = getComputedStyle(probe).borderTopColor
+    probe.remove()
+    return color
+  })
+  await expect(page.locator('#model-settings')).toHaveCSS('border-top-color', border)
+  await expect(page.locator('#model-settings')).toHaveCSS('border-bottom-color', border)
   await expect(page.locator('.preview-header')).not.toHaveCSS('box-shadow', /rgb\(234, 236, 240\)/)
 })

@@ -10,7 +10,7 @@ import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } 
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { latex } from 'codemirror-lang-latex'
 
-// Keep CodeMirror's light palette and formatting. Theme variables change only
+// Preserve CodeMirror's token categories and formatting. Theme variables change only
 // colors, so switching appearance never rebuilds document or undo state.
 const syntaxColors = {
   '#404740': 'meta', '#708': 'keyword', '#219': 'atom', '#164': 'literal',

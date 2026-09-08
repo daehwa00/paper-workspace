@@ -33,11 +33,11 @@
 
 ## Visual language
 - Color: use `--theme-*` tokens for application surfaces and text; rendered paper stays white.
-- Source syntax: preserve CodeMirror's light palette; `--theme-syntax-*` supplies readable dark colors without changing document state.
+- Source syntax: `--theme-syntax-*` supplies a restrained, readable light/dark palette without changing CodeMirror document or undo state.
 - Typography: retain the UI font stack and monospace source font. Truncate long metadata within a bounded region, not action buttons.
 - Spacing: use the established 4/8px rhythm and explicit gaps between labels and controls.
 - Shape: compact rounded controls, restrained borders, and elevation only for overlays.
-- Motion: 120–200ms for ordinary state feedback. Pointer-driven resizing follows the pointer immediately. Reduced-motion removes spatial transitions while preserving status feedback.
+- Motion: 120–200ms for ordinary state feedback. Pointer-driven resizing and assistant grid-width changes are immediate so controls do not compress during opening. Reduced-motion removes spatial transitions while preserving status feedback.
 - Icons: reuse the current SVG vocabulary; every icon-only action has an accessible name and a centered, bounded hit target.
 
 ## Components
@@ -60,7 +60,7 @@
 - Desktop file rows use a compact 30px rhythm with 13px labels and full-path tooltips; touch rows retain 44px targets.
 - Show shortcuts only for real project entries (manifest entrypoint, available body folder, bibliography). Revealing the current file clears filtering and expands only its ancestors; startup preserves the user's folder choices.
 - Zoom shortcuts are explicit actions: restore the source to 100% or the PDF to its existing fit-width baseline. Loading, switching documents, and resizing must not reset a stored custom zoom.
-- Let the project title use available header width, and name the collapsed assistant rail. These controls preserve keyboard focus, editing selection, and document state.
+- Let the project title use available header width. A named topbar assistant control opens the desktop panel; mobile keeps its named bottom navigation. Collapsing the assistant removes its panel and resizer. Preserve keyboard focus, editing selection, and document state.
 - The project hub uses a 1440px maximum content width with responsive grid tracks of at least 300px where space permits. Incomplete rows start at the left, and filtered results retain the same track widths.
 - Keep full-page previews contained in a compact neutral well (144px maximum paper width; 128px on small screens). Titles and recent activity take priority over decorative cover area.
 - Hub titles use a readable three-line desktop allocation, descriptions use at most two lines, and activity/page metadata remains at least 12px. Card rows and metadata align despite varied copy lengths.
@@ -85,3 +85,17 @@
 
 ## Open questions
 - [ ] Broader browser/device support beyond the verified matrix remains a product decision; report untested environments explicitly.
+
+## Professional finish
+- Status: Approved for implementation on 2026-09-08; this section refines the earlier visual language requirements.
+- User objective: make the workspace feel like a professional manuscript tool, with a coherent hierarchy across file navigation, source editing, PDF review, and assistant tools.
+- Evidence: deployed 2048px light and 1600px dark workspace screenshots, current component/theme styles, and the user's request for a more professional appearance.
+- Approved direction: quiet document editor, using the reviewed interactive mockup as the visual reference.
+- Unify application chrome: a compact neutral header, a stable brand slot for the existing desk mark, and a document title that reveals its input border only when editing. Light and dark themes share the same component hierarchy.
+- Unify panel headers: one height, common icon stroke and target sizes, and explicit groups for zoom, page context, and file actions. Reserve emphasis for the current file and actions that need attention.
+- Make quick navigation visibly different from the file tree. Use concise labeled destinations, file-type icons, and a compact current-file locator instead of a full-width input-like button.
+- Keep the existing resizable panels and saved preferences. The demonstration starts with a modest sidebar; screenshots of a saved maximum-width sidebar are not evidence that resizing is absent.
+- The named desktop assistant control lives in the main toolbar, removing the empty right rail when collapsed. Where the workspace cannot fit the two 390px document panes plus a 240px assistant and dividers, the assistant opens as a side drawer. Mobile retains its bottom Assistant navigation. Closing returns to the previous source/PDF view and restores keyboard focus.
+- Make the rendered sheet the primary reading surface with restrained stage contrast and one subtle shadow. Apply a coordinated syntax palette in a later implementation only after checking existing contrast expectations.
+- The local interactive visual uses fictional manuscript text. Theme, file navigation, source zoom, and the assistant control demonstrate presentation states only.
+- Acceptance: 56px desktop app header, aligned 48px panel headers, neutral title surface with a border when focused, file-type icons, no empty collapsed assistant rail, and all existing mobile/focus/undo/PDF-anchor/collaboration behavior verified.

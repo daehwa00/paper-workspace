@@ -370,3 +370,71 @@ html[data-color-scheme="dark"] .focus-modes button{color:var(--theme-text-muted)
 
 @media(prefers-reduced-motion:reduce){.theme-trigger,.theme-options label>span{transition:none}.theme-trigger:active{transform:none}}
 @media(prefers-reduced-transparency:reduce){.theme-dialog::backdrop{backdrop-filter:none}}
+
+/* Workspace palette follows the approved manuscript-tool direction. */
+body.workspace-page{
+  --theme-bg:#edf0f4;
+  --theme-surface:#fff;
+  --theme-surface-subtle:#f8f9fb;
+  --theme-surface-raised:#f4f6f9;
+  --theme-border:#e2e6ed;
+  --theme-border-soft:#e9ecf1;
+  --theme-text:#242d3b;
+  --theme-text-strong:#182231;
+  --theme-text-muted:#616d80;
+  --theme-text-faint:#657287;
+  --theme-accent-soft:#edf2ff;
+  --theme-accent-border:#b8c8ef;
+  --theme-accent-strong:#315bcb;
+  --theme-shadow:#12213d1a;
+  --theme-syntax-meta:#616d80;
+  --theme-syntax-keyword:#536fa5;
+  --theme-syntax-atom:#365993;
+  --theme-syntax-literal:#496853;
+  --theme-syntax-string:#8a5346;
+  --theme-syntax-escape:#8a5346;
+  --theme-syntax-definition:#365993;
+  --theme-syntax-local:#536fa5;
+  --theme-syntax-type:#496853;
+  --theme-syntax-class:#416d78;
+  --theme-syntax-macro:#416d78;
+  --theme-syntax-property:#365993;
+  --theme-syntax-comment:#5d705e;
+  --theme-syntax-invalid:#b42318;
+}
+html[data-color-scheme="dark"] body.workspace-page{
+  --theme-bg:#11151b;
+  --theme-surface:#171b22;
+  --theme-surface-subtle:#1c2129;
+  --theme-surface-raised:#202630;
+  --theme-border:#303844;
+  --theme-border-soft:#282f3a;
+  --theme-text:#e0e5ee;
+  --theme-text-strong:#f0f3f8;
+  --theme-text-muted:#98a4b7;
+  --theme-text-faint:#8693a7;
+  --theme-accent-soft:#26344e;
+  --theme-accent-border:#4d6593;
+  --theme-accent-strong:#93b0ff;
+  --theme-shadow:#00000045;
+  --theme-syntax-meta:#98a4b7;
+  --theme-syntax-keyword:#9eb9e9;
+  --theme-syntax-atom:#9eb9e9;
+  --theme-syntax-literal:#a0c4ab;
+  --theme-syntax-string:#d2aaa0;
+  --theme-syntax-escape:#d2aaa0;
+  --theme-syntax-definition:#9eb9e9;
+  --theme-syntax-local:#b1bfe0;
+  --theme-syntax-type:#a0c4ab;
+  --theme-syntax-class:#a0c9d2;
+  --theme-syntax-macro:#a0c9d2;
+  --theme-syntax-property:#9eb9e9;
+  --theme-syntax-comment:#8caa96;
+  --theme-syntax-invalid:#ffaaa5;
+}
+body.workspace-page .editor-view .cm-editor,
+body.workspace-page .editor-view .cm-scroller,
+body.workspace-page .editor-view .cm-content{background:var(--theme-surface);color:var(--theme-text)}
+body.workspace-page .editor-view .cm-gutters{background:var(--theme-surface);color:var(--theme-text-faint);border-color:transparent}
+body.workspace-page .editor-view .cm-activeLine,
+body.workspace-page .editor-view .cm-activeLineGutter{background:color-mix(in srgb,var(--theme-accent-soft) 60%,transparent)}

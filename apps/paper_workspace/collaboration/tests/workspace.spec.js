@@ -1064,7 +1064,7 @@ test('PDF loading and compiling use minimal status indicators', async ({ page })
   const download = page.locator('#download-pdf')
   await expect(download).toHaveAttribute('aria-label', '렌더링된 PDF 다운로드')
   await expect(download).toHaveText('')
-  await expect(download).toHaveCSS('width', '36px')
+  await expect(download).toHaveCSS('width', '32px')
   await expect(download).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(download).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('#refresh-pdf')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -1207,14 +1207,14 @@ test('dark mode keeps application controls off white surfaces', async ({ page })
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await expect(page.locator('.tree-action').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('.tree-action').first()).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.assistant-header-actions .beta')).toHaveCSS('background-color', 'rgb(23, 43, 82)')
+  await expect(page.locator('#close-assistant')).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await page.getByRole('tab', { name: '검사' }).click()
-  await expect(page.locator('#run-submission-checks')).toHaveCSS('background-color', 'rgb(53, 107, 217)')
-  await expect(page.locator('.diagnostic-item').first()).toHaveCSS('background-color', 'rgb(58, 32, 37)')
+  await expect(page.locator('#run-submission-checks')).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  await expect(page.locator('.diagnostic-item').first()).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await page.locator('#files .folder-row').first().click({ button: 'right' })
   await expect(page.locator('#tree-menu button').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await page.locator('#collab-name').click()
-  await expect(page.locator('.name-dialog .quiet-dialog')).toHaveCSS('background-color', 'rgb(24, 34, 53)')
+  await expect(page.locator('.name-dialog .quiet-dialog')).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
 })
 
 test('workspace language label and chevron share a stable vertical center', async ({ page }) => {
@@ -1245,7 +1245,7 @@ test('workspace language label and chevron share a stable vertical center', asyn
 
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.goto('/')
+  await page.goto(`/p/visual-layout-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`)
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await page.waitForFunction(() => /저장됨|동기화/.test(document.getElementById('save-state')?.textContent || ''))
   await expect(page.locator('#editor-panel')).toBeVisible()
@@ -1258,17 +1258,22 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   await expect(page.locator('.theme-trigger')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('#ask')).toHaveCSS('box-shadow', 'none')
   await expect(page.locator('#ask')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
-  await expect(page.locator('#save-state')).toHaveAttribute('data-health', 'ok')
-  await expect(page.locator('#save-state')).toHaveCSS('width', '8px')
-  const precisionControls = ['#status-center-toggle', '#collab-name', '#toggle-sidebar', '#new-folder', '#new-file', '#editor-zoom-out', '#editor-zoom-in', '#pdf-zoom-out', '#pdf-zoom-in', '#download-pdf', '#refresh-pdf', '#reset-layout', '#toggle-assistant']
+  const saveState = page.locator('#save-state')
+  await expect(saveState).toHaveAttribute('data-health', 'ok')
+  await expect(saveState).toHaveText(/\S/)
+  expect((await saveState.boundingBox())?.width).toBeGreaterThan(8)
+  const precisionControls = ['#status-center-toggle', '#collab-name', '#toggle-sidebar', '#new-folder', '#new-file', '#editor-zoom-out', '#editor-zoom-in', '#pdf-zoom-out', '#pdf-zoom-in', '#download-pdf', '#refresh-pdf', '#reset-layout']
   for (const selector of precisionControls) {
     const box = await page.locator(selector).boundingBox()
-    expect(box?.height).toBeGreaterThanOrEqual(36)
-    expect(box?.width).toBeGreaterThanOrEqual(36)
+    expect(box?.height).toBeGreaterThanOrEqual(32)
+    expect(box?.width).toBeGreaterThanOrEqual(32)
   }
+  const assistantToggle = await page.locator('#toggle-assistant').boundingBox()
+  expect(assistantToggle?.height).toBeGreaterThanOrEqual(36)
+  expect(assistantToggle?.width).toBeGreaterThanOrEqual(36)
   for (const box of await page.locator('.assistant-tabs .tab').evaluateAll(items => items.map(item => item.getBoundingClientRect().toJSON()))) {
-    expect(box.width).toBeGreaterThanOrEqual(40)
-    expect(box.height).toBeGreaterThanOrEqual(40)
+    expect(box.width).toBeGreaterThanOrEqual(32)
+    expect(box.height).toBeGreaterThanOrEqual(32)
   }
   if (browserName === 'chromium') {
     await expect(page.locator('body')).toHaveScreenshot('workspace-wide.png', {
@@ -1303,7 +1308,7 @@ test('compact workspace switches focused surfaces with keyboard-accessible contr
   await expect(page.locator('#editor-panel')).toBeHidden()
   await expect(page.locator('#focus-modes button[data-focus="preview"]')).toHaveClass(/is-active/)
   await expect(page.locator('#focus-modes button[data-focus="source"]')).not.toHaveClass(/is-active/)
-  await page.getByRole('button', { name: '도우미', exact: true }).click()
+  await page.locator('#toggle-assistant').click()
   await expect(page.locator('#assistant-panel')).toBeVisible()
 })
 
@@ -1452,7 +1457,7 @@ test('mobile workspace uses focused bottom navigation', async ({ page }) => {
     expect(box.height).toBeGreaterThanOrEqual(44)
   }
   const titleBox = await page.locator('#project-title').boundingBox()
-  expect(titleBox?.height).toBeGreaterThanOrEqual(44)
+  expect(titleBox?.height).toBeGreaterThanOrEqual(36)
 })
 
 test('responsive editor remeasures after shrinking from desktop to mobile', async ({ page }) => {

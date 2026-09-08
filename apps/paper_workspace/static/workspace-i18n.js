@@ -5,7 +5,7 @@
     '논문 허브': 'Paper hub', '논문 허브로 돌아가기': 'Back to paper hub', '논문 제목': 'Paper title',
     '작업공간 상태 보기': 'View workspace status', '연결 중': 'Connecting', '화면 모드 설정': 'Appearance settings',
     '표시 이름 변경': 'Change display name', '접속 중인 공동 편집자': 'Active collaborators', '작업 화면': 'Workspace view',
-    '파일': 'Files', '원고': 'Source', '도우미': 'Assistant', '프로젝트 파일': 'Project files', '빠른 이동': 'Quick navigation', '본문': 'Body', '참고문헌': 'References', '현재 파일 찾기': 'Find current file',
+    '파일': 'Files', '원고': 'Source', '도우미': 'Assistant', '프로젝트 파일': 'Project files', '빠른 이동': 'Quick navigation', '메인 원고': 'Main manuscript', '본문': 'Body', '참고문헌': 'References', '현재 파일 찾기': 'Find current file',
     '프로젝트 파일 접기': 'Collapse project files', '프로젝트 파일 펼치기': 'Expand project files', '새 폴더': 'New folder', '새 파일': 'New file',
     '여기에 놓아 추가': 'Drop to add', '파일과 폴더를 프로젝트로 가져옵니다': 'Import files and folders into this project', '논문 파일': 'Paper files',
     '프로젝트 파일 패널 폭 조절': 'Resize project files panel', '로컬 원고 불러오는 중': 'Loading local source',
@@ -104,7 +104,7 @@
   })
 
   const patterns = [
-    [/^(본문|참고문헌|현재 파일 찾기): (.+)$/, (_, label, path) => `${en[label]}: ${path}`],
+    [/^(메인 원고|본문|참고문헌|현재 파일 찾기): (.+)$/, (_, label, path) => `${en[label]}: ${path}`],
     [/^(\d+)개 검사 · 오류 (\d+) · 확인 필요 (\d+)$/, (_, total, errors, warnings) => i18n.getLanguage() === 'ko' ? `${total}개 검사 · 오류 ${errors} · 확인 필요 ${warnings}` : `${total} checks · ${errors} errors · ${warnings} warnings`],
     [/^최근 백업 (.+)$/, (_, date) => i18n.getLanguage() === 'ko' ? `최근 백업 ${date}` : `Latest backup ${date}`],
     [/^(\d+)개 항목을 (.*)에 추가했습니다\.$/, (_, count, file) => i18n.getLanguage() === 'ko' ? `${count}개 항목을 ${file}에 추가했습니다.` : `Added ${count} entries to ${file}.`]

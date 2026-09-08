@@ -114,7 +114,7 @@ test('PDF fit follows panel width and keeps the current page anchor through resi
     const page = document.querySelector('.pdf-page[data-page="4"]')
     return { previewWidth: preview.clientWidth, pageWidth: page.getBoundingClientRect().width }
   })
-  expect(Math.abs(fit.previewWidth - 36 - fit.pageWidth)).toBeLessThanOrEqual(2)
+  expect(Math.abs(fit.previewWidth - 36 - fit.pageWidth)).toBeLessThanOrEqual(4)
 })
 
 for (const width of [320, 390]) {

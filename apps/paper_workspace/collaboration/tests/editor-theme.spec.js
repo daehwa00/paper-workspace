@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures.js'
 
-test('LaTeX syntax stays readable in dark mode and retains its light palette', async ({ page }) => {
+test('LaTeX syntax follows the active theme tokens and restores after a theme round trip', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => window.PaperEditor?.createEditor)
   const result = await page.evaluate(async () => {
@@ -15,13 +15,21 @@ test('LaTeX syntax stays readable in dark mode and retains its light palette', a
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
       const command = [...parent.querySelectorAll('.cm-line span')].find(node => node.textContent === '\\documentclass')
       const comment = [...parent.querySelectorAll('.cm-line span')].find(node => node.textContent.includes('% a source comment'))
-      return { command: getComputedStyle(command).color, comment: getComputedStyle(comment).color, source: editor.getValue() }
+      const token = name => {
+        const probe = document.createElement('i')
+        probe.style.color = `var(${name})`
+        parent.append(probe)
+        const color = getComputedStyle(probe).color
+        probe.remove()
+        return color
+      }
+      return { command: getComputedStyle(command).color, comment: getComputedStyle(comment).color, keyword: token('--theme-syntax-keyword'), commentToken: token('--theme-syntax-comment'), source: editor.getValue() }
     }
     try { return { light: await measure('light'), dark: await measure('dark'), restored: await measure('light') } }
     finally { editor.destroy(); parent.remove() }
   })
-  expect(result.dark.command).toBe('rgb(196, 167, 255)')
-  expect(result.dark.comment).toBe('rgb(168, 181, 201)')
+  expect(result.dark.command).toBe(result.dark.keyword)
+  expect(result.dark.comment).toBe(result.dark.commentToken)
   expect(result.restored).toEqual(result.light)
   expect(result.dark.source).toBe(result.light.source)
 })
@@ -44,8 +52,19 @@ test('dark autocomplete uses readable application surfaces', async ({ page }) =>
     await page.keyboard.press('Control+Space')
     const popup = page.locator('.cm-tooltip-autocomplete')
     await expect(popup).toBeVisible()
-    await expect(popup).toHaveCSS('background-color', 'rgb(24, 34, 53)')
-    await expect(popup).toHaveCSS('color', 'rgb(219, 229, 245)')
+    const expected = await page.evaluate(() => {
+      const token = (property, name) => {
+        const probe = document.createElement('i')
+        probe.style.setProperty(property, `var(${name})`)
+        document.body.append(probe)
+        const value = getComputedStyle(probe).getPropertyValue(property)
+        probe.remove()
+        return value
+      }
+      return { background: token('background-color', '--theme-surface-raised'), color: token('color', '--theme-text') }
+    })
+    await expect(popup).toHaveCSS('background-color', expected.background)
+    await expect(popup).toHaveCSS('color', expected.color)
   } finally {
     await page.evaluate(() => { themeCompletionProbe.editor.destroy(); themeCompletionProbe.parent.remove() })
   }
