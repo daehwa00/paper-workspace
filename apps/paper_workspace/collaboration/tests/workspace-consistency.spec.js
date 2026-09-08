@@ -77,15 +77,16 @@ test(`reload preserves managed shared ${sharedEdit ? 'edits' : 'empty sources'} 
   const slug = `reload-sync-${Date.now()}-${Math.random().toString(36).slice(2)}`
   let revision = '1'.repeat(64)
   let section = 'section baseline'
-  let sourceSeenByServer = null
-  await page.addInitScript(() => { window.__paperServerSourcePollMs = 100 })
+  let reconciliationRequested = false
+  // Trigger reconciliation after reload; a polling callback can outlive the old document.
+  await page.addInitScript(() => { window.__paperServerSourcePollMs = 60_000 })
   await page.route(`**/p/${slug}/project/**`, route => {
     const name = new URL(route.request().url()).pathname.split('/project/')[1]
     if (name === 'project.json') return route.fulfill({ json: { id: slug, version: '1', entrypoint: 'main.tex', runtime_revision: revision, runtime_file_revisions: { 'section.tex': revision }, files: [{ path: 'main.tex', managed: true }, { path: 'section.tex', managed: true }] } })
     return route.fulfill({ contentType: 'text/plain', body: name === 'main.tex' ? '\\documentclass{article}\n\\begin{document}main\\end{document}' : section })
   })
-  await page.route('**/collab-runtime/**', async route => {
-    sourceSeenByServer = await page.evaluate(() => collabSession.files.get('paper/section.tex').toString())
+  await page.route('**/collab-runtime/**', route => {
+    reconciliationRequested = true
     return route.fulfill({ status: 503, json: { error: 'test pauses server reconciliation' } })
   })
   await page.goto(`/p/${slug}`)
@@ -98,8 +99,14 @@ test(`reload preserves managed shared ${sharedEdit ? 'edits' : 'empty sources'} 
   section = 'new disk edit'
   revision = '2'.repeat(64)
   await page.reload()
-  await expect.poll(() => sourceSeenByServer).not.toBeNull()
-  expect(sourceSeenByServer).toBe(sharedEdit)
+  await page.waitForFunction(() => sharedMetadataReady && collabReady)
+  const sourceBeforeReconciliation = await page.evaluate(async () => {
+    const source = collabSession.files.get('paper/section.tex').toString()
+    await refreshServerSources()
+    return source
+  })
+  expect(reconciliationRequested).toBe(true)
+  expect(sourceBeforeReconciliation).toBe(sharedEdit)
   await expect.poll(() => page.evaluate(() => state.files['paper/section.tex'])).toBe(sharedEdit)
 })
 }
