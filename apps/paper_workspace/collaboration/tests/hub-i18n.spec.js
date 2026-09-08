@@ -13,7 +13,7 @@ test('hub falls back to English and persists a language-picker choice', async ({
 
   await page.locator('#hub-language').selectOption('ko')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
-  await expect(page.getByRole('heading', { name: '논문 작업공간' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '작업할 논문을 선택하세요' })).toBeVisible()
   await expect(page.locator('#hub-language-code')).toHaveText('한국어')
   await expect(page).toHaveURL(/lang=ko/)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe('ko')
@@ -115,7 +115,7 @@ test('a supported browser locale is used when no explicit preference exists', as
   const page = await context.newPage()
   await page.goto('/hub.html')
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko')
-  await expect(page.getByRole('heading', { name: '논문 작업공간' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '작업할 논문을 선택하세요' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => localStorage.getItem('paper-workspace-language'))).toBe(null)
   await context.close()
 })
@@ -187,7 +187,7 @@ test('project grid uses responsive left-aligned rows while card content stays al
   expect(Math.round(await page.locator('.project-thumbnail-wrap').first().evaluate(item => item.getBoundingClientRect().width))).toBe(144)
   await expect(page.locator('.project-card h3').first()).toHaveCSS('font-size', '18px')
   await expect(page.locator('.project-activity').first()).toHaveCSS('font-size', '12px')
-  await expect(page.locator('.hub-intro')).toHaveCSS('padding-top', '20px')
+  await expect(page.locator('.hub-intro')).toHaveCSS('padding-top', '0px')
 
   await expectRows({ width: 1200, height: 900 }, [3, 3, 1])
   await expectRows({ width: 800, height: 900 }, [2, 2, 2, 1])
