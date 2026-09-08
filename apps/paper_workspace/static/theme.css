@@ -372,7 +372,7 @@ html[data-color-scheme="dark"] .focus-modes button{color:var(--theme-text-muted)
 @media(prefers-reduced-transparency:reduce){.theme-dialog::backdrop{backdrop-filter:none}}
 
 /* Workspace palette follows the approved manuscript-tool direction. */
-body:is(.workspace-page,.hub-page){
+body.workspace-page{
   --theme-bg:#edf0f4;
   --theme-surface:#fff;
   --theme-surface-subtle:#f8f9fb;
@@ -402,7 +402,7 @@ body:is(.workspace-page,.hub-page){
   --theme-syntax-comment:#5d705e;
   --theme-syntax-invalid:#b42318;
 }
-html[data-color-scheme="dark"] body:is(.workspace-page,.hub-page){
+html[data-color-scheme="dark"] body.workspace-page{
   --theme-bg:#11151b;
   --theme-surface:#171b22;
   --theme-surface-subtle:#1c2129;
