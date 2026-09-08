@@ -433,8 +433,10 @@ html[data-color-scheme="dark"] body.workspace-page{
   --theme-syntax-invalid:#ffaaa5;
 }
 body.workspace-page .editor-view .cm-editor,
-body.workspace-page .editor-view .cm-scroller,
-body.workspace-page .editor-view .cm-content{background:var(--theme-surface);color:var(--theme-text)}
+body.workspace-page .editor-view .cm-scroller{background:var(--theme-surface);color:var(--theme-text)}
+/* CodeMirror paints selection behind its text content. Keep that layer visible. */
+body.workspace-page .editor-view .cm-content{background:transparent;color:var(--theme-text)}
+body.workspace-page .editor-view .cm-editor .cm-selectionBackground{background:var(--theme-accent-border)!important}
 body.workspace-page .editor-view .cm-gutters{background:var(--theme-surface);color:var(--theme-text-faint);border-color:transparent}
 body.workspace-page .editor-view .cm-activeLine,
 body.workspace-page .editor-view .cm-activeLineGutter{background:color-mix(in srgb,var(--theme-accent-soft) 60%,transparent)}
