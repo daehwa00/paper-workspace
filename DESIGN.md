@@ -106,3 +106,5 @@
 - Preserve the 1440px grid, 300px minimum card tracks, left-aligned filtered results, and compact paper previews. Cards use restrained borders and no lift or preview zoom on hover.
 - Project titles, activity, and page metadata retain readable type and predictable alignment. Search, sort, language, and workspace navigation behavior remain unchanged.
 - Verify light/dark themes, 320/390px touch controls, 800/1200/1600px layouts, and the shared workspace palette.
+
+- Color refinement: retain the restrained hub structure while adding a blue brand mark, blue navigation/metadata accents, and low-opacity blue tints in the header, page background, and preview wells. Keep manuscript cards and primary text neutral.
