@@ -24,7 +24,8 @@ from pathlib import Path, PurePosixPath
 SOURCE_EXTENSIONS = {".tex", ".bib", ".sty", ".bst", ".cls", ".csv", ".txt", ".json", ".dat"}
 ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".eps"}
 MAX_REQUEST_BYTES = 48_000_000
-MAX_PROJECT_FILES = 120
+# Match runtime manifests and backup snapshots, including binary assets.
+MAX_PROJECT_FILES = 240
 MAX_ASSET_BYTES = 32_000_000
 COMPILE_CACHE_TTL = 600
 COMPILE_CACHE_ITEMS = 16

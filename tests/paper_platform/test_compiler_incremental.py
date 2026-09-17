@@ -436,3 +436,46 @@ def test_process_output_is_drained_with_a_bounded_tail(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert len(result.stdout.encode()) <= compiler.MAX_PROCESS_LOG_BYTES
     assert result.stdout.endswith("TAIL")
+
+
+@pytest.mark.parametrize("endpoint", ["/compile", "/package"])
+@pytest.mark.parametrize("file_count,expected_status", [(121, 200), (240, 200), (241, 422)])
+def test_project_file_limit_matches_supported_workspace_capacity(monkeypatch, endpoint, file_count, expected_status) -> None:
+    builds = []
+
+    def build(work, entrypoint, files, *args):
+        builds.append(len(files))
+        assert entrypoint == Path("main.tex")
+        assert (work / "figures/image.png").read_bytes() == b"image fixture"
+        (work / "preview.pdf").write_bytes(b"%PDF-1.4\n")
+        (work / "preview.synctex.gz").write_bytes(gzip.compress(b"SyncTeX Version:1\n"))
+        return 1, 0, ""
+
+    monkeypatch.setattr(compiler, "_run_latex_build", build)
+    monkeypatch.setattr(compiler, "_pdf_audit", lambda pdf: {})
+    files = {"main.tex": "\\documentclass{article}\\begin{document}ok\\end{document}"}
+    files.update({f"sections/part-{index}.tex": "% source fixture" for index in range(file_count - 2)})
+    payload = {"files": files, "assets": {"figures/image.png": "aW1hZ2UgZml4dHVyZQ=="}, "workspace_id": "file-limit-fixture"}
+    server = ThreadingHTTPServer(("127.0.0.1", 0), compiler.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        connection.request("POST", endpoint, body=json.dumps(payload), headers={"Content-Type": "application/json"})
+        response = connection.getresponse()
+        result = json.loads(response.read())
+        assert response.status == expected_status, result
+        if expected_status == 200:
+            if endpoint == "/compile":
+                assert builds == [file_count - 1]
+                assert result["pdf_base64"]
+            else:
+                assert result["file_count"] == file_count
+        else:
+            assert result["error"] == "too many project files"
+            assert not builds
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
