@@ -173,7 +173,7 @@ Use only letters, numbers, `-`, and `_` in slugs. Titles may change without chan
 }
 ```
 
-Paths must be relative and cannot contain `..`. Any selected `.tex` file can be previewed: standalone documents compile directly, while fragments reuse the main preamble. The compiler accepts up to 240 files, a 48 MB request, and 32 MB of binary assets; browser uploads are limited to 8 MB per file.
+Paths must be relative and cannot contain `..`. Any selected `.tex` file can be previewed: standalone documents compile directly, while fragments reuse the main preamble. The compiler uses a 64 MB workspace budget instead of a fixed file-count limit: request bytes plus 4 KiB per file and distinct directory. The 48 MB request limit, 32 MB binary-asset limit, and execution timeouts still apply; browser uploads are limited to 8 MB per file. All supplied inputs remain available to TeX, including dynamically constructed file references.
 
 `auto_include_roots` is optional. Within those explicitly approved directories, the runtime automatically stages only existing files referenced by `\input`, `\include`, or `\includegraphics`, including nested TeX inputs. Unreferenced files, missing browser-only uploads, hidden paths, and symlinks remain excluded.
 

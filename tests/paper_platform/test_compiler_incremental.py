@@ -439,9 +439,11 @@ def test_process_output_is_drained_with_a_bounded_tail(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("endpoint", ["/compile", "/package"])
-@pytest.mark.parametrize("file_count,expected_status", [(121, 200), (240, 200), (241, 422)])
-def test_project_file_limit_matches_supported_workspace_capacity(monkeypatch, endpoint, file_count, expected_status) -> None:
+@pytest.mark.parametrize("file_count,expected_status,budget", [(121, 200, None), (240, 200, None), (241, 200, None), (1000, 200, None), (3, 422, 8192)])
+def test_project_workspace_budget_allows_many_small_files(monkeypatch, endpoint, file_count, expected_status, budget) -> None:
     builds = []
+    if budget is not None:
+        monkeypatch.setattr(compiler, "MAX_PROJECT_WORKSPACE_BYTES", budget)
 
     def build(work, entrypoint, files, *args):
         builds.append(len(files))
@@ -472,10 +474,49 @@ def test_project_file_limit_matches_supported_workspace_capacity(monkeypatch, en
             else:
                 assert result["file_count"] == file_count
         else:
-            assert result["error"] == "too many project files"
+            assert result["error"] == "project exceeds compiler workspace budget"
             assert not builds
     finally:
         connection.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_workspace_budget_counts_shared_directories_once_and_rejects_nested_overflow(monkeypatch):
+    files = {"main.tex": "", "sections/a.tex": "", "sections/b.tex": ""}
+    entry_bytes = compiler.PROJECT_ENTRY_OVERHEAD_BYTES
+    request_bytes = 100
+    monkeypatch.setattr(compiler, "MAX_PROJECT_WORKSPACE_BYTES", request_bytes + 4 * entry_bytes)
+    sources, assets = compiler.validated_project_paths(files, {}, request_bytes)
+    assert set(sources) == set(files)
+    assert not assets
+    nested = {"main.tex": "", "sections/a.tex": "", "sections/nested/b.tex": ""}
+    with pytest.raises(ValueError, match="workspace budget"):
+        compiler.validated_project_paths(nested, {}, request_bytes)
+    with pytest.raises(ValueError, match="workspace budget"):
+        compiler.validated_project_paths(files, {}, request_bytes + 1)
+
+
+def test_workspace_budget_preserves_previous_maximum_size_valid_projects():
+    files = {"main.tex": ""}
+    for index in range(239):
+        files[f"folder-{index}/" + "nested/" * 10 + "part.tex"] = ""
+    sources, _ = compiler.validated_project_paths(files, {}, compiler.MAX_REQUEST_BYTES)
+    assert len(sources) == 240
+
+
+def test_workspace_budget_rejects_metadata_flood_before_path_allocation(monkeypatch):
+    def unexpected_path_validation(*args):
+        raise AssertionError("over-budget requests must be rejected before allocating paths")
+    monkeypatch.setattr(compiler, "safe_project_path", unexpected_path_validation)
+    monkeypatch.setattr(compiler, "MAX_PROJECT_WORKSPACE_BYTES", 8192)
+    with pytest.raises(ValueError, match="workspace budget"):
+        compiler.validated_project_paths({"main.tex": "", "extra.tex": ""}, {}, 1)
+
+
+def test_workspace_budget_keeps_asset_shape_and_path_validation():
+    with pytest.raises(ValueError, match="assets must be an object"):
+        compiler.validated_project_paths({"main.tex": ""}, [], 100)
+    with pytest.raises(ValueError, match="invalid project path"):
+        compiler.validated_project_paths({"main.tex": "", "../escape.tex": ""}, {}, 100)

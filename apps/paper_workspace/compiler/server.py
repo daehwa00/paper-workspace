@@ -24,8 +24,9 @@ from pathlib import Path, PurePosixPath
 SOURCE_EXTENSIONS = {".tex", ".bib", ".sty", ".bst", ".cls", ".csv", ".txt", ".json", ".dat"}
 ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".eps"}
 MAX_REQUEST_BYTES = 48_000_000
-# Match runtime manifests and backup snapshots, including binary assets.
-MAX_PROJECT_FILES = 240
+# Bound staging cost rather than rejecting a project solely by file count.
+MAX_PROJECT_WORKSPACE_BYTES = 64_000_000
+PROJECT_ENTRY_OVERHEAD_BYTES = 4096
 MAX_ASSET_BYTES = 32_000_000
 COMPILE_CACHE_TTL = 600
 COMPILE_CACHE_ITEMS = 16
@@ -318,6 +319,35 @@ def safe_project_path(name: object, extensions: set[str]) -> Path:
     return Path(*path.parts)
 
 
+def validated_project_paths(files: dict, assets: object, request_bytes: int) -> tuple[dict[str, Path], dict[str, Path]]:
+    """Reserve request bytes plus conservative filesystem-entry overhead.
+
+    JSON/base64 request bytes bound decoded source and asset bytes from above.
+    Counting distinct directories also bounds deeply nested, tiny-file projects.
+    The 64 MB input budget leaves room for TeX output in the 256 MB tmpfs shared
+    by the default two compile slots.
+    """
+    if not isinstance(assets, dict):
+        raise ValueError("project assets must be an object")
+    reserved = request_bytes + (len(files) + len(assets)) * PROJECT_ENTRY_OVERHEAD_BYTES
+    if reserved > MAX_PROJECT_WORKSPACE_BYTES:
+        raise ValueError("project exceeds compiler workspace budget")
+    directories = {Path(".")}
+    sources: dict[str, Path] = {}
+    binaries: dict[str, Path] = {}
+    for entries, extensions, paths in ((files, SOURCE_EXTENSIONS, sources), (assets, ASSET_EXTENSIONS, binaries)):
+        for name in entries:
+            path = safe_project_path(name, extensions)
+            for parent in path.parents:
+                if parent not in directories:
+                    directories.add(parent)
+                    reserved += PROJECT_ENTRY_OVERHEAD_BYTES
+                    if reserved > MAX_PROJECT_WORKSPACE_BYTES:
+                        raise ValueError("project exceeds compiler workspace budget")
+            paths[name] = path
+    return sources, binaries
+
+
 def restricted_tex_environment(texmf: Path) -> dict[str, str]:
     """Keep TeX reads/writes within its normal search paths and request workspace."""
     return {
@@ -522,10 +552,7 @@ class Handler(BaseHTTPRequestHandler):
                 compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
                 self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "build_mode": "cached", "passes": 0, "bibtex_runs": 0, "build_state_id": requested_state_id if bound_state else "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
                 return
-            if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
-                raise ValueError("too many project files")
-            source_paths = {name: safe_project_path(name, SOURCE_EXTENSIONS) for name in files}
-            asset_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in assets}
+            source_paths, asset_paths = validated_project_paths(files, assets, size)
             entrypoint_path = safe_project_path(entrypoint, {".tex"})
             if entrypoint not in source_paths:
                 raise ValueError(f"entrypoint not found: {entrypoint}")
@@ -718,10 +745,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("remote project assets are not accepted; include request-scoped assets")
             if not isinstance(files, dict) or not isinstance(files.get("main.tex"), str):
                 raise ValueError("main.tex is required")
-            if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
-                raise ValueError("too many project files")
-            source_paths = {name: safe_project_path(name, SOURCE_EXTENSIONS) for name in files}
-            asset_paths = {name: safe_project_path(name, ASSET_EXTENSIONS) for name in assets}
+            source_paths, asset_paths = validated_project_paths(files, assets, size)
             if set(source_paths) & set(asset_paths):
                 raise ValueError("invalid project file")
             packaged: dict[str, bytes] = {}
