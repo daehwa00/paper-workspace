@@ -345,7 +345,11 @@ const sourceDigest = value => crypto.createHash('sha256').update(value).digest('
 const readLiveManagedSources = (projectRoot, maxBytes) => {
   const sources = {}
   for (const entry of managedSourceEntries(projectRoot, maxBytes)) {
-    sources[entry.projectPath] = decodeUtf8(fs.readFileSync(entry.filename))
+    try {
+      sources[entry.projectPath] = decodeUtf8(fs.readFileSync(entry.filename))
+    } catch (error) {
+      throw new Error(`cannot read managed source ${entry.projectPath}: ${error.message}`, { cause: error })
+    }
   }
   return sources
 }
@@ -1021,7 +1025,18 @@ function createCollaborationServer (overrides = {}) {
     })
     try {
       const document = await prepareCollaborationDocument(docName)
-      ensureSourceWriteback(docName, room, document)
+      // A source-file problem must not prevent access to healthy persisted edits.
+      // Leave writeback disabled until a later connection can initialize it safely.
+      try {
+        ensureSourceWriteback(docName, room, document)
+        const status = document.getMap('project').get('sourceWritebackStatus')
+        if (status?.reason === 'initialization') document.getMap('project').delete('sourceWritebackStatus')
+      } catch (error) {
+        document.getMap('project').set('sourceWritebackStatus', {
+          paths: [], state: 'error', reason: 'initialization', timestamp: Date.now()
+        })
+        console.error(`source writeback initialization unavailable (${room}): ${error.message}`)
+      }
       if (socket.readyState !== WebSocket.OPEN) return
       if (!Number.isSafeInteger(document.paperDocumentBytes)) document.paperDocumentBytes = Y.encodeStateAsUpdate(document).byteLength
       if (document.paperDocumentBytes > config.maxDocumentBytes) {

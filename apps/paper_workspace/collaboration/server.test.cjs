@@ -1123,3 +1123,65 @@ test('storage accounting tolerates files removed during LevelDB compaction', () 
     fs.rmSync(directory, { force: true, recursive: true })
   }
 })
+
+test('an invalid managed binary cannot block collaboration and writeback recovers after classification is fixed', async t => {
+  const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-invalid-source-'))
+  t.after(() => fs.rmSync(sourceRoot, { recursive: true, force: true }))
+  writeSourceProject(sourceRoot, 'disk baseline')
+  const manifestPath = path.join(sourceRoot, 'project.json')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  manifest.files.push({ path: 'measurements.npz', managed: true })
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+  const binary = Buffer.from([0x50, 0x4b, 3, 4, 0xff, 0xfe])
+  fs.writeFileSync(path.join(sourceRoot, 'measurements.npz'), binary)
+  const room = 'paper-workspace:paper.example:invalid-source'
+  const docName = `collab/${room}`
+  const document = getYDoc(docName)
+  const main = new Y.Text('preserved web draft')
+  document.getMap('files').set('paper/main.tex', main)
+  document.getMap('project').set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('disk baseline') })
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['invalid-source']),
+    defaultProjectSlugs: new Set(['invalid-source']), defaultProjectSourceDir: sourceRoot,
+    sourceWritebackDebounceMs: 10
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const client = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, client, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { provider.destroy(); client.destroy() })
+  await waitForProviderSync(provider)
+  assert.equal(client.getMap('files').get('paper/main.tex').toString(), 'preserved web draft')
+  assert.equal(client.getMap('project').get('sourceWritebackStatus').state, 'error')
+  client.getMap('files').get('paper/main.tex').insert(0, 'new edit: ')
+  await waitFor(() => main.toString() === 'new edit: preserved web draft', 'web edits must remain synchronized')
+  assert.equal(fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8'), 'disk baseline')
+  assert.deepEqual(fs.readFileSync(path.join(sourceRoot, 'measurements.npz')), binary)
+
+  manifest.files[1].type = 'asset'
+  manifest.files[1].managed = false
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+  const second = new Y.Doc()
+  const secondProvider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, second, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { secondProvider.destroy(); second.destroy() })
+  await waitForProviderSync(secondProvider)
+  await waitFor(() => fs.readFileSync(path.join(sourceRoot, 'main.tex'), 'utf8') === main.toString(), 'writeback must resume with the preserved web edits')
+  assert.equal(second.getMap('files').get('paper/main.tex').toString(), main.toString())
+  assert.deepEqual(fs.readFileSync(path.join(sourceRoot, 'measurements.npz')), binary)
+})
+
+test('unavailable persisted document state still fails closed', async t => {
+  const room = 'paper-workspace:paper.example:persistence-error'
+  const document = getYDoc(`collab/${room}`)
+  document.getMap('files').set('paper/main.tex', new Y.Text('preserved server content'))
+  document.paperPersistenceReady = Promise.reject(new Error('database unavailable fixture'))
+  document.paperPersistenceReady.catch(() => {})
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['persistence-error'])
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  assert.equal(await websocketCloseCode(`ws://127.0.0.1:${port}/collab/${room}`, 'https://paper.example'), 1011)
+  assert.equal(document.getMap('files').get('paper/main.tex').toString(), 'preserved server content')
+  assert.equal(document.getMap('project').get('sourceWritebackStatus'), undefined)
+})
