@@ -2,6 +2,7 @@
   const i18n = window.PaperI18n
   if (!i18n) return
   const en = {
+    '본문으로 고정': 'Pin main document', '본문 고정됨': 'Main document pinned', '본문 고정 해제': 'Unpin main document',
     '논문 허브': 'Paper hub', '논문 허브로 돌아가기': 'Back to paper hub', '논문 제목': 'Paper title',
     '작업공간 상태 보기': 'View workspace status', '연결 중': 'Connecting', '화면 모드 설정': 'Appearance settings',
     '표시 이름 변경': 'Change display name', '접속 중인 공동 편집자': 'Active collaborators', '작업 화면': 'Workspace view',
@@ -104,6 +105,7 @@
   })
 
   const patterns = [
+    [/^(본문으로 고정|본문 고정 해제): (.+)$/, (_, label, file) => `${en[label]}: ${file}`],
     [/^(메인 원고|본문|참고문헌|현재 파일 찾기): (.+)$/, (_, label, path) => `${en[label]}: ${path}`],
     [/^(\d+)개 검사 · 오류 (\d+) · 확인 필요 (\d+)$/, (_, total, errors, warnings) => i18n.getLanguage() === 'ko' ? `${total}개 검사 · 오류 ${errors} · 확인 필요 ${warnings}` : `${total} checks · ${errors} errors · ${warnings} warnings`],
     [/^최근 백업 (.+)$/, (_, date) => i18n.getLanguage() === 'ko' ? `최근 백업 ${date}` : `Latest backup ${date}`],

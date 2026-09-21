@@ -338,3 +338,10 @@ body.panel-resizing .workspace,body.panel-resizing .sidebar,body.panel-resizing 
   .workspace-page .workspace .preview-header .zoom-controls{padding-inline:0;margin-inline:0;border:0}
   .workspace-page .preview-header #render-state{flex:0 1 auto}
 }
+
+/* A project-local compile target independent of the file being edited. */
+.workspace-page .workspace .pin-main-compile{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;width:auto;min-width:32px;padding:5px 7px;font-size:11px;white-space:nowrap}
+.workspace-page .workspace .pin-main-compile[aria-pressed="true"]{color:var(--theme-accent-strong);background:var(--theme-accent-soft);border-color:var(--theme-accent-border)}
+.workspace-page .pin-main-label{max-width:72px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:767px){.pin-main-label{display:none}}
+@media(max-width:767px){.workspace-page .workspace .pin-main-compile{width:44px;padding:8px}}

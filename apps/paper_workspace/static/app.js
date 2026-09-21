@@ -6,6 +6,8 @@ const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]
 const projectSlug=projectRouteMatch?.[1]||'default';
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;
 const projectStorageKey=`paper-workspace:${projectSlug}`;
+const mainCompilePreferenceKey=`paper-workspace:pin-main:${projectSlug}`;
+let mainCompilePinned=preferences.get(mainCompilePreferenceKey)==='true';
 const compileStateStorageKey=`paper-workspace:compile-state:${projectSlug}`;
 const compileClientStorageKey='paper-workspace:compile-client';
 let compileClientId='';
@@ -317,7 +319,7 @@ function changedManifestPaths(previous,next){
 }
 function adoptServerManifest(manifest,sources={}, {changedPaths=[],conflictPaths=[],preservedPaths=[],scheduleCompile=false}={}){
   const previous=projectManifest,currentPath=state.current,selection=editorSelection();
-  projectManifest=manifest;syncRemoteManifestAssets(manifest,previous);
+  projectManifest=manifest;updateMainCompileControl();syncRemoteManifestAssets(manifest,previous);
   for(const [path,value] of Object.entries(sources)){if(path==='paper/main.tex')state.serverMainSnapshot=sourceFingerprint(value);else state.serverSourceSnapshots[path]=sourceFingerprint(value)}
   const sharedFingerprints=sharedProject.get('serverSourceFingerprints');
   if(sharedFingerprints&&typeof sharedFingerprints==='object'&&!Array.isArray(sharedFingerprints))for(const item of serverManagedManifestItems(manifest)){const path=`paper/${item.path}`,fingerprint=sharedFingerprints[path];if(typeof fingerprint!=='string')continue;if(path==='paper/main.tex')state.serverMainSnapshot=fingerprint;else state.serverSourceSnapshots[path]=fingerprint}
@@ -753,7 +755,27 @@ async function readDropEntry(entry,prefix=''){if(entry.isFile)return new Promise
 async function droppedLocalFiles(dataTransfer){const items=Array.from(dataTransfer.items||[]);const entries=items.map(item=>item.webkitGetAsEntry?.()).filter(Boolean);if(entries.length)return (await Promise.all(entries.map(entry=>readDropEntry(entry)))).flat();return Array.from(dataTransfer.files||[]).map(file=>({file,relativePath:file.webkitRelativePath||file.name}))}
 function cleanRelativePath(value){return value.split('/').map(cleanSegment).filter(Boolean).join('/')}
 async function importLocalFiles(entries,targetFolder='paper'){let imported=0;const skipped=[],localOnly=[];for(const {file,relativePath} of entries){const relative=cleanRelativePath(relativePath||file.name);if(!relative)continue;if(file.size>assetDataLimit){skipped.push(`${file.name} (8 MB 초과)`);continue;}const destination=uniqueProjectPath(targetFolder?`${targetFolder}/${relative}`:relative);ensureFolderChain(parentPath(destination));const extension=extensionOf(destination);try{if(file.type.startsWith('text/')||textExtensions.has(extension)){state.files[destination]=await file.text();}else{state.assets[destination]={type:file.type||'application/octet-stream',size:file.size,data:await fileToDataUrl(file)};await storeLocalAsset(destination,state.assets[destination]).catch(()=>{});try{await uploadServerAsset(destination,file,state.assets[destination].type);state.assets[destination].server=true}catch{localOnly.push(file.name)}}state.uploads=[...new Set([destination,...state.uploads])];imported+=1;}catch{skipped.push(file.name)}}for(let folder=targetFolder;folder;folder=parentPath(folder))state.collapsedFolders=state.collapsedFolders.filter(item=>item!==folder);listFiles();if(imported){publishSharedTree();save();markCompileInputsChanged();markProjectActivity('import')}if(localOnly.length)notify(`${localOnly.join(', ')}은 브라우저에만 저장됐습니다. 연결 후 다시 업로드해 주세요.`,{title:'일부 자료 공유 대기',tone:'warning'});if(skipped.length)alert(`가져오지 못한 자료:\n${skipped.join('\n')}`);return imported}
-function selectedEntrypoint(){const fallback=projectManifest.entrypoint||'main.tex';const current=state.current?.startsWith('paper/')?state.current.slice('paper/'.length):'';return current&&extensionOf(current)==='tex'&&state.files[`paper/${current}`]!==undefined?current:fallback}
+function updateMainCompileControl(){
+  const button=$('pin-main-compile'),root=projectManifest.entrypoint||'main.tex';
+  button.disabled=!workspaceReadyForCompile;
+  button.setAttribute('aria-pressed',String(mainCompilePinned));
+  button.querySelector('span').textContent=mainCompilePinned?'본문 고정됨':'본문으로 고정';
+  button.title=`${mainCompilePinned?'본문 고정 해제':'본문으로 고정'}: ${root}`;
+  button.setAttribute('aria-label',button.title);
+}
+function toggleMainCompile(){
+  mainCompilePinned=!mainCompilePinned;
+  preferences.set(mainCompilePreferenceKey,String(mainCompilePinned));
+  updateMainCompileControl();
+  workspaceContentRevision+=1;
+  compileRequestGeneration+=1;
+  compileController?.abort();
+  setCompileStateId('');
+  setPdfFreshness(Boolean(renderedPdfUrl));
+  if(workspaceReadyForCompile)compileAfterSave();
+}
+function installMainCompileControl(){$('pin-main-compile').onclick=toggleMainCompile;updateMainCompileControl()}
+function selectedEntrypoint(){const fallback=projectManifest.entrypoint||'main.tex';if(mainCompilePinned)return fallback;const current=state.current?.startsWith('paper/')?state.current.slice('paper/'.length):'';return current&&extensionOf(current)==='tex'&&state.files[`paper/${current}`]!==undefined?current:fallback}
 function selectedPreviewMode(entrypoint=selectedEntrypoint()){const root=projectManifest.entrypoint||'main.tex';const source=state.files[`paper/${entrypoint}`]||'';return entrypoint!==root&&!isLatexDocument(source)?'fragment':'document'}
 async function compilePayload(){const entrypoint=selectedEntrypoint();return buildCompilePayload({files:state.files,assets:state.assets,entrypoint,rootEntrypoint:projectManifest.entrypoint||'main.tex',previewMode:selectedPreviewMode(entrypoint),workspaceId:projectSlug,ensureAssetLoaded})}
 let contextTarget={type:'root',path:''};let pendingUploadFolder='';
@@ -1194,7 +1216,7 @@ async function loadProject(){
   if(preservedDraftPath&&!sourceConflictDismissed){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
   if(typeof state.files[`paper/${projectManifest.entrypoint}`]==='string'){
     const preview=await previewPromise;
-    workspaceReadyForCompile=true;
+    workspaceReadyForCompile=true;updateMainCompileControl();
     if(preview&&!localMainDraft&&selectedEntrypoint()===projectManifest.entrypoint){setRenderedPdf(preview.binary);await renderPdfPreviewLazy(preview.binary.slice(),preview.synctex);$('render-state').textContent='PDF 미리보기 로드됨';setPdfFreshness(false)}
     else{
       const contentRevision=workspaceContentRevision,payload=await compilePayload(),fingerprint=await compilePayloadFingerprint(payload);
@@ -1212,5 +1234,5 @@ initializeRichEditor();
 // failure in resizing, PDF helpers, or selection tools must never block source.
 loadProject().catch(error=>{reportClientError(error,'loadProject');$('render-state').textContent='프로젝트 로드 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>원고 로드 오류</strong><br>${esc(error.message)}</div>`;notify(error.message,{title:'원고를 불러오지 못했습니다.',tone:'error'})});
 installOptionalFeature('초기 편집 화면',setEditor);installOptionalFeature('초기 파일 목록',listFiles);installOptionalFeature('초기 댓글',renderComments);installOptionalFeature('초기 PDF 화면',render);
-for(const [name,installer] of [['패널 조절',installPanelResizers],['집중 화면',installFocusModes],['확대·축소',installZoomControls],['자료 미리보기',installAssetViewer],['PDF 페이지 표시',installPdfPageIndicator],['편집기 단축키',installEditorShortcuts],['선택 영역 도구',installSelectionTools],['논문 작성 도구',installAuthoringTools],['상태 센터',installStatusCenter]])installOptionalFeature(name,installer);
+for(const [name,installer] of [['본문 컴파일 고정',installMainCompileControl],['패널 조절',installPanelResizers],['집중 화면',installFocusModes],['확대·축소',installZoomControls],['자료 미리보기',installAssetViewer],['PDF 페이지 표시',installPdfPageIndicator],['편집기 단축키',installEditorShortcuts],['선택 영역 도구',installSelectionTools],['논문 작성 도구',installAuthoringTools],['상태 센터',installStatusCenter]])installOptionalFeature(name,installer);
 let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer);if(!activeAsset&&!isLockedProjectFile()&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save();richEditor?.destroy();collabSession.destroy()});

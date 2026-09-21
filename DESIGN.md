@@ -99,3 +99,5 @@
 - Make the rendered sheet the primary reading surface with restrained stage contrast and one subtle shadow. Apply a coordinated syntax palette in a later implementation only after checking existing contrast expectations.
 - The local interactive visual uses fictional manuscript text. Theme, file navigation, source zoom, and the assistant control demonstrate presentation states only.
 - Acceptance: 56px desktop app header, aligned 48px panel headers, neutral title surface with a border when focused, file-type icons, no empty collapsed assistant rail, and all existing mobile/focus/undo/PDF-anchor/collaboration behavior verified.
+
+- PDF toolbar: an explicit project-local “Pin main document” toggle fixes compilation to the manifest entrypoint while other files remain editable. The browser remembers the choice per project; unpinning restores current-file preview. A target change invalidates in-flight output and marks the prior PDF stale until rebuilt.
