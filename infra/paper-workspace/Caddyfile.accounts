@@ -32,6 +32,7 @@
     }
 
     handle {
+      route {
         request_header -X-Paper-Role
         request_header -X-Paper-Allowed-Projects
         request_header -X-Paper-Actor
@@ -93,6 +94,7 @@
             }
         }
         reverse_proxy workspace:8080
+      }
     }
 
     handle_errors {
