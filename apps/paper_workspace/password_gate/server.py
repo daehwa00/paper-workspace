@@ -15,6 +15,9 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+import accounts
 from urllib.parse import parse_qs, urlencode
 
 PASSWORD = os.environ.get("PAPER_ACCESS_PASSWORD", "")
@@ -91,7 +94,12 @@ def configuration_errors(password: str | None = None, session_secret: str | None
     access = PASSWORD if password is None else password
     secret = SESSION_SECRET if session_secret is None else session_secret
     errors: list[str] = []
-    if len(access) < 12 or access.startswith("replace-with-"):
+    if accounts.REGISTRY:
+        try:
+            accounts.registry()
+        except Exception:
+            errors.append("invalid account registry")
+    if not accounts.REGISTRY and (len(access) < 12 or access.startswith("replace-with-")):
         errors.append("access password must be at least 12 non-placeholder characters")
     if len(secret) < 32 or secret.startswith("replace-with-"):
         errors.append("session secret must be at least 32 random non-placeholder characters")
@@ -346,19 +354,90 @@ def login_url(redirect: str, language: str) -> str:
 
 def render_login_page(language: str, redirect: str = "/", error_code: str = "") -> bytes:
     language = normalize_language(language) or "en"
-    copy = COPY[language]
+    copy = dict(COPY[language])
+    username_field = ''
+    if accounts.REGISTRY:
+        copy['description'] = '개인 공간 이름과 발급받은 암호를 입력하세요.' if language == 'ko' else 'Enter your workspace name and issued password.'
+        label = '개인 공간' if language == 'ko' else 'Workspace'
+        username_field = f'<label>{label}<input name="username" autocomplete="username" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{{0,63}}" placeholder="daehwa"></label>'
     error = copy.get(error_code, "")
     message = f'<p class="error" role="alert">{html.escape(error)}</p>' if error else ""
     action = html.escape(login_url(redirect, language), quote=True)
     english_url = html.escape(login_url(redirect, "en"), quote=True)
     korean_url = html.escape(login_url(redirect, "ko"), quote=True)
     favicon = html.escape(FAVICON_DATA_URL, quote=True)
-    body = f"""<!doctype html><html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101828"><script>try{{const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.colorScheme=d?'dark':'light'}}catch(_){{}}</script><link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" sizes="64x64" href="/assets/paper-workspace-icon.png"><link rel="icon" type="image/png" sizes="64x64" href="{favicon}"><title>{html.escape(copy['title'])}</title><style>*{{box-sizing:border-box}}:root{{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828;background:#f2f4f7}}body{{margin:0;display:grid;min-width:320px;min-height:100dvh;place-items:center;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:linear-gradient(145deg,#f8fafc,#eef2f7)}}main{{width:min(380px,100%);padding:30px;border:1px solid #e4e7ec;border-radius:18px;background:#fff;box-shadow:0 22px 60px #1018281a}}header{{display:flex;align-items:center;gap:12px;margin-bottom:22px}}.mark{{display:grid;width:44px;height:44px;place-items:center;border-radius:12px;background:#101828;color:#fff;font-size:21px}}.eyebrow{{margin:0 0 3px;color:#667085;font-size:11px;font-weight:800;letter-spacing:.1em}}h1{{margin:0;font-size:23px;letter-spacing:-.035em}}p{{margin:0;color:#667085;font-size:14px;line-height:1.55}}.language{{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin:-4px 0 18px;font-size:12px}}.language a{{color:#475467;text-decoration:none}}.language a[aria-current=true]{{color:#2457d6;font-weight:800}}.language span{{color:#d0d5dd}}label{{display:grid;gap:8px;margin-top:24px;color:#344054;font-size:13px;font-weight:700}}input{{width:100%;min-height:48px;padding:12px 13px;border:1px solid #b2ccff;border-radius:10px;background:#fff;color:#101828;font:16px inherit;outline:0;transition:border-color 120ms ease,box-shadow 120ms ease}}input:focus{{border-color:#4f7cff;box-shadow:0 0 0 4px #4f7cff1a}}button{{width:100%;min-height:48px;margin-top:16px;padding:12px;border:0;border-radius:10px;background:#2457d6;color:#fff;font:700 15px inherit;cursor:pointer;transition:background-color 120ms ease,transform 120ms ease}}button:hover{{background:#1745bb}}button:active{{transform:scale(.98)}}button:focus-visible,a:focus-visible{{outline:3px solid #84adff;outline-offset:2px}}.error{{margin:16px 0 0;padding:9px 10px;border-radius:8px;background:#fef3f2;color:#b42318;font-size:13px}}html[data-color-scheme=dark]{{color-scheme:dark;background:#0b1220}}html[data-color-scheme=dark] body{{background:linear-gradient(145deg,#0b1220,#101a2b)}}html[data-color-scheme=dark] main{{border-color:#2a3850;background:#111a2b;box-shadow:0 22px 60px #0008}}html[data-color-scheme=dark] h1{{color:#f5f8ff}}html[data-color-scheme=dark] p,html[data-color-scheme=dark] .eyebrow,html[data-color-scheme=dark] .language a{{color:#a8b5c9}}html[data-color-scheme=dark] .language a[aria-current=true]{{color:#84adff}}html[data-color-scheme=dark] label{{color:#dbe5f5}}html[data-color-scheme=dark] input{{border-color:#365f9f;background:#182235;color:#f5f8ff}}@media(prefers-reduced-motion:reduce){{input,button{{transition:none}}button:active{{transform:none}}}}@media(prefers-contrast:more){{main,input{{border-color:#667085}}}}</style></head><body><main><nav class="language" aria-label="{html.escape(copy['language_label'])}"><a href="{english_url}" hreflang="en" lang="en" aria-current="{'true' if language == 'en' else 'false'}">English</a><span aria-hidden="true">·</span><a href="{korean_url}" hreflang="ko" lang="ko" aria-current="{'true' if language == 'ko' else 'false'}">한국어</a></nav><header><span class="mark" aria-hidden="true">✎</span><span><p class="eyebrow">{html.escape(copy['eyebrow'])}</p><h1>{html.escape(copy['heading'])}</h1></span></header><p>{html.escape(copy['description'])}</p>{message}<form method="post" action="{action}"><label>{html.escape(copy['password_label'])}<input name="password" type="password" autocomplete="current-password" autofocus required></label><button type="submit">{html.escape(copy['submit'])}</button></form></main></body></html>"""
+    body = f"""<!doctype html><html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101828"><script>try{{const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.colorScheme=d?'dark':'light'}}catch(_){{}}</script><link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" sizes="64x64" href="/assets/paper-workspace-icon.png"><link rel="icon" type="image/png" sizes="64x64" href="{favicon}"><title>{html.escape(copy['title'])}</title><style>*{{box-sizing:border-box}}:root{{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828;background:#f2f4f7}}body{{margin:0;display:grid;min-width:320px;min-height:100dvh;place-items:center;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:linear-gradient(145deg,#f8fafc,#eef2f7)}}main{{width:min(380px,100%);padding:30px;border:1px solid #e4e7ec;border-radius:18px;background:#fff;box-shadow:0 22px 60px #1018281a}}header{{display:flex;align-items:center;gap:12px;margin-bottom:22px}}.mark{{display:grid;width:44px;height:44px;place-items:center;border-radius:12px;background:#101828;color:#fff;font-size:21px}}.eyebrow{{margin:0 0 3px;color:#667085;font-size:11px;font-weight:800;letter-spacing:.1em}}h1{{margin:0;font-size:23px;letter-spacing:-.035em}}p{{margin:0;color:#667085;font-size:14px;line-height:1.55}}.language{{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin:-4px 0 18px;font-size:12px}}.language a{{color:#475467;text-decoration:none}}.language a[aria-current=true]{{color:#2457d6;font-weight:800}}.language span{{color:#d0d5dd}}label{{display:grid;gap:8px;margin-top:24px;color:#344054;font-size:13px;font-weight:700}}input{{width:100%;min-height:48px;padding:12px 13px;border:1px solid #b2ccff;border-radius:10px;background:#fff;color:#101828;font:16px inherit;outline:0;transition:border-color 120ms ease,box-shadow 120ms ease}}input:focus{{border-color:#4f7cff;box-shadow:0 0 0 4px #4f7cff1a}}button{{width:100%;min-height:48px;margin-top:16px;padding:12px;border:0;border-radius:10px;background:#2457d6;color:#fff;font:700 15px inherit;cursor:pointer;transition:background-color 120ms ease,transform 120ms ease}}button:hover{{background:#1745bb}}button:active{{transform:scale(.98)}}button:focus-visible,a:focus-visible{{outline:3px solid #84adff;outline-offset:2px}}.error{{margin:16px 0 0;padding:9px 10px;border-radius:8px;background:#fef3f2;color:#b42318;font-size:13px}}html[data-color-scheme=dark]{{color-scheme:dark;background:#0b1220}}html[data-color-scheme=dark] body{{background:linear-gradient(145deg,#0b1220,#101a2b)}}html[data-color-scheme=dark] main{{border-color:#2a3850;background:#111a2b;box-shadow:0 22px 60px #0008}}html[data-color-scheme=dark] h1{{color:#f5f8ff}}html[data-color-scheme=dark] p,html[data-color-scheme=dark] .eyebrow,html[data-color-scheme=dark] .language a{{color:#a8b5c9}}html[data-color-scheme=dark] .language a[aria-current=true]{{color:#84adff}}html[data-color-scheme=dark] label{{color:#dbe5f5}}html[data-color-scheme=dark] input{{border-color:#365f9f;background:#182235;color:#f5f8ff}}@media(prefers-reduced-motion:reduce){{input,button{{transition:none}}button:active{{transform:none}}}}@media(prefers-contrast:more){{main,input{{border-color:#667085}}}}</style></head><body><main><nav class="language" aria-label="{html.escape(copy['language_label'])}"><a href="{english_url}" hreflang="en" lang="en" aria-current="{'true' if language == 'en' else 'false'}">English</a><span aria-hidden="true">·</span><a href="{korean_url}" hreflang="ko" lang="ko" aria-current="{'true' if language == 'ko' else 'false'}">한국어</a></nav><header><span class="mark" aria-hidden="true">✎</span><span><p class="eyebrow">{html.escape(copy['eyebrow'])}</p><h1>{html.escape(copy['heading'])}</h1></span></header><p>{html.escape(copy['description'])}</p>{message}<form method="post" action="{action}">{username_field}<label>{html.escape(copy['password_label'])}<input name="password" type="password" autocomplete="current-password" autofocus required></label><button type="submit">{html.escape(copy['submit'])}</button></form></main></body></html>"""
     return body.encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _account_request(self):
+        try:
+            data = accounts.registry()
+        except Exception:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "account configuration unavailable"})
+            return
+        name = accounts.session(data, self.headers.get('Cookie'), SESSION_SECRET)
+        path = self.path.split('?', 1)[0]
+        if not name:
+            if path == '/verify' and 'text/html' in self.headers.get('Accept', ''):
+                target = safe_redirect(self.headers.get('X-Forwarded-Uri', '/'))
+                self.send_response(HTTPStatus.SEE_OTHER)
+                self.send_header('Location', login_url(target, 'ko'))
+                self.send_header('Content-Length', '0'); self.end_headers()
+            else:
+                self._json(HTTPStatus.UNAUTHORIZED, {"authenticated": False})
+            return
+        if path == '/context.js':
+            payload = json.dumps({'user': name, 'projects': accounts.memberships(data, name)}, ensure_ascii=True)
+            body = ('window.PaperAccess=' + payload + ';').encode()
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/javascript; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers(); self.wfile.write(body); return
+        if path == '/me':
+            self._json(HTTPStatus.OK, {'authenticated': True, 'user': name, 'projects': accounts.memberships(data, name)})
+            return
+        if path == '/catalog':
+            try:
+                self._json(HTTPStatus.OK, accounts.catalog(data, name))
+            except Exception:
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {'error': 'catalog unavailable'})
+            return
+        # Public /_auth/verify is a session probe. Forward-auth always supplies URI.
+        uri = self.headers.get('X-Forwarded-Uri', '/')
+        method = self.headers.get('X-Forwarded-Method', 'GET')
+        role = accounts.authorize(data, name, uri, method)
+        if not role:
+            self._json(HTTPStatus.FORBIDDEN, {'error': 'project access denied'})
+            return
+        if uri == '/' and 'text/html' in self.headers.get('Accept', ''):
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header('Location', '/' + name)
+            self.send_header('Content-Length', '0'); self.end_headers(); return
+        self.send_response(HTTPStatus.OK)
+        self.send_header('X-Paper-Actor', name)
+        self.send_header('X-Paper-Role', role)
+        ids = {p['backup_id'] for p in data['projects'].values() if name in p['members']}
+        self.send_header('X-Paper-Allowed-Projects', ','.join(sorted(ids)) or '-')
+        self.send_header('Cache-Control', 'no-store')
+        body = b'{"authenticated":true}'
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+
     def do_GET(self) -> None:  # noqa: N802
+        if accounts.REGISTRY and self.path.split('?', 1)[0] in ('/verify', '/me', '/catalog', '/context.js'):
+            self._account_request()
+            return
+        if self.path.split('?', 1)[0] == '/context.js':
+            body = b'window.PaperAccess=null;'
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/javascript')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers(); self.wfile.write(body); return
         if self.path.split("?", 1)[0] == "/verify":
             if valid_session(self.headers.get("Cookie")):
                 self._json(HTTPStatus.OK, {"authenticated": True})
@@ -418,7 +497,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.headers.get("Accept-Language"),
             )
             identity = client_ip(self)
-            password_matches = bool(PASSWORD) and hmac.compare_digest(supplied.encode("utf-8"), PASSWORD.encode("utf-8"))
+            name = values.get('username', [''])[0].strip()
+            try:
+                data = accounts.registry() if accounts.REGISTRY else None
+            except Exception:
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {'error': 'account configuration unavailable'})
+                return
+            password_matches = accounts.authenticate(data, name, supplied) if data is not None else bool(PASSWORD) and hmac.compare_digest(supplied.encode("utf-8"), PASSWORD.encode("utf-8"))
             authenticated, retry_after = LOGIN_LIMITER.evaluate_attempt(
                 identity,
                 password_matches,
@@ -433,7 +518,11 @@ class Handler(BaseHTTPRequestHandler):
                     retry_after=retry_after,
                 )
                 return
-            token, _ = issue_session()
+            if data is not None:
+                token = accounts.issue(data, name, SESSION_SECRET, SESSION_MAX_AGE)
+                if redirect == '/': redirect = '/' + name
+            else:
+                token, _ = issue_session()
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", redirect)
             self.send_header(

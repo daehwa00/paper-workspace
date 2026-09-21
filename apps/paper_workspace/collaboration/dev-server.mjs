@@ -44,6 +44,11 @@ function safeFile(root, requestPath) {
 
 const server = createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`)
+  if (url.pathname === '/_auth/context.js') {
+    response.writeHead(200, { 'content-type': 'text/javascript' })
+    response.end('window.PaperAccess=null;')
+    return
+  }
   let root = staticRoot
   // Give isolated test rooms the same public example and rendered assets.
   let pathname = url.pathname.replace(/^\/p\/[^/]+(?=\/project\/)/, '')

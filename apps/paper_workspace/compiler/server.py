@@ -116,26 +116,26 @@ def _cache_get(key: str) -> tuple[bytes, bytes, int] | None:
         return cached[1:]
 
 
-def _cache_put(key: str, pdf: bytes, synctex: bytes, elapsed_ms: int) -> str:
-    compile_id = hashlib.sha256(pdf + synctex).hexdigest()[:24]
+def _cache_put(key: str, pdf: bytes, synctex: bytes, elapsed_ms: int, actor: str = "") -> str:
+    compile_id = hashlib.sha256(actor.encode() + b"\0" + pdf + synctex).hexdigest()[:24]
     now = time.monotonic()
     with _cache_lock:
         _compile_cache[key] = (now, pdf, synctex, elapsed_ms)
         _compile_cache.move_to_end(key)
-        _synctex_cache[compile_id] = (now, synctex)
-        _synctex_cache.move_to_end(compile_id)
+        _synctex_cache[actor + ":" + compile_id] = (now, synctex)
+        _synctex_cache.move_to_end(actor + ":" + compile_id)
         _prune_compile_caches(now)
     return compile_id
 
 
-def _synctex_get(compile_id: str) -> bytes | None:
+def _synctex_get(compile_id: str, actor: str = "") -> bytes | None:
     now = time.monotonic()
     with _cache_lock:
         _prune_compile_caches(now)
-        cached = _synctex_cache.get(compile_id)
+        cached = _synctex_cache.get(actor + ":" + compile_id)
         if cached is None:
             return None
-        _synctex_cache.move_to_end(compile_id)
+        _synctex_cache.move_to_end(actor + ":" + compile_id)
         return cached[1]
 
 
@@ -543,13 +543,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("invalid workspace id")
             if build_mode not in {"incremental", "clean"}:
                 raise ValueError("invalid build mode")
-            binding = (client_id, workspace_id, entrypoint, root_entrypoint, preview_mode)
+            actor = self.headers.get("X-Paper-Actor", "")
+            binding = (actor + ":" + client_id if actor else client_id, workspace_id, entrypoint, root_entrypoint, preview_mode)
             requested_state_id = self.headers.get("X-Compile-State", "")
             bound_state = _build_state_get(requested_state_id, binding) if client_id else None
-            cache_key = hashlib.sha256(raw_payload).hexdigest()
+            cache_key = hashlib.sha256(actor.encode() + b"\0" + raw_payload).hexdigest()
             if cached := _cache_get(cache_key):
                 pdf, synctex, elapsed_ms = cached
-                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms, actor)
                 self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "build_mode": "cached", "passes": 0, "bibtex_runs": 0, "build_state_id": requested_state_id if bound_state else "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
                 return
             source_paths, asset_paths = validated_project_paths(files, assets, size)
@@ -575,7 +576,7 @@ class Handler(BaseHTTPRequestHandler):
             if not compile_leader:
                 if compile_event.wait(COMPILE_SINGLEFLIGHT_WAIT_SECONDS) and (cached := _cache_get(cache_key)):
                     pdf, synctex, elapsed_ms = cached
-                    compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                    compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms, actor)
                     self._json(HTTPStatus.OK, {"elapsed_ms": 0, "cached": True, "build_mode": "cached", "passes": 0, "bibtex_runs": 0, "build_state_id": requested_state_id if bound_state else "", "compile_id": compile_id, "pdf_audit": _pdf_audit(pdf), "pdf_base64": base64.b64encode(pdf).decode(), "synctex_base64": base64.b64encode(synctex).decode()})
                     return
                 self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "identical compile is still running; retry shortly"})
@@ -634,7 +635,7 @@ class Handler(BaseHTTPRequestHandler):
                     binding, artifacts, bibliography_signature,
                     requested_state_id if bound_state else None,
                 ) if client_id else None
-                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms)
+                compile_id = _cache_put(cache_key, pdf, synctex, elapsed_ms, actor)
             finally:
                 _compile_slots.release()
                 _finish_compile_flight(cache_key, compile_event)
@@ -657,7 +658,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("invalid PDF coordinate")
             compile_id = payload.get("compile_id")
             if isinstance(compile_id, str) and re.fullmatch(r"[0-9a-f]{24}", compile_id):
-                synctex = _synctex_get(compile_id)
+                synctex = _synctex_get(compile_id, self.headers.get("X-Paper-Actor", ""))
                 if synctex is None:
                     raise ValueError("SyncTeX cache expired; render the PDF again.")
             else:
@@ -686,7 +687,7 @@ class Handler(BaseHTTPRequestHandler):
     def _read_synctex_payload(self, payload: dict[str, object]) -> bytes:
         compile_id = payload.get("compile_id")
         if isinstance(compile_id, str) and re.fullmatch(r"[0-9a-f]{24}", compile_id):
-            synctex = _synctex_get(compile_id)
+            synctex = _synctex_get(compile_id, self.headers.get("X-Paper-Actor", ""))
             if synctex is None:
                 raise ValueError("SyncTeX cache expired; render the PDF again.")
             return validated_synctex(synctex)

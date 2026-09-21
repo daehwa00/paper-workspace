@@ -1185,3 +1185,28 @@ test('unavailable persisted document state still fails closed', async t => {
   assert.equal(document.getMap('files').get('paper/main.tex').toString(), 'preserved server content')
   assert.equal(document.getMap('project').get('sourceWritebackStatus'), undefined)
 })
+
+test('viewer receives the shared document but cannot publish Yjs changes', async t => {
+  const room = 'paper-workspace:paper.example:viewer-test'
+  const document = getYDoc(`collab/${room}`)
+  const text = new Y.Text('private baseline')
+  document.getMap('files').set('paper/main.tex', text)
+  const instance = createCollaborationServer({ allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['viewer-test']) })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  class ViewerSocket extends WebSocket {
+    constructor(url, protocols) { super(url, protocols, { origin: 'https://paper.example', headers: { 'X-Paper-Role': 'viewer' } }) }
+  }
+  const local = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, local, { WebSocketPolyfill: ViewerSocket, disableBc: true })
+  t.after(() => { provider.destroy(); local.destroy() })
+  await waitForProviderSync(provider)
+  assert.equal(local.getMap('files').get('paper/main.tex').toString(), 'private baseline')
+  const socket = [...instance.wss.clients][0]
+  const received = new Promise(resolve => socket.once('message', resolve))
+  local.getMap('files').get('paper/main.tex').insert(0, 'unauthorized edit')
+  await received
+  assert.equal(text.toString(), 'private baseline')
+  text.insert(text.length, ' owner change')
+  await waitFor(() => local.getMap('files').get('paper/main.tex').toString().includes('owner change'), 'viewer receives owner changes')
+})

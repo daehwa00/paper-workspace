@@ -163,6 +163,11 @@ const searchableProjectText = project => [
 
 function applyHubLanguage() {
   i18n.apply(document)
+  if (window.PaperAccess?.user) {
+    document.querySelector('[data-i18n="hub.brandEyebrow"]').textContent = '/' + window.PaperAccess.user
+    document.getElementById('account-logout').hidden = false
+    document.getElementById('account-logout-button').textContent = i18n.getLanguage() === 'ko' ? '로그아웃' : 'Sign out'
+  }
   languagePicker.value = i18n.getLanguage()
   const currentLanguage = i18n.getLanguage()
   languageCode.textContent = currentLanguage === 'ko' ? '한국어' : 'English'

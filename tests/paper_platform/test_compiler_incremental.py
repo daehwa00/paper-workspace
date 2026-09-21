@@ -520,3 +520,10 @@ def test_workspace_budget_keeps_asset_shape_and_path_validation():
         compiler.validated_project_paths({"main.tex": ""}, [], 100)
     with pytest.raises(ValueError, match="invalid project path"):
         compiler.validated_project_paths({"main.tex": "", "../escape.tex": ""}, {}, 100)
+
+
+def test_synctex_cache_is_scoped_to_authenticated_actor():
+    token = compiler._cache_put('alice-input', b'pdf', b'private-synctex', 1, 'alice')
+    assert compiler._synctex_get(token, 'alice') == b'private-synctex'
+    assert compiler._synctex_get(token, 'bob') is None
+    assert compiler._synctex_get(token) is None

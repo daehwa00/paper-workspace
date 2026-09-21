@@ -627,3 +627,15 @@ def test_display_actor_mode_records_the_browser_profile_name(tmp_path: Path) -> 
         server.server_close()
         thread.join(timeout=2)
         backup.BackupHandler.actor_mode = "shared"
+
+
+def test_personal_activity_scope_intersects_server_allowlist():
+    from email.message import Message
+    module = load_backup_module()
+    handler = module.BackupHandler.__new__(module.BackupHandler)
+    handler.allowed_projects = {'first', 'second'}
+    handler.headers = Message()
+    handler.headers['X-Paper-Allowed-Projects'] = 'first,unknown'
+    assert handler._allowed_projects() == {'first'}
+    handler.headers.replace_header('X-Paper-Allowed-Projects', '-')
+    assert handler._allowed_projects() == set()

@@ -564,9 +564,12 @@ class BackupHandler(BaseHTTPRequestHandler):
     project_allowlist: ProjectAllowlist | None = None
 
     def _allowed_projects(self) -> set[str] | None:
-        if self.project_allowlist is not None:
-            return self.project_allowlist.snapshot()
-        return self.allowed_projects
+        allowed = self.project_allowlist.snapshot() if self.project_allowlist is not None else self.allowed_projects
+        account_projects = self.headers.get("X-Paper-Allowed-Projects")
+        if account_projects is not None:
+            personal = set(filter(None, account_projects.split(",")))
+            return personal if allowed is None else personal & allowed
+        return allowed
 
     def _project_id(self, value: object) -> str:
         project = validate_project_id(value)

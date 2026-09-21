@@ -9,7 +9,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/paper-workspace-touch.png?v=__APPLE_TOUCH_ICON_HASH__" />
     <link rel="manifest" href="/assets/paper-workspace.webmanifest?v=__WEBMANIFEST_HASH__" />
     <meta name="theme-color" content="#101828" />
-    <script src="/bootstrap.js?v=__BOOTSTRAP_JS_HASH__" data-paper-page="hub"></script>
+    <script src="/_auth/context.js"></script>
+<script src="/bootstrap.js?v=__BOOTSTRAP_JS_HASH__" data-paper-page="hub"></script>
     <title>Paper Workspace · Projects</title>
     <meta name="description" content="Write, collaborate, render PDFs, and manage research papers in one workspace." />
     <meta property="og:type" content="website" />
@@ -36,6 +37,7 @@
       <a class="hub-home" href="/" title="Paper hub home" aria-label="Paper hub home" data-i18n-title="hub.home" data-i18n-label="hub.home"><img src="/assets/desk-doodle.png?v=3" alt="Paper hub" data-i18n-alt="hub.logoAlt" /></a>
       <div><p class="eyebrow" data-i18n="hub.brandEyebrow">Research paper management</p><h1 data-i18n="hub.brandTitle">Paper Workspace</h1></div>
       <span class="hub-toolbar">
+        <form id="account-logout" method="post" action="/_auth/logout" hidden><button id="account-logout-button" class="account-signout" type="submit" style="min-height:44px;padding:0 8px;border:1px solid #ffffff44;border-radius:8px;background:transparent;color:inherit;cursor:pointer">로그아웃</button></form>
         <label class="language-picker">
           <span class="sr-only" data-i18n="language.label">Language</span>
           <svg class="language-globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.3 2.5 3.5 5.5 3.5 9S14.3 18.5 12 21M12 3C9.7 5.5 8.5 8.5 8.5 12S9.7 18.5 12 21"/></svg>

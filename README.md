@@ -302,3 +302,5 @@ docker compose -f infra/paper-workspace/compose.yaml config --quiet
 ```
 
 Regenerate the real demo against a local or deployed Example Paper with `npm run capture:demo` from `apps/paper_workspace/collaboration`. ImageMagick is required for the GIF.
+
+For individually issued passwords and project membership, see [Personal spaces](docs/personal-spaces.md).

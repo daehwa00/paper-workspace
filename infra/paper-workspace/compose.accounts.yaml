@@ -1,0 +1,16 @@
+# Apply after compose.yaml and compose.password.yaml. Registry stays outside the repository.
+services:
+  collaboration:
+    environment:
+      COLLAB_MAX_CONNECTION_AGE_MS: 60000
+  password-gate:
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      PAPER_ACCOUNTS_FILE: /run/paper-accounts/accounts.json
+      PAPER_ACCOUNT_CATALOG: /run/project-catalog/index.json
+    volumes:
+      - ${PAPER_ACCOUNTS_DIR:?Set PAPER_ACCOUNTS_DIR}:/run/paper-accounts:ro
+      - ${PAPER_PROJECTS_DIR:-../../examples/project-library}:/run/project-catalog:ro
+    mem_limit: 256m
+  caddy:
+    command: ["caddy", "run", "--config", "/etc/paper-caddy/Caddyfile.accounts", "--adapter", "caddyfile"]

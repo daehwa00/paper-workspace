@@ -941,7 +941,8 @@ test('content-derived cache keys are emitted for workspace assets', async ({ pag
     scripts: [...document.scripts].map(script => script.src).filter(Boolean),
     styles: [...document.querySelectorAll('link[rel="stylesheet"]')].map(link => link.href)
   }))
-  for (const url of [...urls.scripts, ...urls.styles]) expect(new URL(url).searchParams.get('v')).toMatch(/^[a-f0-9]{16}$/)
+  // Session context is private, dynamically generated and always no-store.
+  for (const url of [...urls.scripts, ...urls.styles].filter(url => new URL(url).pathname !== '/_auth/context.js')) expect(new URL(url).searchParams.get('v')).toMatch(/^[a-f0-9]{16}$/)
 })
 
 test('missing collaboration bundle falls back to local editing', async ({ page }) => {

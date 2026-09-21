@@ -302,3 +302,5 @@ docker compose -f infra/paper-workspace/compose.yaml config --quiet
 ```
 
 실제 데모는 `apps/paper_workspace/collaboration`에서 공개 Example Paper를 대상으로 `npm run capture:demo`를 실행해 다시 만들 수 있습니다. GIF 생성에는 ImageMagick이 필요합니다.
+
+개인별 발급 암호와 논문 열람·편집 권한을 사용하는 배포는 [개인 공간 운영 안내](docs/personal-spaces.md)를 참고하세요.

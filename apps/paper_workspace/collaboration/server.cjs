@@ -1062,6 +1062,15 @@ function createCollaborationServer (overrides = {}) {
           return
         }
         const growthBytes = messageDocumentGrowthBytes(message)
+        // Viewers may exchange state vectors and awareness, but never document updates.
+        if (request.headers['x-paper-role'] === 'viewer') {
+          try {
+            const decoder = decoding.createDecoder(new Uint8Array(message))
+            const kind = decoding.readVarUint(decoder)
+            if (kind === 0 && decoding.readVarUint(decoder) !== 0) return
+            if (kind !== 0 && kind !== 1 && kind !== 3) return
+          } catch { return }
+        }
         if (growthBytes && document.paperDocumentBytes + growthBytes > config.maxDocumentBytes) {
           socket.close(1009, 'document size limit exceeded')
           return
