@@ -1221,8 +1221,10 @@ async function loadProject(){
   if(typeof state.files[`paper/${projectManifest.entrypoint}`]==='string'){
     const preview=await previewPromise;
     workspaceReadyForCompile=true;updateMainCompileControl();
-    if(preview&&!localMainDraft&&selectedEntrypoint()===projectManifest.entrypoint){setRenderedPdf(preview.binary);await renderPdfPreviewLazy(preview.binary.slice(),preview.synctex);$('render-state').textContent='PDF 미리보기 로드됨';setPdfFreshness(false)}
-    else{
+    if(preview&&!localMainDraft&&selectedEntrypoint()===projectManifest.entrypoint){setRenderedPdf(preview.binary);await renderPdfPreviewLazy(preview.binary.slice(),preview.synctex);$('render-state').textContent='PDF 미리보기 로드됨';setPdfFreshness(true);displayedPersistedFingerprint=''}
+    // A manifest preview has no source fingerprint; it is only a placeholder.
+    // Validate against the merged manuscript even when a preview was displayed.
+    {
       const contentRevision=workspaceContentRevision,payload=await compilePayload(),fingerprint=await compilePayloadFingerprint(payload);
       if(persistedPreview?.fingerprint!==fingerprint)persistedPreview=await fetchPersistedPdfPreview(fingerprint).catch(()=>null);
       if(persistedPreview?.fingerprint===fingerprint){if(displayedPersistedFingerprint!==fingerprint){setRenderedPdf(persistedPreview.binary);await renderPdfPreviewLazy(persistedPreview.binary.slice(),persistedPreview.synctex)}setRenderStateMessage('workspace.compile.persisted',{file:payload.entrypoint});setPdfFreshness(false)}
