@@ -333,7 +333,27 @@ function renderProjects() {
   })
 }
 
+let projectLoadPending=false
+async function refreshPageCounts(items) {
+  let next=0
+  await Promise.all(Array.from({length:Math.min(4,items.length)},async()=>{
+    while(next<items.length){
+      const project=items[next++]
+      const id=slugPattern.test(project.activity_id||'')?project.activity_id:project.slug
+      if(!slugPattern.test(id||''))continue
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),3000)
+      try{
+        const response=await fetch(`/api/backups/projects/${encodeURIComponent(id)}/assets/__paper_workspace/main-page-count.json`,{cache:'no-store',signal:controller.signal})
+        if(!response.ok)continue
+        const metadata=await response.json()
+        if(Number.isSafeInteger(metadata.page_count)&&metadata.page_count>0&&metadata.page_count<=1000)project.page_count=metadata.page_count
+      }catch{}finally{clearTimeout(timer)}
+    }
+  }))
+}
 async function loadProjects() {
+  if(projectLoadPending)return
+  projectLoadPending=true
   try {
     const activity = fetch('/api/backups/activity', { headers: { Accept: 'application/json' }, cache: 'no-store' })
       .then(async response => {
@@ -359,12 +379,17 @@ async function loadProjects() {
     const payload = await response.json()
     projects = Array.isArray(payload) ? payload : (Array.isArray(payload.projects) ? payload.projects : [])
     renderProjects()
+    await refreshPageCounts(projects)
+    renderProjects()
   } catch (error) {
     list.setAttribute('aria-busy', 'false')
     list.innerHTML = `<div class="empty-card">${escapeHtml(error.message || i18n.t('hub.loadError'))}<br><small>${escapeHtml(i18n.t('hub.loadErrorHint'))}</small></div>`
-  }
+  }finally{projectLoadPending=false}
 }
 
+window.addEventListener('focus',()=>loadProjects())
+window.addEventListener('pageshow',event=>{if(event.persisted)loadProjects()})
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadProjects()})
 languagePicker.addEventListener('change', () => i18n.setLanguage(languagePicker.value, { persist: true, updateUrl: true }))
 i18n.onChange(() => {
   applyHubLanguage()

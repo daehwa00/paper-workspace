@@ -4,6 +4,11 @@ export function getDocument(){return {promise:Promise.resolve({numPages:1,getPag
 for (const success of [true, false]) {
   test(`manifest preview auto-builds current source: ${success ? 'success replaces preview' : 'failure retains preview'}`, async ({ page }) => {
     let release, payload
+    const pageCounts=[]
+    await page.route('**/assets/__paper_workspace/main-page-count.json',route=>{
+      pageCounts.push(route.request().postDataJSON())
+      return route.fulfill({json:{asset:{}}})
+    })
     const ready = new Promise(resolve => { release = resolve })
     await page.route('**/project/project.json', async route => {
       const response = await route.fetch(), manifest = await response.json()
@@ -29,5 +34,13 @@ for (const success of [true, false]) {
     const pdf = await page.evaluate(async () => (await fetch(renderedPdfUrl)).text())
     expect(pdf).toContain(success ? 'latest build' : 'old preview')
     expect(await page.evaluate(() => renderedPdfStale)).toBe(!success)
+    if(success){
+      await expect.poll(()=>pageCounts.length).toBe(1)
+      expect(pageCounts[0]).toEqual({page_count:1,entrypoint:'main.tex'})
+      await page.evaluate(()=>{state.files['paper/section.tex']='A section';openTextFile('paper/section.tex')})
+      await expect.poll(()=>payload.entrypoint).toBe('section.tex')
+      await expect.poll(()=>page.evaluate(()=>compileController===null)).toBe(true)
+    }
+    expect(pageCounts.length).toBe(success?1:0)
   })
 }
