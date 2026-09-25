@@ -639,3 +639,18 @@ def test_personal_activity_scope_intersects_server_allowlist():
     assert handler._allowed_projects() == {'first'}
     handler.headers.replace_header('X-Paper-Allowed-Projects', '-')
     assert handler._allowed_projects() == set()
+
+
+def test_main_page_count_metadata_is_bounded_and_does_not_allow_arbitrary_json(tmp_path):
+    module = load_backup_module()
+    store = module.AssetStore(tmp_path / 'assets')
+    path = '__paper_workspace/main-page-count.json'
+    body = b'{"page_count": 21, "entrypoint": "main.tex"}'
+    store.put('example', path, body)
+    assert store.get('example', path) == body
+    assert module.safe_asset_content_type(path, body) == 'application/json'
+    for content in [b'{}', b'{"page_count":true,"entrypoint":"main.tex"}', b'{"page_count":0,"entrypoint":"main.tex"}', b'{"page_count":2,"entrypoint":"../main.tex"}', b'x'*1025]:
+        with pytest.raises(module.ValidationError):
+            store.put('example', path, content)
+    with pytest.raises(module.ValidationError):
+        store.put('example', 'arbitrary.json', body)

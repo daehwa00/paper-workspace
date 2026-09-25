@@ -184,6 +184,21 @@ def validate_optional_text(value: object, field: str, maximum: int) -> str | Non
 
 def validate_asset_content(name: object, content: bytes) -> str:
     clean_name = validate_project_path(name)
+    if clean_name == "__paper_workspace/main-page-count.json":
+        try:
+            if len(content) > 1024:
+                raise ValueError("metadata is too large")
+            metadata = json.loads(content)
+            if not isinstance(metadata, dict) or set(metadata) != {"page_count", "entrypoint"}:
+                raise ValueError("invalid metadata fields")
+            count = metadata["page_count"]
+            if type(count) is not int or not 1 <= count <= 1000:
+                raise ValueError("invalid page count")
+            if not validate_project_path(metadata["entrypoint"]).endswith(".tex"):
+                raise ValueError("invalid entrypoint")
+        except (ValueError, TypeError, UnicodeDecodeError) as error:
+            raise ValidationError("invalid main document page metadata") from error
+        return "application/json"
     if clean_name.lower().endswith(".synctex.gz"):
         if not content.startswith(b"\x1f\x8b"):
             raise ValidationError("asset content does not match its file type")
