@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <style>@view-transition{navigation:auto}</style>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e1012"><title>Rebuttal · Paper Workspace</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=__FAVICON_ICO_HASH__">
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/paper-workspace-icon.png?v=__FAVICON_PNG_HASH__">
+  <link rel="icon" type="image/png" sizes="64x64" href="data:image/png;base64,__FAVICON_DATA__">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/paper-workspace-touch.png?v=__APPLE_TOUCH_ICON_HASH__">
+  <link rel="manifest" href="/assets/paper-workspace.webmanifest?v=__WEBMANIFEST_HASH__">
+  <script src="/_auth/context.js"></script>
+  <script src="/bootstrap.js?v=__BOOTSTRAP_JS_HASH__" data-paper-page="rebuttal"></script>
+  <link rel="stylesheet" href="/theme.css?v=__THEME_CSS_HASH__">
+  <link rel="stylesheet" href="/rebuttal.css?v=__REBUTTAL_CSS_HASH__">
+  <link rel="stylesheet" href="/project-frame.css?v=__PROJECT_FRAME_CSS_HASH__">
+  <link rel="stylesheet" href="/project-presence.css?v=__PROJECT_PRESENCE_CSS_HASH__">
+  <script defer src="/vendor/paper-collab.js?v=__PAPER_COLLAB_HASH__"></script>
+  <script defer src="/vendor/paper-editor.js?v=__PAPER_EDITOR_HASH__"></script>
+  <script defer src="/project-presence.js?v=__PROJECT_PRESENCE_JS_HASH__"></script>
+  <script type="module" src="/rebuttal.js?v=__REBUTTAL_JS_HASH__"></script>
+</head>
+<body class="project-frame review-page">
+  <a class="skip-link" href="#main">Skip to content / 본문으로</a>
+  <header class="app-header project-frame-header">
+    <div class="project-header-row"><a class="brand project-frame-brand" href="/" target="_top" aria-label="Paper Workspace"><picture class="brand-symbol"><img class="brand-mark-light" src="/assets/paper-folio-light.svg?v=__FOLIO_LIGHT_HASH__" alt=""><img class="brand-mark-dark" src="/assets/paper-folio-dark.svg?v=__FOLIO_DARK_HASH__" alt=""></picture><span>Paper Workspace</span></a><span class="project-divider" aria-hidden="true">/</span><span id="workspace-project-title" class="workspace-project-title project-frame-title"></span>
+    <div id="project-presence-root" class="project-presence-slot" hidden></div>
+    <script src="/sidebar-account.js?v=__SIDEBAR_ACCOUNT_JS_HASH__"></script></div>
+    <nav class="project-workspace-nav" aria-label="프로젝트 작업공간"><a id="manuscript-link" href="/">Paper</a><a id="open-rebuttal" aria-current="page" href="#reviews">Rebuttal</a></nav>
+  </header>
+  <aside class="project-sidebar project-frame-sidebar"><div class="review-side-heading"><div id="review-sidebar-title" class="review-sidebar-title">리뷰·답변</div><button id="toggle-review-sidebar" class="sidebar-toggle" type="button" aria-label="메뉴 접기" aria-expanded="true">‹</button></div><nav id="reviewer-nav" class="reviewer-nav" aria-label="Reviewers / 리뷰어"></nav><nav id="screen-nav" class="screen-nav" aria-label="Rebuttal"></nav></aside>
+  <div class="app-content project-frame-main">
+  <div class="workspace-heading"><div class="view-heading"><span class="review-view-icon" aria-hidden="true"></span><h1 id="review-view-title">Reviews &amp; responses</h1><p class="sr-only" id="project-label"></p></div><div class="round-controls"><label for="round-select" id="round-label">Round</label><select id="round-select" data-property-picker data-property-label="Round"></select><button id="new-round" class="quiet" type="button"></button></div></div>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <main id="main" tabindex="-1"><div id="loading" class="empty">Loading…</div></main>
+  </div>
+
+  <dialog id="form-dialog" aria-labelledby="dialog-title"><form id="dialog-form"><header><h2 id="dialog-title"></h2><button type="button" id="dialog-close" class="icon-button quiet" aria-label="Close">×</button></header><div id="dialog-body"></div><p id="dialog-error" class="error" role="alert" hidden></p><footer><button type="button" id="dialog-cancel"></button><button type="submit" class="primary" id="dialog-save"></button></footer></form></dialog>
+  <script src="/theme.js?v=__THEME_JS_HASH__"></script>
+  <script src="/rebuttal-backup.js?v=__REBUTTAL_BACKUP_JS_HASH__"></script>
+</body>
+</html>

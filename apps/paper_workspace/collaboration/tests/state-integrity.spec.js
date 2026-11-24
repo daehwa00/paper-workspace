@@ -146,6 +146,7 @@ test('a peer runtime revision recompiles changed assets after adopting the manif
   }))
   const result = await page.evaluate(async () => {
     clearTimeout(serverSourceRefreshTimer)
+    collabSession.provider.disconnect()
     projectManifest.runtime_revision = '1'.repeat(64)
     sharedProject.set('serverRuntimeRevision', '2'.repeat(64))
     const before = workspaceContentRevision
@@ -200,7 +201,7 @@ test('activity fallback labels browser-only activity when the activity service i
   await page.route('**/api/backups/activity', route => route.abort('failed'))
 
   await page.goto('/hub.html?lang=en')
-  await expect(page.locator('.project-activity')).toContainText('Local browser activity')
+  await expect(page.locator('.project-activity')).toHaveAttribute('title', /Local browser activity/)
   await expect(page.locator('.project-activity')).toContainText('Local Author')
 })
 
@@ -213,5 +214,6 @@ test('corrupt local metadata cannot suppress authoritative project activity', as
     contentType: 'application/json', body: JSON.stringify({ projects: [{ project_id: 'available', actor: 'Reviewer', modified_at: '2026-09-01T00:00:00Z' }] })
   }))
   await page.goto('/hub.html?lang=en')
-  await expect(page.locator('.project-activity')).toContainText('Last edited by Reviewer')
+  await expect(page.locator('.project-activity')).toContainText('Reviewer')
+  await expect(page.locator('.project-activity')).toHaveAttribute('title', /Reviewer/)
 })

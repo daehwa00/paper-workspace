@@ -25,7 +25,7 @@ async function openWorkspace(page, width, { theme = 'light', layout = null, pdf 
   }, { theme, layout })
   if (pdf) {
     const binary = pagePdf()
-    await page.route('**/vendor/pdfjs/*.mjs', async route => {
+    await page.route('**/vendor/pdfjs/*.mjs*', async route => {
       const response = await route.fetch()
       await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
     })
@@ -59,8 +59,8 @@ for (const width of [1024, 1600, 2048]) {
     await expect.poll(() => page.evaluate(() => document.body.scrollWidth)).toBe(width)
     const box = await toggle.boundingBox()
     expect(box.width).toBeGreaterThanOrEqual(36)
-    expect(box.height).toBeGreaterThanOrEqual(36)
-    expect((await topbar.boundingBox()).height).toBe(56)
+    expect(box.height).toBeGreaterThanOrEqual(28)
+    expect((await topbar.boundingBox()).height).toBe(92)
   })
 }
 

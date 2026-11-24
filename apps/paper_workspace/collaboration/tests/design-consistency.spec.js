@@ -55,3 +55,13 @@ test('the editor word count follows language changes without changing the manusc
   await page.locator('#workspace-language').selectOption('ko')
   await expect(page.locator('#word-count')).toHaveText(`${count}단어`)
 })
+
+
+test('paper editor cursor is white in dark mode', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
+  await page.goto('/?lang=ko')
+  await page.waitForFunction(() => workspaceReadyForCompile)
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
+  await page.locator('.editor-view .cm-content').click()
+  await expect(page.locator('.editor-view .cm-cursor').first()).toHaveCSS('border-left-color', 'rgb(255, 255, 255)')
+})

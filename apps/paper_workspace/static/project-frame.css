@@ -1,0 +1,207 @@
+/* Shared Linear 2026 project frame for writing and review.
+   Owns header, brand/title, mode tabs, sidebar and main surface geometry.
+   Feature-specific controls and content layouts stay in the page stylesheet. */
+.project-frame{--frame-location-height:calc(var(--frame-inset) + var(--location-header-height));--frame-mode-height:max(40px,var(--control-height));--frame-header-height:calc(var(--frame-location-height) + var(--frame-mode-height) + env(safe-area-inset-top,0px));--workspace-top-height:var(--frame-header-height)}
+.project-frame .shell{--frame-sidebar-width:var(--sidebar-width,var(--nav-width))}
+.project-frame .shell.sidebar-collapsed{--frame-sidebar-width:44px}
+.project-frame.review-page{--frame-sidebar-width:var(--project-sidebar-width,var(--nav-width));padding-top:var(--frame-header-height)}
+.project-frame.review-page>.project-frame-header{position:fixed;inset:0 0 auto;z-index:40;view-transition-name:none}
+.project-frame .project-frame-brand{color:var(--theme-text-strong)}
+.project-frame .project-frame-brand img{object-fit:contain}
+.project-frame .project-divider,.project-frame .brand-divider{display:none}
+.project-frame.review-page>.project-frame-main{margin-top:0;min-height:calc(100dvh - var(--frame-header-height));min-width:0;background:var(--theme-surface);border-bottom:0}
+.project-frame.review-page.is-sidebar-collapsed{--frame-sidebar-width:44px}
+@media(min-width:768px){
+ .project-frame.review-page.is-sidebar-collapsed>.project-frame-header,.project-frame .shell.sidebar-collapsed>.project-frame-header{padding-left:8px}
+ .project-frame.review-page.is-sidebar-collapsed .project-frame-header .project-frame-brand,.project-frame .shell.sidebar-collapsed .project-frame-header .project-frame-brand{flex:0 0 28px}
+}
+.project-frame .shell>.project-frame-header,.project-frame>.project-frame-header{position:relative;z-index:40;display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:10px;height:var(--frame-header-height);padding:calc(var(--frame-inset) + env(safe-area-inset-top,0px)) 20px var(--frame-mode-height) 14px;box-sizing:border-box;border:0;background:transparent;color:var(--theme-text);isolation:isolate}
+.project-frame .project-header-row{display:contents}
+.project-frame .project-frame-header{pointer-events:none}
+.project-frame .project-frame-header>*{pointer-events:auto}
+.project-frame .editor-footer{height:32px;min-height:32px;flex-shrink:0;align-items:center;padding:6px 18px;border-top:1px solid var(--theme-border-soft);background:var(--theme-surface-subtle);color:var(--theme-text-muted);font-size:12px}
+.project-frame.review-page>.project-frame-header{background:var(--theme-bg)}
+.project-frame .project-frame-header::before{content:"";position:absolute;z-index:-1;pointer-events:none;inset:var(--frame-inset) var(--frame-inset) 0 var(--frame-sidebar-width);border:1px solid var(--theme-border);border-bottom:0;border-radius:var(--frame-radius) var(--frame-radius) 0 0;background:var(--theme-surface)}
+.project-frame .project-frame-header .project-frame-brand{display:flex;align-items:center;gap:9px;flex:0 0 calc(var(--frame-sidebar-width) - 14px);height:28px;min-height:28px;min-width:0;padding:0;margin:0;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:600}
+.project-frame .project-frame-header .project-frame-brand img{width:28px;height:28px;padding:2px;border-radius:6px;box-sizing:border-box;background:var(--theme-bg)}
+.project-frame .project-frame-header .project-frame-title{flex:1;min-width:0;min-height:28px;padding:6px 7px;border:1px solid transparent;border-radius:5px;font-size:13px;font-weight:500;letter-spacing:-.01em;line-height:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-frame .project-frame-header>.project-workspace-nav{position:absolute;left:calc(var(--frame-sidebar-width) + 12px);right:20px;bottom:0;height:var(--frame-mode-height);margin:0;padding:0;gap:2px;align-items:flex-end;box-shadow:none}
+.project-frame .project-frame-header>.project-workspace-nav::after{content:"";position:absolute;left:-12px;right:-12px;bottom:0;height:1px;background:var(--theme-border);pointer-events:none}
+.project-frame .project-frame-header>.project-workspace-nav a{position:relative;align-self:flex-end;min-height:max(34px,var(--control-height));margin-bottom:-1px;padding:6px 14px;border:1px solid transparent;border-radius:8px 8px 0 0;background:transparent;color:var(--theme-text-muted);font-size:13px;line-height:18px;font-weight:400;gap:6px}
+.project-frame .project-frame-header>.project-workspace-nav a:hover:not([aria-current]){background:var(--theme-surface-subtle);color:var(--theme-text)}
+.project-frame .project-workspace-nav a::before{content:"";display:block;flex:0 0 14px;width:14px;height:14px;background:var(--theme-accent);mask:var(--mode-icon) center/contain no-repeat}
+.project-frame .project-workspace-nav #manuscript-link{--mode-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M4%201.5h5l3%203v10H4zM9%201.5V5h3M6%208h4m-4%203h4%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame .project-workspace-nav #open-rebuttal{--mode-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M2.5%202.5h11v8H7l-4.5%203v-11ZM5%205h6M5%208h4%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame .project-frame-header>.project-workspace-nav a[aria-current]{z-index:1;border-color:var(--theme-border);border-bottom-color:transparent;background:var(--theme-surface);box-shadow:none;color:var(--theme-text-strong);font-weight:500}
+.project-frame .project-workspace-nav .workspace-assistant-toggle{margin-left:auto}
+/* Account placement belongs to the frame; control visuals live in theme.css. */
+.project-frame .sidebar-account{position:fixed;left:10px;bottom:12px;width:calc(var(--frame-sidebar-width) - 20px);min-height:36px;display:flex;justify-content:space-between;align-items:center;gap:2px;padding-top:12px;margin:0;border-top:1px solid var(--theme-border);z-index:30}
+.project-frame .sidebar-account .mobile-utility-items{flex-wrap:nowrap}
+.project-frame .sidebar-account .presence{margin-left:auto}
+@media(min-width:768px){
+ .project-frame .sidebar-collapsed .sidebar-account,.project-frame.is-sidebar-collapsed .sidebar-account{left:8px;width:28px;flex-direction:column;gap:6px;border:0}
+ .project-frame .sidebar-collapsed .sidebar-account .presence,.project-frame.is-sidebar-collapsed .sidebar-account .presence{margin:0}
+ .project-frame .sidebar-collapsed .sidebar-account .language-control,.project-frame.is-sidebar-collapsed .sidebar-account .language-control,.project-frame .sidebar-collapsed .sidebar-account .theme-trigger,.project-frame.is-sidebar-collapsed .sidebar-account .theme-trigger{display:none}
+}
+@media(max-width:767px){
+ .project-frame .sidebar-account{position:static;width:auto;min-height:0;padding:0;border:0;gap:4px;flex:0 0 auto}
+ .project-frame .sidebar-account .presence{margin:0}
+}
+
+.project-frame .project-frame-sidebar{padding-bottom:72px}
+@media(min-width:768px){
+
+ .project-frame.review-page:not(.is-sidebar-collapsed) .project-frame-sidebar{padding-bottom:104px}
+}
+
+.project-frame .project-frame-sidebar{top:calc(var(--frame-location-height) + env(safe-area-inset-top,0px));width:var(--frame-sidebar-width);border-right:0}
+.project-frame .project-sidebar{position:fixed;bottom:0;left:0;padding:0 10px;background:var(--theme-bg);overflow:auto}
+.project-frame .project-frame-main{margin-left:var(--frame-sidebar-width);margin-right:var(--frame-inset);border-inline:1px solid var(--theme-border);border-top:0;border-radius:0}
+@media(min-width:768px) and (prefers-reduced-motion:no-preference){
+ .project-frame.review-page>.project-frame-main{transition:margin-left .24s var(--motion-ease)}
+ .project-frame.review-page>.project-frame-header{transition:padding-left .24s var(--motion-ease)}
+ .project-frame.review-page>.project-frame-header::before{transition:left .24s var(--motion-ease)}
+ .project-frame.review-page .project-frame-header .project-frame-brand{transition:flex-basis .24s var(--motion-ease)}
+ .project-frame.review-page .project-frame-header>.project-workspace-nav{transition:left .24s var(--motion-ease)}
+}
+.project-frame.is-sidebar-collapsed .project-frame-brand span,.project-frame .shell.sidebar-collapsed .project-frame-brand span{display:none}
+.review-side-heading{display:flex;align-items:center;justify-content:space-between;height:48px}
+.review-side-heading .review-sidebar-title{display:flex;align-items:center;height:48px;padding:0 5px;min-width:0;overflow:hidden;white-space:nowrap;font-size:11px;font-weight:600;color:var(--theme-text-muted)}
+
+.project-frame.is-sidebar-collapsed .review-sidebar-title{display:none}
+.project-frame.is-sidebar-collapsed .review-side-heading{justify-content:center}
+.project-frame .project-sidebar .screen-nav{display:flex;flex-direction:column;align-items:stretch;gap:1px;padding:6px 0;border:0;overflow:visible}
+.project-frame .project-sidebar .screen-nav button{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-width:0;min-height:var(--nav-row-height);padding:4px 8px;border-color:transparent;border-radius:var(--radius-nav);background:transparent;box-shadow:none;color:var(--theme-nav-muted);font-size:13px;line-height:18px;font-weight:400;text-align:left;white-space:normal}
+.project-frame .project-sidebar .screen-nav button:hover{background:var(--theme-surface-raised);color:var(--theme-text)}
+.project-frame .project-sidebar .screen-nav button[aria-current]{background:var(--theme-nav-selected,var(--theme-selected));color:var(--theme-nav-text);font-weight:500}
+.project-frame .project-sidebar .screen-nav button::before{content:"";display:block;width:16px;height:16px;flex:0 0 16px;background:currentColor;mask:var(--screen-nav-icon) center/contain no-repeat}
+.project-frame .project-sidebar .screen-nav button[data-screen="overview"]{--screen-nav-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M2.5%202.5h4v4h-4zM9.5%202.5h4v4h-4zM2.5%209.5h4v4h-4zM9.5%209.5h4v4h-4z%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame .project-sidebar .screen-nav button[data-screen="reviews"]{--screen-nav-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M3%202.5h10v8H7l-4%203v-11ZM5.5%205h5m-5%203h3%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame .project-sidebar .screen-nav button[data-screen="evidence"]{--screen-nav-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M5.5%203h8m-8%205h8m-8%205h8M2.5%203h.01M2.5%208h.01M2.5%2013h.01%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame .project-sidebar .screen-nav button[data-screen="submission"]{--screen-nav-icon:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.3%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22m6%202.5%207.5%205.5L6%2013.5V9L2.5%208%206%207zM6%209l7.5-1%22%2F%3E%3C%2Fsvg%3E")}
+.project-frame.is-sidebar-collapsed .project-sidebar{padding-inline:4px}
+.project-frame.is-sidebar-collapsed .project-sidebar .screen-nav button{padding-inline:8px;justify-content:center}
+.project-frame.is-sidebar-collapsed .project-sidebar .screen-nav button span{display:none}
+@media(min-width:768px){.project-frame.workspace-page .sidebar-resizer{top:calc(var(--frame-location-height) + env(safe-area-inset-top,0px))}}
+@media(max-width:767px){
+ .project-frame{--frame-location-height:48px;--frame-mode-height:44px}
+ .project-frame .shell>.project-frame-header,.project-frame>.project-frame-header{padding-top:env(safe-area-inset-top,0px);padding-left:10px;padding-right:10px;background:var(--theme-bg)}
+ .project-frame .project-frame-header::before{display:none}
+ .project-frame .project-frame-header .project-frame-brand{flex:0 0 28px}
+ .project-frame .project-frame-brand span{display:none}
+ .project-frame .project-frame-header .project-frame-title{min-height:44px}
+
+ .project-frame .project-frame-header>.project-workspace-nav{left:10px;right:10px}
+ .project-frame .project-frame-header>.project-workspace-nav::after{left:-10px;right:-10px}
+ .project-frame .project-frame-header>.project-workspace-nav a{flex:1;min-height:44px;font-size:12px}
+ .project-frame .project-frame-main{margin:0;border:0}
+ .project-frame .shell[data-focus="files"] .sidebar{top:var(--workspace-top-height);bottom:calc(72px + env(safe-area-inset-bottom));width:100%}
+ .project-frame .project-sidebar{position:fixed;inset:auto 8px 8px;width:auto;z-index:25;border:1px solid var(--theme-border);border-radius:9px;background:var(--theme-surface);padding:4px;box-shadow:0 2px 8px var(--theme-shadow)}
+ .project-frame .review-side-heading{display:none}
+ .project-frame.review-page .reviewer-nav{display:flex;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;padding:4px 0 8px;border-bottom:1px solid var(--theme-border)}
+ .project-frame.review-page .reviewer-nav-label{display:none}
+ .project-frame.review-page .reviewer-nav-row{flex:0 0 auto;min-width:0;max-width:220px}
+ .project-frame.review-page .reviewer-nav .reviewer-nav-item,.project-frame.review-page.is-sidebar-collapsed .reviewer-nav .reviewer-nav-item{display:flex;min-width:80px;max-width:160px}
+ .project-frame.review-page .reviewer-nav .reviewer-mate-button{width:44px;min-width:44px;min-height:44px;flex:0 0 44px;padding:4px}
+ .project-frame.review-page .reviewer-nav>button{flex:0 0 auto;min-width:44px;max-width:200px}
+ .project-frame.review-page .reviewer-nav-copy,.project-frame.review-page.is-sidebar-collapsed .reviewer-nav-copy{display:block;min-width:0;max-width:140px}
+ .project-frame.review-page .reviewer-nav-copy strong{white-space:nowrap}
+ .project-frame .project-sidebar .screen-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:0;gap:0}
+ .project-frame .project-sidebar .screen-nav button{flex:1;justify-content:center;gap:0;min-height:44px;padding:4px 8px;font-size:11px;white-space:normal;overflow-wrap:anywhere}
+ .project-frame .project-sidebar .screen-nav button span{min-width:0}
+ .project-frame .project-sidebar .screen-nav button::before{display:none}
+ .project-frame.is-sidebar-collapsed .project-sidebar .screen-nav button span{display:inline}
+ .review-page .project-frame-main{padding-bottom:168px}
+}
+
+@media(pointer:coarse){.project-frame .project-frame-header>.project-workspace-nav a{margin-bottom:0}}
+
+html:has(.review-page){scroll-padding-top:calc(92px + env(safe-area-inset-top,0px))}
+/* Mode tabs flow into the workspace surface like rounded bookmarks. */
+.project-frame .project-workspace-nav a::before{background:var(--theme-text-strong)}
+.project-frame .project-frame-header>.project-workspace-nav a[aria-current]::after{content:"";position:absolute;left:-8px;right:-8px;bottom:0;height:8px;pointer-events:none;background:radial-gradient(circle at 0 0,transparent 7px,var(--theme-border) 7px 8px,var(--theme-surface) 8px) left bottom/8px 8px no-repeat,radial-gradient(circle at 100% 0,transparent 7px,var(--theme-border) 7px 8px,var(--theme-surface) 8px) right bottom/8px 8px no-repeat,linear-gradient(var(--theme-surface),var(--theme-surface)) center bottom/calc(100% - 16px) 8px no-repeat}
+/* Match the Paper sidebar transition and move the whole frame together. */
+@media(min-width:768px) and (prefers-reduced-motion:no-preference){
+ .project-frame.review-page>.project-frame-main{transition:margin-left var(--motion-ui,160ms) var(--motion-ease)}
+ .project-frame.review-page>.project-frame-header{transition:padding-left var(--motion-ui,160ms) var(--motion-ease)}
+ .project-frame.review-page>.project-frame-header::before{transition:left var(--motion-ui,160ms) var(--motion-ease)}
+ .project-frame.review-page .project-frame-header .project-frame-brand{transition:flex-basis var(--motion-ui,160ms) var(--motion-ease)}
+ .project-frame.review-page .project-frame-header>.project-workspace-nav{transition:left var(--motion-ui,160ms) var(--motion-ease)}
+ .review-page .reviewer-nav .reviewer-nav-item{transition:opacity var(--motion-ui,160ms) var(--motion-ease),flex-grow var(--motion-ui,160ms) var(--motion-ease),padding var(--motion-ui,160ms) var(--motion-ease),visibility 0s}
+ .review-page.is-sidebar-collapsed .reviewer-nav .reviewer-nav-item{transition:opacity var(--motion-ui,160ms) var(--motion-ease),flex-grow var(--motion-ui,160ms) var(--motion-ease),padding var(--motion-ui,160ms) var(--motion-ease),visibility 0s var(--motion-ui,160ms)}
+ .review-page .reviewer-nav .reviewer-mate-button{transition:flex-basis var(--motion-ui,160ms) var(--motion-ease),width var(--motion-ui,160ms) var(--motion-ease),min-width var(--motion-ui,160ms) var(--motion-ease),padding var(--motion-ui,160ms) var(--motion-ease)}
+}
+/* One gentle, coordinated sidebar movement in both workspace modes. */
+@media(min-width:768px) and (prefers-reduced-motion:no-preference){
+ .project-frame{--sidebar-motion:260ms;--sidebar-ease:cubic-bezier(.22,1,.36,1)}
+ .project-frame.workspace-page .workspace{transition:grid-template-columns var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame.workspace-page .sidebar-resizer{transition:left var(--sidebar-motion) var(--sidebar-ease),background-color var(--motion-fast) ease}
+ .project-frame.review-page>.project-frame-main{transition:margin-left var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame .shell>.project-frame-header,.project-frame.review-page>.project-frame-header{transition:padding-left var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame .project-frame-header::before{transition:left var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame .project-frame-header .project-frame-brand{transition:flex-basis var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame .project-frame-header>.project-workspace-nav{transition:left var(--sidebar-motion) var(--sidebar-ease)}
+ .project-frame .sidebar-account{transition:left var(--sidebar-motion) var(--sidebar-ease),width var(--sidebar-motion) var(--sidebar-ease)}
+ .review-page .reviewer-nav .reviewer-nav-item{transition:opacity 180ms ease,flex-grow var(--sidebar-motion) var(--sidebar-ease),padding var(--sidebar-motion) var(--sidebar-ease),visibility 0s}
+ .review-page.is-sidebar-collapsed .reviewer-nav .reviewer-nav-item{transition:opacity 120ms ease,flex-grow var(--sidebar-motion) var(--sidebar-ease),padding var(--sidebar-motion) var(--sidebar-ease),visibility 0s 120ms}
+ .review-page .reviewer-nav .reviewer-mate-button{transition:flex-basis var(--sidebar-motion) var(--sidebar-ease),width var(--sidebar-motion) var(--sidebar-ease),min-width var(--sidebar-motion) var(--sidebar-ease),padding var(--sidebar-motion) var(--sidebar-ease)}
+}
+/* Keep sidebar content on a single line while the frame changes width. */
+@media(min-width:768px){
+ .project-frame.workspace-page .sidebar .quick-nav-link,.project-frame.workspace-page .sidebar .file,.project-frame.workspace-page .sidebar .folder-row{white-space:nowrap}
+ .project-frame.review-page .project-sidebar .screen-nav button{white-space:nowrap;overflow:hidden}
+ .project-frame.review-page .project-sidebar .screen-nav button span{white-space:nowrap;overflow:hidden;text-overflow:clip}
+ .project-frame.review-page .reviewer-nav-row{justify-content:flex-start}
+ .project-frame.review-page .reviewer-nav .reviewer-mate-button,.project-frame.review-page.is-sidebar-collapsed .reviewer-nav .reviewer-mate-button{width:28px;min-width:28px;flex:0 0 28px;padding:2px}
+ .project-frame.review-page .reviewer-nav .reviewer-nav-item{overflow:hidden}
+ .project-frame.review-page .reviewer-nav-copy{flex:0 0 auto;width:max(80px,calc(var(--project-sidebar-width,var(--nav-width)) - 100px));white-space:nowrap}
+}
+@media(min-width:768px){.project-frame.review-page.is-sidebar-collapsed .reviewer-nav-label{display:block;visibility:hidden}}
+/* Reclaim the reviewer heading space smoothly when the rail is collapsed. */
+@media(min-width:768px){
+ .project-frame.review-page .reviewer-nav-label{display:block;height:18px;flex:0 0 auto;overflow:hidden;opacity:1;visibility:visible}
+ .project-frame.review-page.is-sidebar-collapsed .reviewer-nav-label{height:0;margin-bottom:0;opacity:0;visibility:hidden}
+}
+@media(min-width:768px) and (prefers-reduced-motion:no-preference){
+ .project-frame.review-page .reviewer-nav-label{transition:height var(--sidebar-motion,260ms) var(--sidebar-ease,cubic-bezier(.22,1,.36,1)),margin-bottom var(--sidebar-motion,260ms) var(--sidebar-ease,cubic-bezier(.22,1,.36,1)),opacity 140ms ease,visibility 0s}
+ .project-frame.review-page.is-sidebar-collapsed .reviewer-nav-label{transition:height var(--sidebar-motion,260ms) var(--sidebar-ease,cubic-bezier(.22,1,.36,1)),margin-bottom var(--sidebar-motion,260ms) var(--sidebar-ease,cubic-bezier(.22,1,.36,1)),opacity 100ms ease,visibility 0s 100ms}
+}
+/* Align reviewer characters with the center of the collapsed navigation rail. */
+@media(min-width:768px){
+ .project-frame.review-page .reviewer-nav .reviewer-mate-button{margin-left:0}
+ .project-frame.review-page.is-sidebar-collapsed .reviewer-nav .reviewer-mate-button{margin-left:4px}
+}
+@media(min-width:768px) and (prefers-reduced-motion:no-preference){
+ .project-frame.review-page .reviewer-nav .reviewer-mate-button{transition:margin-left var(--sidebar-motion,260ms) var(--sidebar-ease,cubic-bezier(.22,1,.36,1))}
+}
+
+/* Content geometry settles once; PaperUI animates the original live elements.
+   Width/margin interpolation otherwise reflows CodeMirror and every PDF page. */
+.project-frame.review-page .project-frame-main,
+.sidebar-motion-running .project-frame.workspace-page .workspace,
+.project-frame .project-frame-sidebar,
+.project-frame .sidebar-resizer,
+.project-frame .project-frame-header,
+.project-frame .project-frame-header::before,
+.project-frame .project-frame-header .project-frame-brand,
+.project-frame .project-frame-header>.project-workspace-nav,
+.project-frame .sidebar-account,
+.project-frame .reviewer-nav-label,
+.project-frame .reviewer-nav .reviewer-nav-item,
+.project-frame .reviewer-nav .reviewer-mate-button{transition:none!important}
+
+/* Keep live panels visible while moving outside their final layout bounds.
+   Fixed notes and their ancestors never receive a transform. */
+.sidebar-motion-running .project-frame-main,
+.sidebar-motion-running .review-workspace{overflow:visible}
+.sidebar-motion-running .project-frame-sidebar{z-index:35;overflow:hidden;border-right:1px solid var(--theme-border)}
+.sidebar-motion-running .project-sidebar .screen-nav button{justify-content:flex-start}
+.project-frame .project-frame-header>.sidebar-frame-surface{position:absolute;z-index:-1;pointer-events:none;inset:var(--frame-inset) var(--frame-inset) 0 var(--frame-sidebar-width);border:1px solid var(--theme-border);border-bottom:0;border-radius:var(--frame-radius) var(--frame-radius) 0 0;background:var(--theme-surface)}
+.sidebar-motion-running .project-frame-header::before{visibility:hidden}
+
+/* Keep the sidebar's drag target transparent so the frame border stays aligned. */
+@media(min-width:768px){
+ .project-frame.workspace-page .sidebar-resizer{background:transparent;border:0}
+ .project-frame.workspace-page .sidebar-resizer::after{left:50%;top:0;width:1px;height:100%;border-radius:0;transform:none;background:var(--theme-accent);opacity:0}
+ .project-frame.workspace-page .sidebar-resizer:is(:hover,:focus-visible,.dragging)::after{opacity:1}
+}

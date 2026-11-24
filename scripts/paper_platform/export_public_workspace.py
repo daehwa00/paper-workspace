@@ -17,6 +17,7 @@ PUBLIC_PATHS = (
     Path("apps/paper_workspace/collaboration"),
     Path("apps/paper_workspace/codex_bridge"),
     Path("apps/paper_workspace/password_gate"),
+    Path("apps/paper_workspace/rebuttal"),
     Path("infra/paper-workspace"),
     Path("examples/paper-workspace-project"),
     Path("examples/project-library"),

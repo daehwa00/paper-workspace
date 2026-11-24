@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="paper-folio-dark-title" color="#F0F1F3">
+  <title id="paper-folio-dark-title">Paper Workspace — Folio</title>
+  <g fill="currentColor">
+    <path d="M20 8h15.25l-12 48H20C13.373 56 8 50.627 8 44V20C8 13.373 13.373 8 20 8Z"/>
+    <path d="M39.75 8h3.422a2 2 0 0 1 1.414.586l10.828 10.828A2 2 0 0 1 56 20.828V44c0 6.627-5.373 12-12 12H27.75L39.75 8Z"/>
+  </g>
+</svg>

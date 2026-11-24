@@ -32,6 +32,52 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+  rebuttal:
+    init: true
+    build:
+      context: ../..
+      dockerfile: apps/paper_workspace/rebuttal/Dockerfile
+    depends_on:
+      project-runtime:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REBUTTAL_ENABLED: ${REBUTTAL_ENABLED:-false}
+      REBUTTAL_PROJECTS: ${REBUTTAL_PROJECTS:-}
+      REBUTTAL_DB_PATH: /data/rebuttal.sqlite3
+      REBUTTAL_PROJECT_RUNTIME: /run/project-runtime
+      REBUTTAL_ACTOR_MODE: proxy
+      REBUTTAL_SHARED_SCOPE: "true"
+      COMPILER_URL: http://compiler:8000
+      BACKUP_URL: http://backup:8010
+      CODEX_BRIDGE_URL: http://codex-bridge:8790
+    volumes:
+      - rebuttal_data:/data
+      - project_runtime:/run/project-runtime:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 64
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - edge
+      - rebuttal_internal
+      - compiler_internal
+      - backup_internal
+    restart: unless-stopped
   collaboration:
     image: paper-workspace-collaboration
     stop_grace_period: 60s
@@ -70,6 +116,7 @@ services:
       COLLAB_DEFAULT_PROJECT_SOURCE: /run/project-sources/default
       COLLAB_PROJECTS_SOURCE: /run/project-sources/projects
       COLLAB_SOURCE_WRITEBACK_DEBOUNCE_MS: ${COLLAB_SOURCE_WRITEBACK_DEBOUNCE_MS:-350}
+      COLLAB_REBUTTAL_SOURCE_POLL_MS: ${COLLAB_REBUTTAL_SOURCE_POLL_MS:-1000}
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -349,6 +396,8 @@ services:
         condition: service_completed_successfully
       backup:
         condition: service_healthy
+      rebuttal:
+        condition: service_healthy
       codex-bridge:
         condition: service_healthy
       collaboration:
@@ -394,8 +443,10 @@ services:
       - collaboration_internal
       - compiler_internal
       - workspace_internal
+      - rebuttal_internal
     restart: unless-stopped
 volumes:
+  rebuttal_data:
   backup_data:
   backup_exports:
   collaboration_data:
@@ -404,6 +455,8 @@ volumes:
   caddy_data:
   caddy_config:
 networks:
+  rebuttal_internal:
+    internal: true
   edge:
   backup_internal:
     internal: true

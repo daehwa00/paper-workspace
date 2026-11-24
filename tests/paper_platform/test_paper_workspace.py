@@ -5,17 +5,65 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2]
 
 
-def workspace_markup() -> str:
-    static = ROOT / "apps/paper_workspace/static"
-    return "\n".join(
-        (static / name).read_text(encoding="utf-8")
-        for name in ("index.html", "app.css", "components.css", "ux.css")
-    )
-
-
 def source_group(directory: str, pattern: str) -> str:
     paths = sorted((ROOT / directory).glob(pattern))
     return "\n".join(path.read_text(encoding="utf-8") for path in paths if not path.name.endswith(".test.cjs"))
+
+
+def caddy_routes(name: str) -> str:
+    infra = ROOT / "infra/paper-workspace"
+    entry = (infra / name).read_text(encoding="utf-8")
+    assert "import Caddyfile.shared" in entry
+    return entry + "\n" + (infra / "Caddyfile.shared").read_text(encoding="utf-8")
+
+
+def compact_css(source: str) -> str:
+    """Ignore CSS formatting while retaining selectors and declaration values."""
+    source = re.sub(r"\s*([{}:;,>+])\s*", r"\1", source)
+    source = re.sub(r"\s+!important", "!important", source)
+    return source.replace(";}", "}")
+
+
+def stylesheet(name: str) -> str:
+    return compact_css((ROOT / "apps/paper_workspace/static" / name).read_text(encoding="utf-8"))
+
+
+def css_declarations(source: str, selector: str) -> dict[str, str]:
+    """Collect declarations for an exact selector, including grouped rules."""
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    declarations = {}
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", compact_css(source)):
+        if selector in selectors.split(","):
+            declarations.update(item.split(":", 1) for item in body.split(";") if ":" in item)
+    return declarations
+
+
+def workspace_document() -> str:
+    """Include the account markup loaded by the workspace's shared script."""
+    static = ROOT / "apps/paper_workspace/static"
+    html = (static / "index.html").read_text(encoding="utf-8")
+    assert re.search(r'<script\b[^>]*\bsrc="/sidebar-account\.js(?:\?[^\"]*)?"', html)
+    account = (static / "sidebar-account.js").read_text(encoding="utf-8")
+    fragments = []
+    for variable in ("footer", "dialogs"):
+        declaration = re.search(rf"\b(?:let|const) {variable}\s*=\s*", account)
+        assert declaration, f"Missing shared account template: {variable}"
+        source = account[declaration.end():]
+        if source.startswith("`"):
+            markup = source[1:source.index("`", 1)]
+            assert "${" not in markup, "Shared template contains unevaluated JavaScript"
+        else:
+            markup, _ = json.JSONDecoder().raw_decode(source)
+        assert isinstance(markup, str)
+        fragments.append(markup)
+    return "\n".join([html, *fragments])
+
+
+def workspace_markup() -> str:
+    return "\n".join([
+        workspace_document(),
+        *(stylesheet(name) for name in ("theme.css", "app.css", "components.css", "ux.css", "project-frame.css", "project-presence.css")),
+    ])
 
 
 def test_default_paper_has_one_catalog_entry_with_an_explicit_source() -> None:
@@ -39,7 +87,7 @@ def test_default_paper_has_one_catalog_entry_with_an_explicit_source() -> None:
 
 def test_default_paper_catalog_alias_routes_to_the_canonical_mount() -> None:
     for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password"):
-        caddy = (ROOT / f"infra/paper-workspace/{name}").read_text(encoding="utf-8")
+        caddy = caddy_routes(name)
         assert "^/p/aaai27/project/(.*)$" in caddy
         assert "rewrite * /project/{re.default_project_asset.1}" in caddy
 
@@ -57,7 +105,7 @@ def test_custom_workspace_has_no_texlyre_brand_or_login() -> None:
 
 
 def test_workspace_supports_persisted_english_and_korean_locales() -> None:
-    html = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    html = workspace_document()
     engine = (ROOT / "apps/paper_workspace/static/i18n.js").read_text(encoding="utf-8")
     workspace = (ROOT / "apps/paper_workspace/static/workspace-i18n.js").read_text(encoding="utf-8")
     dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
@@ -113,7 +161,7 @@ def test_dynamic_workspace_messages_use_semantic_translation_keys() -> None:
     assert "PaperI18n.setText(target,key,variables)" in app
 
 
-def test_workspace_and_hub_use_the_character_favicon() -> None:
+def test_workspace_and_hub_use_the_folio_favicon() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
@@ -140,18 +188,21 @@ def test_workspace_and_hub_use_the_character_favicon() -> None:
 
 
 def test_workspace_language_chevron_uses_deterministic_geometry() -> None:
-    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
-    assert '.language-control::after{content:"";position:absolute;top:50%' in components
-    assert 'transform:translateY(-68%) rotate(45deg)' in components
-    assert 'content:"⌄"' not in components
+    theme = stylesheet("theme.css")
+    arrow = css_declarations(theme.split("@media(forced-colors:active)", 1)[0], "select")
+    assert arrow["background-image"] == "var(--select-chevron)"
+    assert arrow["background-position"] == "right 4px center"
+    assert arrow["background-size"] == "16px"
+    assert "--select-chevron:url(" in theme
+    assert ".language-control::after" not in stylesheet("components.css")
 
 
-def test_shared_links_use_a_high_contrast_character_preview() -> None:
+def test_shared_links_use_the_folio_brand_preview() -> None:
     workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
-    preview = ROOT / "apps/paper_workspace/static/assets/share-preview-v2.png"
+    preview = ROOT / "apps/paper_workspace/static/assets/share-preview-v3.png"
     for html in (workspace, hub):
-        assert 'property="og:image" content="https://paper.glowme.kr/assets/share-preview-v2.png"' in html
+        assert 'property="og:image" content="https://paper.glowme.kr/assets/share-preview-v3.png"' in html
         assert 'property="og:image:width" content="1200"' in html
         assert 'property="og:image:height" content="630"' in html
     assert preview.is_file() and preview.stat().st_size > 1_000
@@ -198,7 +249,8 @@ def test_workspace_serves_editor_preview_upload_and_assistant_surfaces() -> None
     assert "activeLine.getBoundingClientRect()" in app
     assert "editor.scrollHeight-editor.clientHeight" in app
     assert "--sync-highlight-height" in app
-    assert ".pdf-page canvas:hover,.pdf-page canvas:focus{outline:none!important}" in html
+    assert css_declarations(html, ".pdf-page canvas:hover")["outline"] == "2px solid var(--theme-accent)"
+    assert css_declarations(html, ".pdf-page canvas:focus-visible")["outline"] == "2px solid var(--theme-accent)"
     assert "sync-soft-focus" in html
 
 
@@ -206,7 +258,7 @@ def test_projects_have_a_slug_scoped_hub_and_browser_state() -> None:
     html = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    caddy = caddy_routes("Caddyfile.password")
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     assert "project-list" in html
     assert "/projects/index.json" in hub
@@ -220,8 +272,8 @@ def test_projects_have_a_slug_scoped_hub_and_browser_state() -> None:
 
 def test_project_hub_uses_safe_first_page_thumbnails() -> None:
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
-    css = (ROOT / "apps/paper_workspace/static/hub.css").read_text(encoding="utf-8")
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    css = stylesheet("hub.css")
+    caddy = caddy_routes("Caddyfile.password")
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     assert "thumbnailPattern" in hub
@@ -243,8 +295,8 @@ def test_project_hub_uses_safe_first_page_thumbnails() -> None:
 def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     html = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
-    base_css = (ROOT / "apps/paper_workspace/static/hub.css").read_text(encoding="utf-8")
-    css = (ROOT / "apps/paper_workspace/static/hub-ux.css").read_text(encoding="utf-8")
+    base_css = stylesheet("hub.css")
+    css = base_css + stylesheet("hub-ux.css")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
 
     assert 'id="project-sort"' in html
@@ -263,16 +315,20 @@ def test_project_hub_is_a_compact_sortable_paper_gallery() -> None:
     assert "paper-workspace:last-active:" in app
     assert "markProjectActivity('edit')" in app
     assert "setEditorValueWithoutActivity(value)" in app
-    assert "width:min(1440px,calc(100% -" in base_css
-    assert "display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:20px" in base_css
-    assert ".project-grid{display:flex" not in css
-    assert "max-width:340px" not in css
-    assert ".project-activity{display:flex" in css
-    assert "min-height:3.9em" in css
-    assert "-webkit-line-clamp:3" in css
-    assert ".project-card h3{min-height:0;font-size:16px}" in css
-    assert ".hub-intro{align-items:center;padding:20px 24px" in css
-    assert "max-width:144px" in css
+    # The refresh presents projects as compact responsive rows in the app frame.
+    grid = css_declarations(base_css, ".project-grid")
+    assert grid["display"] == "flex" and grid["flex-direction"] == "column"
+    card = css_declarations(base_css, ".project-card")
+    assert card["display"] == "grid"
+    assert "minmax(" in card["grid-template-columns"] and "1fr)" in card["grid-template-columns"]
+    assert "grid-template-columns:24px minmax(0,1fr)" in base_css
+    assert "min-width:0" in base_css
+    assert css_declarations(css, ".project-activity")["display"] in {"flex", "grid"}
+    assert "-webkit-line-clamp:2" in css
+    assert "overflow-wrap:anywhere" in css
+    assert css_declarations(css, ".project-card h3")["font-size"] == "13px"
+    assert css_declarations(css, ".project-activity-time")["text-overflow"] == "ellipsis"
+    assert "@media(max-width:767px)" in css
 
 
 def test_asset_selection_opens_a_zoomable_preview_and_download() -> None:
@@ -288,7 +344,7 @@ def test_asset_selection_opens_a_zoomable_preview_and_download() -> None:
 
 def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
     html = workspace_markup()
-    css = (ROOT / "apps/paper_workspace/static/app.css").read_text(encoding="utf-8")
+    css = stylesheet("app.css")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert 'data-resize="editor-preview"' in html
     assert 'data-resize="preview-assistant"' in html
@@ -296,7 +352,9 @@ def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
     assert "grid-template-columns:minmax(390px,var(--editor-width" in css
     assert "layoutKey='paper-workspace-layout'" in app
     assert "installPanelResizers" in app
-    assert "setPointerCapture" in app
+    shared_ui = (ROOT / "apps/paper_workspace/static/bootstrap.js").read_text(encoding="utf-8")
+    assert "PaperUI.bindResizer" in app
+    assert "setPointerCapture" in shared_ui and "lostpointercapture" in shared_ui
     assert "/app.css?v=__APP_CSS_HASH__" in html
     assert "/vendor/paper-collab.js?v=__PAPER_COLLAB_HASH__" in html
     assert "/app.js?v=__APP_JS_HASH__" in html
@@ -312,6 +370,7 @@ def test_workspace_panel_widths_are_resizable_and_persisted() -> None:
 def test_editor_and_pdf_have_independent_persistent_zoom_controls() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    pdf = (ROOT / "apps/paper_workspace/static/workspace-pdf.js").read_text(encoding="utf-8")
     for identifier in ("editor-zoom-out", "editor-zoom-in", "pdf-zoom-out", "pdf-zoom-in"):
         assert f'id="{identifier}"' in html
     assert "event.metaKey||event.ctrlKey" in app
@@ -322,8 +381,8 @@ def test_editor_and_pdf_have_independent_persistent_zoom_controls() -> None:
     assert "editorZoom:1,pdfZoom:1" in app
     assert "installZoomControls" in app
     assert "viewer.style.zoom=String(layout.pdfZoom)" in app
-    assert "*entry.base.width/rect.width" in app
-    assert "*entry.base.height/rect.height" in app
+    assert "*entry.base.width/rect.width" in pdf
+    assert "*entry.base.height/rect.height" in pdf
     assert ".pdf-canvas-viewer{width:max-content;min-width:100%" in html
 
 
@@ -343,7 +402,7 @@ def test_workspace_has_submission_tooling_and_project_task_board() -> None:
     assert "createNamedCheckpoint" in app
     assert "downloadSourcePackage" in app
     assert "importBibtex" in app
-    assert "compareServerBackup" in app
+    assert "compareServerBackup" in (ROOT / "apps/paper_workspace/static/workspace-backups.js").read_text(encoding="utf-8")
     assert "pdf_audit" in (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     assert "poppler-utils" in (ROOT / "apps/paper_workspace/compiler/Dockerfile").read_text(encoding="utf-8")
 
@@ -360,7 +419,7 @@ def test_compile_errors_are_navigable_and_last_successful_pdf_is_preserved() -> 
     assert "latestCompileErrorDetail" in app
     assert "requestCodexRevision(selection,instruction,{handoff:true,displayInstruction})" in app
     assert "const tone=errorRow?'error'" in app
-    assert ".status-dot.error{background:#f04438}" in html
+    assert css_declarations(html, ".status-dot.error")["background"] == "var(--theme-danger)"
     assert "goToSourceLocation" in app
     assert "if(hasPreviousPdf)" in app
     assert "notify('마지막 정상 PDF를 유지했습니다." in app
@@ -389,12 +448,12 @@ def test_initial_compile_failure_replaces_pdf_spinner_with_error_state() -> None
 
 def test_synctex_supports_source_to_pdf_navigation() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    components = stylesheet("components.css")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     assert "syncSourceToPdf" in app
     assert "syncHighlightCoordinates" in app
     assert "activeLine.getBoundingClientRect()" in app
-    assert "requestAnimationFrame(()=>showSourceSyncHighlight(start))" in app
+    assert "requestAnimationFrame(()=>{if(generation===pdfRenderGeneration&&state.current===file)showSourceSyncHighlight(start)})" in app
     assert "height:var(--sync-highlight-height,23px)!important" in components
     assert "'/api/synctex-view'" in app
     assert "renderedSynctexFallback" in app
@@ -438,12 +497,14 @@ def test_profile_color_can_be_selected_and_persisted() -> None:
 
 def test_profile_requires_a_name_instead_of_publishing_a_default_person() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    profile = (ROOT / "apps/paper_workspace/static/sidebar-account.js").read_text(encoding="utf-8")
     hub = (ROOT / "apps/paper_workspace/static/hub.js").read_text(encoding="utf-8")
 
     assert "const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me'" in app
     assert "actor:hasDisplayName(actor.name)?actor:null" in app
-    assert "if(!hasDisplayName(actor.name))openNameSettings()" in app
-    assert "preferences.set('collab-name-user-set','1')" in app
+    assert "PaperSidebarProfile.create({" in app and "actor,required:true" in app
+    assert "required && !valid(actor.name)" in profile
+    assert "storage.set('collab-name-user-set','1')" in profile
     assert "preferences.set('collab-name-user-set','1')" in hub
     assert "?'secondary_host':storedActorName" not in app
 
@@ -466,16 +527,21 @@ def test_collaborators_render_as_an_avatar_stack_without_a_headcount() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     collaboration = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
-    assert 'id="collaborator-avatars"' in html
+    presence = (ROOT / "apps/paper_workspace/static/project-presence.js").read_text(encoding="utf-8")
+    assert 'id="project-presence-root"' in html
+    assert 'src="/project-presence.js?' in html
     assert 'id="presence-label"' not in html
-    assert ".collaborator-avatar" in html
-    assert "collaboratorInitial" in app
-    assert "avatar.dataset.tooltip" in app
+    assert ".project-presence-avatar" in html
+    assert "PaperProjectPresence.create" in app
+    assert 'id="project-presence-count"' not in presence
+    assert """setAttribute(avatar, 'title', peer.user.name)""" in presence
+    assert "headerAvatars.set(key, avatar)" in presence
+    assert "avatars.insertBefore(avatar" in presence
     assert "명 ·" not in app
     assert "createRelativePositionFromTypeIndex" in collaboration
     assert 'id="remote-cursors"' in html
     assert "renderRemoteCursors" in app
-    assert "goToCollaborator" in app
+    assert "followPresencePeer" in app
     assert "new WebsocketProvider" in collaboration
     assert "awareness.setLocalStateField" in collaboration
 
@@ -531,17 +597,19 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
     assert ".codex-followup{margin:0;padding:12px 0 10px;border:0" in html
     assert ".suggestion.codex-loading{border-left:0}" in html
     assert ".codex-followup-row{display:grid;grid-template-columns:minmax(0,1fr)" in html
-    assert "#run-submission-checks{display:inline-flex" in html
-    assert "#run-submission-checks::before{content:'▶'" in html
-    assert "text-only navigation" in html
+    assert css_declarations(stylesheet("theme.css"), "button")["display"] == "inline-flex"
+    assert 'id="run-submission-checks"' in html
+    assert css_declarations(stylesheet("theme.css"), "#run-submission-checks")["background"] == "var(--theme-primary)"
+    assert css_declarations(html, ".assistant-tabs .tab::before")["display"] == "none!important"
     assert ".assistant-tabs .tab::before{display:none!important}" in html
-    assert "border-bottom:2px solid transparent" in html
+    assert css_declarations(stylesheet("theme.css"), ".tab.active")["background"] == "var(--theme-selected)"
     assert ".assistant-content textarea{resize:none!important}" in html
     assert ".join('\\n')" in app
-    assert "Version history as a compact timeline" in html
-    assert ".backup-list::before" in html
+    assert ".backup-list" in html
     assert ".backup-card::before" in html
-    assert "grid-template-columns:minmax(0,1fr) auto" in html
+    assert ".backup-card::after" in html
+    assert css_declarations(html, ".backup-card:last-child::after")["display"] == "none"
+    assert css_declarations(html, ".assistant-content .backup-card")["grid-template-columns"] == "minmax(0,1fr)"
     assert 'id="model-settings"' in html
     assert 'value="luna-medium"' in html
     assert 'value="luna-high"' in html
@@ -577,7 +645,7 @@ def test_text_selection_exposes_comment_and_codex_actions() -> None:
 def test_codex_prompt_wraps_and_enter_submits() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    css = stylesheet("components.css")
     assert 'id="instruction" wrap="soft"' in html
     assert "event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229" in app
     assert "if(!$('ask').disabled)$('ask').click()" in app
@@ -586,7 +654,7 @@ def test_codex_prompt_wraps_and_enter_submits() -> None:
 
 
 def test_comment_prompt_has_no_horizontal_drag_track() -> None:
-    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    css = stylesheet("components.css")
     assert "#comment-body{overflow-x:hidden" in css
     assert "#comment-body::placeholder{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}" in css
     assert "#add-comment{margin-top:8px}" in css
@@ -605,18 +673,22 @@ def test_preview_header_keeps_controls_without_redundant_title() -> None:
     assert '<span>다운로드</span>' not in html
     assert ".render-state-spinner" in html
     assert ".render-state-label{position:absolute;width:1px" in html
-    assert ".pdf-control{width:27px;height:27px;padding:5px;display:grid;place-items:center;border:1px solid transparent" in html
-    assert ".zoom-controls{display:inline-flex;align-items:center;height:27px;border:0" in html
+    assert css_declarations(html, ".pdf-control")["display"] == "grid"
+    controls = stylesheet("ux.css")
+    assert ".workspace-page .workspace .pdf-control{height:28px;width:28px;min-height:28px;padding:7px}" in controls
+    assert ".workspace-page .workspace .zoom-controls{height:28px;gap:0}" in controls
+    assert "height:44px;min-height:44px;min-width:44px" in controls
 
 
 def test_sticky_pdf_toolbar_tracks_current_and_total_pages() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    pdf = (ROOT / "apps/paper_workspace/static/workspace-pdf.js").read_text(encoding="utf-8")
     viewport = (ROOT / "apps/paper_workspace/static/pdf-viewport.js").read_text(encoding="utf-8")
     assert 'id="pdf-page-indicator"' in html
     assert 'aria-label="현재 PDF 페이지"' in html
     assert ".pdf-page-indicator" in html
-    assert "wrapper.dataset.page=String(pageNumber)" in app
+    assert "wrapper.dataset.page=String(pageNumber)" in pdf
     assert "updatePdfPageIndicator" in app
     assert "schedulePdfPageIndicatorUpdate" in app
     assert "installPdfPageIndicator" in app
@@ -644,10 +716,10 @@ def test_data_safety_guards_cover_navigation_restore_and_pdf_render_races() -> N
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert "const collabBootstrapReady=collabSession.whenReady" in app
     assert "Promise.race([collabSession.whenReady" not in app
-    assert "복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다" in app
+    assert "복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다" in (ROOT / "apps/paper_workspace/static/workspace-backups.js").read_text(encoding="utf-8")
     assert "pdfRenderGeneration" in app
-    assert "error.name='RenderingCancelledException'" in app
-    assert "clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer);if(!activeAsset" in app
+    assert "error.name='RenderingCancelledException'" in (ROOT / "apps/paper_workspace/static/workspace-pdf.js").read_text(encoding="utf-8")
+    assert "if(!event.persisted){clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer)}if(!activeAsset" in app
     assert "moveServerAssetsSafely" in app
     assert "renameHasCollision" in app
 
@@ -668,7 +740,7 @@ def test_editor_shortcuts_support_mac_and_control_key_workflows() -> None:
 
 def test_paper_assistant_can_be_collapsed_and_restored() -> None:
     html = workspace_markup()
-    css = (ROOT / "apps/paper_workspace/static/app.css").read_text(encoding="utf-8")
+    css = stylesheet("app.css")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     assert 'id="toggle-assistant"' in html
     assert 'aria-expanded="true"' in html
@@ -686,28 +758,29 @@ def test_paper_assistant_can_be_collapsed_and_restored() -> None:
 def test_project_sidebar_can_be_collapsed_and_persisted() -> None:
     html = workspace_markup()
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    components = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    components = stylesheet("components.css")
     assert 'id="toggle-sidebar"' in html
     assert ".shell.sidebar-collapsed .sidebar" in html
     assert "sidebarCollapsed:false" in app
     assert "updateSidebarToggle" in app
     assert "layout.sidebarCollapsed=!layout.sidebarCollapsed" in app
     assert 'class="tree-action sidebar-toggle"' not in html
-    assert ".side-heading .sidebar-toggle" in html
+    assert ".sidebar-toggle svg" in html
+    assert "PaperUI.updateSidebarToggle" in app
     assert 'id="sidebar-resizer"' in html
     assert 'data-resize="sidebar"' in html
-    assert "sidebarWidth:224" in app
+    assert "sidebarWidth:244" in app
     assert "minSidebarWidth=180" in app
     assert "maxSidebarWidth=320" in app
     assert "--sidebar-width" in html
-    assert "drag.sidebarWidth+event.clientX-drag.startX" in app
+    assert "start.value+(event.clientX-start.x)*direction" in app
     assert "#files{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto" in components
     assert "overscroll-behavior:contain;scrollbar-gutter:stable" in components
 
 
 def test_local_files_and_folders_can_be_dropped_into_the_project_tree() -> None:
     html = workspace_markup()
-    css = (ROOT / "apps/paper_workspace/static/app.css").read_text(encoding="utf-8")
+    css = stylesheet("app.css")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
     assert 'id="drop-hint"' in html
@@ -745,34 +818,45 @@ def test_workspace_accessibility_and_mobile_presence_contracts() -> None:
     static = ROOT / "apps/paper_workspace/static"
     html = (static / "index.html").read_text(encoding="utf-8")
     app = (static / "app.js").read_text(encoding="utf-8")
-    css = (static / "ux.css").read_text(encoding="utf-8")
+    pdf = (ROOT / "apps/paper_workspace/static/workspace-pdf.js").read_text(encoding="utf-8")
+    css = stylesheet("ux.css")
     assert 'id="remote-cursors" class="remote-cursors" aria-hidden="true"' in html
-    assert "canvas.tabIndex=-1" in app
-    assert "entry.canvas.tabIndex=0" in app
-    assert "entry.canvas.tabIndex=-1" in app
+    assert "canvas.tabIndex=-1" in pdf
+    assert "entry.canvas.tabIndex=0" in pdf
+    assert "entry.canvas.tabIndex=-1" in pdf
     assert "body.tabIndex=0" in app
     assert "body.onkeydown" in app
     assert "setAttribute('aria-label','가져올 BibTeX 항목')" in app
     assert "setAttribute('aria-label','새 할 일 제목')" in app
-    assert ".collaborator-avatars{display:flex;max-width:58px" in css
+    presence = stylesheet("project-presence.css")
+    assert ".project-presence-avatar" in presence
+    assert "min-width:44px;min-height:44px" in presence
     assert ".app-toasts{right:max(8px,env(safe-area-inset-right));left:max(8px" in css
 
 
 def test_dark_theme_covers_secondary_workspace_copy() -> None:
-    css = (ROOT / "apps/paper_workspace/static/theme.css").read_text(encoding="utf-8")
-    assert 'html[data-color-scheme="dark"] .status-center-list small' in css
-    assert 'html[data-color-scheme="dark"] .task-meta' in css
-    assert 'html[data-color-scheme="dark"] .backup-card-meta' in css
+    theme = stylesheet("theme.css")
+    dark = css_declarations(theme, 'html[data-color-scheme="dark"]')
+    assert dark["--theme-text-muted"] != css_declarations(theme, ":root")["--theme-text-muted"]
+    css = stylesheet("components.css") + stylesheet("ux.css") + theme
+    for selector in (".status-center-list small", ".task-meta", ".backup-card-meta span"):
+        color = css_declarations(css, selector)["color"]
+        assert color in ("var(--theme-text-muted)", "var(--theme-text-faint)")
+        assert dark[color.removeprefix("var(").removesuffix(")")]
 
 
 def test_dark_theme_reserves_white_for_rendered_paper() -> None:
-    css = (ROOT / "apps/paper_workspace/static/theme.css").read_text(encoding="utf-8")
-    assert '.sidebar .side-heading .tree-action' in css
-    assert 'background:var(--theme-surface-raised)!important' in css
-    assert '.suggestion:not(.codex-result):not(.codex-loading)' in css
-    assert '.paper:has(.pdf-error-state)' in css
-    assert '.diagnostic-item{background:#3a2025' in css
-    assert 'border-color:transparent!important;background:transparent!important' in css
+    css = workspace_markup()
+    assert css_declarations(css, ".pdf-page")["background"] == "#fff"
+    assert css_declarations(css, ".pdf-error-state")["color"] == "var(--theme-text-muted)"
+    assert css_declarations(css, ".diagnostic-item")["background"] == "var(--theme-danger-soft)"
+    assert css_declarations(css, ".diagnostic-item")["border-left"] == "3px solid var(--theme-danger)"
+    # Shared quiet actions use theme colors in both light and dark schemes.
+    # Functional selector lists may occur before the default action rule.
+    # Exclude those stateful rules instead of truncating the whole stylesheet.
+    defaults = "".join(f"{selectors}{{{body}}}" for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", stylesheet("theme.css")) if ":is(" not in selectors)
+    quiet = css_declarations(defaults, ".tree-action")
+    assert quiet["background"] == "transparent" and quiet["color"] == "var(--theme-text-muted)"
 
 
 def test_comment_cards_navigate_to_source_and_can_be_resolved() -> None:
@@ -800,7 +884,7 @@ def test_workspace_shell_assets_are_revalidated() -> None:
 
 def test_workspace_deployment_is_unprivileged_and_tls_terminated() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile").read_text(encoding="utf-8")
+    caddy = caddy_routes("Caddyfile")
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
     assert 'PAPER_BIND_ADDRESS:-127.0.0.1}:443:443' in compose
@@ -809,7 +893,7 @@ def test_workspace_deployment_is_unprivileged_and_tls_terminated() -> None:
 
 def test_codex_bridge_uses_chatgpt_auth_without_exposing_it_to_browser() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile").read_text(encoding="utf-8")
+    caddy = caddy_routes("Caddyfile")
     bridge = source_group("apps/paper_workspace/codex_bridge", "*.mjs")
     dockerfile = (ROOT / "apps/paper_workspace/codex_bridge/Dockerfile").read_text(encoding="utf-8")
     assert "env_file:" in compose
@@ -881,10 +965,11 @@ def test_project_sources_are_readable_and_html_fallbacks_are_rejected() -> None:
 
 def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> None:
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    pdf = (ROOT / "apps/paper_workspace/static/workspace-pdf.js").read_text(encoding="utf-8")
     storage = (ROOT / "apps/paper_workspace/static/workspace-storage.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
-    backup = (ROOT / "apps/paper_workspace/backup/store.py").read_text(encoding="utf-8")
+    backup = source_group("apps/paper_workspace/backup", "*.py")
     collaboration = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
     nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
@@ -906,7 +991,7 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     assert "!relative.startsWith('drafts/') || relative === entrypoint" in core
     assert "const pdfPreRenderZoom=2" in app
     assert "pdfMaxCanvasPixels=16_000_000" in app
-    assert "const releasePage=entry=>" in app
+    assert "const releasePage=entry=>" in pdf
     assert "_cache_get" in compiler
     assert "COMPILE_CACHE_TTL" in compiler
     assert "_snapshot_build_artifacts" in compiler
@@ -1097,24 +1182,28 @@ def test_project_version_replaces_stale_collaboration_main() -> None:
 
 def test_project_backups_are_verified_on_open_and_every_ten_minutes() -> None:
     html = workspace_markup()
-    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    backups = (ROOT / "apps/paper_workspace/static/workspace-backups.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
-    css = (ROOT / "apps/paper_workspace/static/components.css").read_text(encoding="utf-8")
+    css = stylesheet("components.css")
 
     assert 'id="backup-status"' in html
     assert 'id="create-backup"' in html
     assert 'id="backup-list"' in html
-    assert "const backupIntervalMs=10*60*1000" in app
-    assert "signature===lastBackupSignature" not in app
-    assert "loadBackupHistory().finally(()=>createServerBackup('auto',{quiet:true}))" in app
-    assert "createServerBackup('pre-restore')" in app
-    assert "setInterval(()=>createServerBackup('auto'" in app
-    backup_payload = app[app.index("function backupPayload"):app.index("function setBackupStatus")]
+    assert "const backupIntervalMs=10*60*1000" in backups
+    assert "signature===lastBackupSignature" not in backups
+    assert "loadBackupHistory().finally(()=>createServerBackup('auto',{quiet:true}))" in backups
+    assert "createServerBackup('pre-restore')" in backups
+    assert "setInterval(()=>createServerBackup('auto'" in backups
+    backup_payload = backups[backups.index("function backupPayload"):backups.index("function setBackupStatus")]
     assert "state.assets" not in backup_payload
     assert ".replace(/[^A-Za-z0-9_-]+/g, '-')" in core
-    assert "#create-checkpoint{border-color:#2457d6;background:#2457d6;color:#fff" in css
-    assert ".backup-card>.tool-row{gap:0;padding:1px;border:1px solid #dbe7ff" in css
-    assert ".backup-card>.tool-row .backup-restore+.backup-restore{border-left:1px solid #dbe7ff!important" in css
+    assert css_declarations(stylesheet("theme.css"), "#create-checkpoint")["background"] == "var(--theme-primary)"
+    assert css_declarations(css, ".assistant-content .backup-card")["border"] == "0"
+    assert css_declarations(css, ".backup-card-meta strong")["grid-row"] == "1"
+    assert css_declarations(css, ".backup-card-meta span")["grid-row"] == "2"
+    assert css_declarations(css, ".backup-card>.tool-row")["grid-row"] == "3"
+    assert css_declarations(css, ".backup-card>.tool-row")["border"] == "0"
+    assert not css_declarations(css, ".backup-card>.tool-row .backup-restore+.backup-restore")
 
 
 def test_workspace_status_names_the_problem_and_offers_actions() -> None:
@@ -1179,7 +1268,7 @@ def test_workspace_exposes_safari_and_manifest_icons() -> None:
     assert (ROOT / "apps/paper_workspace/static/apple-touch-icon.png").is_file()
     assert (ROOT / "apps/paper_workspace/static/favicon.ico").is_file()
     assert '"name": "Paper Workspace"' in manifest
-    assert '"background_color": "#172b4d"' in manifest
+    assert '"background_color": "#101113"' in manifest
     assert '"src": "/assets/paper-workspace-touch.png?v=__APPLE_TOUCH_ICON_HASH__"' in manifest
     assert '"src": "/assets/paper-workspace-icon.png?v=__FAVICON_PNG_HASH__"' in manifest
     assert "default_type application/manifest+json" in nginx
@@ -1187,13 +1276,13 @@ def test_workspace_exposes_safari_and_manifest_icons() -> None:
 
 
 def test_appearance_mode_is_shared_across_hub_workspace_and_login() -> None:
-    workspace = (ROOT / "apps/paper_workspace/static/index.html").read_text(encoding="utf-8")
+    workspace = workspace_document()
     hub = (ROOT / "apps/paper_workspace/static/hub.html").read_text(encoding="utf-8")
     theme = (ROOT / "apps/paper_workspace/static/theme.js").read_text(encoding="utf-8")
-    css = (ROOT / "apps/paper_workspace/static/theme.css").read_text(encoding="utf-8")
-    gate = (ROOT / "apps/paper_workspace/password_gate/server.py").read_text(encoding="utf-8")
+    css = stylesheet("theme.css")
+    gate = source_group("apps/paper_workspace/password_gate", "*.py")
     dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    caddy = caddy_routes("Caddyfile.password")
 
     for html in (workspace, hub):
         assert 'class="theme-trigger"' in html
@@ -1205,7 +1294,11 @@ def test_appearance_mode_is_shared_across_hub_workspace_and_login() -> None:
     assert "paper-workspace-theme" in theme
     assert "prefers-color-scheme: dark" in theme
     assert 'data-color-scheme="dark"' in css
-    assert ".pdf-page" in css and "background:#fff" in css
+    assert css_declarations(workspace_markup(), ".pdf-page")["background"] == "#fff"
+    assert 'for name in ("theme.css", "login.css")' in gate
+    assert "login_url, login_styles()" in gate
+    assert "<style>{styles}</style>" in gate
+    assert stylesheet("login.css")
     assert "paper-workspace-theme" in gate
     assert "replace_hash index.html __THEME_CSS_HASH__" in dockerfile
     assert caddy.index("forward_auth password-gate:8079") < caddy.index("@hub expression")
@@ -1229,7 +1322,36 @@ def test_uploaded_binary_assets_are_shared_through_the_server_store() -> None:
 
 
 def test_backup_health_uses_last_verified_time_not_only_new_snapshot_time() -> None:
-    app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
+    backups = (ROOT / "apps/paper_workspace/static/workspace-backups.js").read_text(encoding="utf-8")
 
-    assert "items[0]?.checked_at" in app
-    assert "최근 백업 확인" in app
+    assert "items[0]?.checked_at" in backups
+    assert "최근 백업 확인" in backups
+
+
+def test_frontend_split_scripts_are_loaded_and_cache_keys_follow_their_contents() -> None:
+    static = ROOT / "apps/paper_workspace/static"
+    dockerfile = (ROOT / "infra/paper-workspace/Dockerfile").read_text(encoding="utf-8")
+    for page, entry, scripts in (
+        ("index.html", "app.js", ("bootstrap-watchdog", "workspace-backups", "workspace-pdf")),
+        ("hub.html", "hub.js", ("hub-calendar",)),
+    ):
+        html = (static / page).read_text(encoding="utf-8")
+        for script in scripts:
+            token = f"__{script.upper().replace('-', '_')}_JS_HASH__"
+            assert html.index(f"/{script}.js?v={token}") < html.index(f'/{entry}?')
+            assert f"replace_hash {page} {token} {script}.js" in dockerfile
+    pdf = (static / "workspace-pdf.js").read_text(encoding="utf-8")
+    for module, token in (("pdf.mjs", "__PDFJS_MJS_HASH__"), ("pdf.worker.mjs", "__PDFJS_WORKER_HASH__")):
+        asset = f"vendor/pdfjs/{module}"
+        assert f"/{asset}?v={token}" in pdf
+        assert dockerfile.index(f"replace_hash workspace-pdf.js {token} {asset}") < dockerfile.index(
+            "replace_hash index.html __WORKSPACE_PDF_JS_HASH__ workspace-pdf.js"
+        )
+    rebuttal = (static / "rebuttal.js").read_text(encoding="utf-8")
+    for script in ("rebuttal-comments", "rebuttal-translation", "rebuttal-session", "rebuttal-submission"):
+        token = f"__{script.upper().replace('-', '_')}_JS_HASH__"
+        assert f"./{script}.js?v={token}" in rebuttal
+        assert dockerfile.index(f"replace_hash rebuttal.js {token} {script}.js") < dockerfile.index(
+            "replace_hash rebuttal.html __REBUTTAL_JS_HASH__ rebuttal.js"
+        )
+    assert "verify-static-tokens index.html hub.html rebuttal.html rebuttal.js site.webmanifest workspace-pdf.js" in dockerfile

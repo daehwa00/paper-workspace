@@ -1,0 +1,37 @@
+import {test,expect} from './fixtures.js'
+async function open(page){
+ await page.clock.setFixedTime(new Date('2027-01-01T12:00:00+09:00'))
+ await page.route('**/projects/index.json',r=>r.fulfill({json:{projects:[]}}))
+ await page.route('**/api/backups/activity',r=>r.fulfill({json:{projects:[],metadata:[]}}))
+ await page.goto('/hub.html?lang=ko')
+ await page.locator('#hub-calendar-expand').click()
+}
+test('wheel moves one month per gesture and preserves conference details',async({page})=>{
+ await page.setViewportSize({width:1440,height:1000});await open(page)
+ await page.locator('#hub-overview-days [data-overview-event]').first().click()
+ const title=await page.locator('#hub-overview-details').textContent()
+ const grid=page.locator('.hub-overview-month')
+ await page.locator('#hub-overview-detail-panel').evaluate(n=>Promise.all([n,...n.querySelectorAll('*')].flatMap(e=>e.getAnimations()).map(a=>a.finished)))
+ await grid.evaluate(n=>{
+  n.dispatchEvent(new WheelEvent('wheel',{deltaY:20,cancelable:true,bubbles:true}))
+  if(document.getElementById('hub-overview-title').textContent!=='2027 1월') throw new Error('Below threshold changed month')
+  n.dispatchEvent(new WheelEvent('wheel',{deltaY:30,cancelable:true,bubbles:true}))
+  n.dispatchEvent(new WheelEvent('wheel',{deltaY:800,cancelable:true,bubbles:true}))
+ })
+ await expect(page.locator('#hub-overview-title')).toHaveText('2027 2월')
+ await expect(page.locator('#hub-overview-details')).toHaveText(title)
+ await page.waitForTimeout(270)
+ await grid.dispatchEvent('wheel',{deltaY:-100})
+ await expect(page.locator('#hub-overview-title')).toHaveText('2027 1월')
+ await page.waitForTimeout(270)
+ await grid.dispatchEvent('wheel',{deltaY:120,ctrlKey:true})
+ await expect(page.locator('#hub-overview-title')).toHaveText('2027 1월')
+})
+test('short viewport retains native calendar scrolling',async({page})=>{
+ await page.setViewportSize({width:1440,height:500});await open(page)
+ const grid=page.locator('.hub-overview-month')
+ await expect.poll(()=>grid.evaluate(n=>n.scrollHeight>n.clientHeight)).toBe(true)
+ await grid.hover();await page.mouse.wheel(0,150)
+ await expect.poll(()=>grid.evaluate(n=>n.scrollTop)).toBeGreaterThan(0)
+ await expect(page.locator('#hub-overview-title')).toHaveText('2027 1월')
+})

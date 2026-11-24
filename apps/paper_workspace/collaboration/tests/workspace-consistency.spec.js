@@ -74,7 +74,7 @@ test('a follower tab invalidates its PDF when another tab applied an image revis
 
 for (const sharedEdit of ['shared author edit', '']) {
 test(`reload preserves managed shared ${sharedEdit ? 'edits' : 'empty sources'} until server-side runtime reconciliation`, async ({ page }) => {
-  const slug = `reload-sync-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const slug = sharedEdit ? 'reload-sync-edited' : 'reload-sync-empty'
   let revision = '1'.repeat(64)
   let section = 'section baseline'
   let reconciliationRequested = false
@@ -85,12 +85,13 @@ test(`reload preserves managed shared ${sharedEdit ? 'edits' : 'empty sources'} 
     if (name === 'project.json') return route.fulfill({ json: { id: slug, version: '1', entrypoint: 'main.tex', runtime_revision: revision, runtime_file_revisions: { 'section.tex': revision }, files: [{ path: 'main.tex', managed: true }, { path: 'section.tex', managed: true }] } })
     return route.fulfill({ contentType: 'text/plain', body: name === 'main.tex' ? '\\documentclass{article}\n\\begin{document}main\\end{document}' : section })
   })
-  await page.route('**/collab-runtime/**', route => {
+  await page.route(url => url.pathname.startsWith('/collab-runtime/') && !url.search, route => {
     reconciliationRequested = true
     return route.fulfill({ status: 503, json: { error: 'test pauses server reconciliation' } })
   })
   await page.goto(`/p/${slug}`)
-  await page.waitForFunction(() => sharedMetadataReady && collabReady)
+  await page.waitForFunction(() => sharedMetadataReady && collabReady && collabSession.files.has('paper/section.tex'))
+  expect(await page.evaluate(() => sharedProject.get('serverRuntimeRevision'))).toBe(revision)
   await page.evaluate(sharedEdit => {
     replaceSharedText(collabSession.textFor('paper/section.tex'), sharedEdit)
     state.serverSourceSnapshots['paper/section.tex'] = sourceFingerprint('section baseline')

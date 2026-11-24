@@ -16,7 +16,7 @@ for (const success of [true, false]) {
       await route.fulfill({ response, json: manifest })
     })
     await page.route('**/project/old-preview.pdf', route => route.fulfill({contentType:'application/pdf',body:Buffer.from('%PDF-1.4 old preview')}))
-    await page.route('**/vendor/pdfjs/pdf.mjs', route => route.fulfill({contentType:'text/javascript',body:pdfModule}))
+    await page.route('**/vendor/pdfjs/pdf.mjs*', route => route.fulfill({contentType:'text/javascript',body:pdfModule}))
     await page.route('**/api/compile', async route => {
       payload = route.request().postDataJSON()
       await ready
@@ -44,3 +44,42 @@ for (const success of [true, false]) {
     expect(pageCounts.length).toBe(success?1:0)
   })
 }
+
+test('startup keeps the manifest PDF and ignores an unversioned managed asset from IndexedDB', async ({ page }) => {
+  const slug = `preview-runtime-${Date.now()}`
+  const path = 'paper/figures/runtime.pdf'
+  const oldFigure = Buffer.from('%PDF-1.4 old figure')
+  const newFigure = Buffer.from('%PDF-1.4 new figure')
+  const oldFingerprint = 'a'.repeat(64)
+  const previewRequests = []
+  let payload
+  await page.goto('/')
+  await page.evaluate(async ({ slug, path, data }) => {
+    await window.PaperWorkspaceStorage.workspaceAssetStore(slug).put(path, {data, type:'application/pdf'})
+  }, {slug, path, data:`data:application/pdf;base64,${oldFigure.toString('base64')}`})
+  await page.route('**/project/project.json', async route => {
+    const response = await route.fetch(), manifest = await response.json()
+    manifest.preview_pdf = 'current-preview.pdf'
+    manifest.files.push({path:'figures/runtime.pdf', type:'asset', managed:true})
+    await route.fulfill({response,json:manifest})
+  })
+  await page.route('**/project/current-preview.pdf*', route => route.fulfill({body:'%PDF-1.4 current preview'}))
+  await page.route('**/project/figures/runtime.pdf*', route => route.fulfill({contentType:'application/pdf',body:newFigure}))
+  await page.route('**/assets', route => route.fulfill({json:{assets:['pdf','synctex.gz'].map(extension => ({
+    path:`__paper_workspace/preview-${oldFingerprint}.${extension}`, modified_at:'2026-11-23T10:01:44Z'
+  }))}}))
+  await page.route('**/assets/__paper_workspace/preview-*', route => {
+    previewRequests.push(route.request().url())
+    return route.fulfill({status:404})
+  })
+  await page.route('**/vendor/pdfjs/pdf.mjs*', route => route.fulfill({contentType:'text/javascript',body:pdfModule}))
+  await page.route('**/api/compile', route => {
+    payload = route.request().postDataJSON()
+    return route.fulfill({status:422,json:{error:'Keep the manifest preview'}})
+  })
+  await page.goto(`/p/${slug}?lang=en`)
+  await expect.poll(() => payload?.assets['figures/runtime.pdf']).toBe(newFigure.toString('base64'))
+  await expect(page.locator('.pdf-page canvas')).toBeVisible()
+  expect(await page.evaluate(async () => (await fetch(renderedPdfUrl)).text())).toContain('current preview')
+  expect(previewRequests).toEqual([])
+})

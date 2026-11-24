@@ -13,6 +13,18 @@
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
   }
 
+  function compareAndPut(store, record, expectedSavedAt) {
+    const request = store.get(record.project)
+    const result = {result: false}
+    request.onsuccess = () => {
+      const previous = Number(request.result?.savedAt) || 0
+      if (previous >= record.savedAt || (expectedSavedAt !== undefined && previous !== expectedSavedAt)) return
+      store.put(record)
+      result.result = true
+    }
+    return result
+  }
+
   function openDatabase(name, storeName, upgrade) {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(name, 1)
@@ -31,10 +43,8 @@
     return withTimeout(new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, mode)
       const request = operation(transaction.objectStore(storeName))
-      let result = null
-      request.onsuccess = () => { result = request.result ?? null }
       request.onerror = () => reject(request.error)
-      transaction.oncomplete = () => resolve(result)
+      transaction.oncomplete = () => resolve(request.result ?? null)
       transaction.onabort = () => reject(transaction.error || new Error(`${storeName} transaction aborted`))
     }), timeoutMs, `${storeName} transaction`)
   }
@@ -45,7 +55,7 @@
     })
     return {
       get: project => transact(database, 'states', 'readonly', store => store.get(project), timeoutMs),
-      put: (project, state, savedAt = Date.now()) => transact(database, 'states', 'readwrite', store => store.put({project, state, savedAt}), timeoutMs)
+      put: (project, state, savedAt = Date.now(), expectedSavedAt) => transact(database, 'states', 'readwrite', store => compareAndPut(store, {project, state, savedAt}, expectedSavedAt), timeoutMs)
     }
   }
 
@@ -103,6 +113,7 @@
     let available = false
     let generation = 0
     let issuedAt = 0
+    let committedAt = 0
 
     const applyRecovery = target => {
       if (!recoveryValid) return
@@ -114,11 +125,11 @@
       Object.assign(state, normalizeState(structuredClone(next), initial))
       ensureState()
     }
-    const metadata = (currentSnapshot, savedAt) => {
+    const metadata = (currentSnapshot, savedAt, baseSavedAt) => {
       const current = currentSnapshot.current && currentSnapshot.files?.[currentSnapshot.current] !== undefined ? currentSnapshot.current : 'paper/main.tex'
       const content = String(currentSnapshot.files?.[current] ?? '')
       return {
-        browserStateVersion: 2, indexedSavedAt: savedAt,
+        browserStateVersion: 2, indexedSavedAt: baseSavedAt,
         fileTreeVersion: currentSnapshot.fileTreeVersion || 1,
         fileTreePreferencesVersion: currentSnapshot.fileTreePreferencesVersion || 1,
         current, activeFolder: currentSnapshot.activeFolder || 'paper',
@@ -129,11 +140,13 @@
         projectTitle: currentSnapshot.projectTitle || '', projectVersion: currentSnapshot.projectVersion || '',
         serverMainSnapshot: compactSourceSnapshot(currentSnapshot.serverMainSnapshot),
         serverSourceSnapshots: Object.fromEntries(Object.entries(currentSnapshot.serverSourceSnapshots || {}).map(([path, value]) => [path, compactSourceSnapshot(value)])),
-        recovery: content.length <= recoveryCharacterLimit ? {path: current, content, savedAt} : null
+        recovery: content.length <= recoveryCharacterLimit ? {path: current, content, savedAt, baseSavedAt} : null
       }
     }
-    const persistMetadata = (currentSnapshot, savedAt) => {
-      const encoded = JSON.stringify(metadata(currentSnapshot, savedAt))
+    const persistMetadata = (currentSnapshot, savedAt, baseSavedAt = savedAt) => {
+      const existing = JSON.parse(localStorage.getItem(storageKey) || 'null')
+      if (Number(existing?.indexedSavedAt) > baseSavedAt) return
+      const encoded = JSON.stringify(metadata(currentSnapshot, savedAt, baseSavedAt))
       for (const key of legacyKeys) localStorage.removeItem(key)
       try { localStorage.setItem(storageKey, encoded) } catch {
         localStorage.removeItem(storageKey)
@@ -150,8 +163,15 @@
     }
     const writes = createLatestWriteQueue(async write => {
       try {
-        await store.put(project, write.snapshot, write.savedAt)
-        if (write.generation === generation) setStatus(savedLabel(write.synced))
+        if (!await store.put(project, write.snapshot, write.savedAt, committedAt)) {
+          if (write.generation === generation) setStatus('다른 탭에서 저장됨 · 현재 탭의 변경 내용 유지 중')
+          return
+        }
+        committedAt = write.savedAt
+        if (write.generation === generation) {
+          try { persistMetadata(write.snapshot, committedAt) } catch (error) { reportError(error, 'persistLocalWorkspaceMetadata') }
+          setStatus(savedLabel(write.synced))
+        }
       } catch (error) {
         if (write.generation === generation) setStatus('브라우저 저장 오류')
         reportError(error, 'persistIndexedWorkspaceState')
@@ -165,16 +185,28 @@
           let restoredAt = 0
           if (record?.state && typeof record.state === 'object') {
             const restored = normalizeState(structuredClone(record.state), initial)
-            if (recoveryValid && Number(recovery.savedAt) > Number(record.savedAt || 0)) applyRecovery(restored)
+            const recordSavedAt = Number(record.savedAt) || 0
+            if (recoveryValid && Number(recovery.savedAt) > recordSavedAt &&
+                (recovery.baseSavedAt === undefined || recovery.baseSavedAt === recordSavedAt)) applyRecovery(restored)
             replaceState(restored)
-            restoredAt = Number(record.savedAt) || 0
+            restoredAt = recordSavedAt
           } else if (hadLegacyFiles || recoveryValid) {
             if (!hadLegacyFiles) applyRecovery(state)
             restoredAt = Date.now()
-            await store.put(project, snapshot(), restoredAt)
+            if (!await store.put(project, snapshot(), restoredAt, 0)) {
+              const newer = await store.get(project)
+              replaceState(newer.state)
+              restoredAt = Number(newer.savedAt) || 0
+            }
           }
+          issuedAt = committedAt = restoredAt
           available = true
-          try { persistMetadata(snapshot(), restoredAt || Date.now()) } catch (error) { reportError(error, 'persistLocalWorkspaceMetadata') }
+          if (restoredAt) {
+            const savedAt = recoveryValid && Number(recovery.savedAt) > restoredAt && (recovery.baseSavedAt === undefined || recovery.baseSavedAt === restoredAt)
+              ? Number(recovery.savedAt) : restoredAt
+            issuedAt = savedAt
+            try { persistMetadata(snapshot(), savedAt, restoredAt) } catch (error) { reportError(error, 'persistLocalWorkspaceMetadata') }
+          }
           return true
         } catch (error) {
           applyRecovery(state)
@@ -182,12 +214,15 @@
           return false
         }
       },
-      save({synced = false} = {}) {
+      save({synced = false, keepRecovery = false} = {}) {
         if (!available) return fallbackSave(synced)
         const currentSnapshot = structuredClone(snapshot())
         const savedAt = issuedAt = Math.max(Date.now(), issuedAt + 1)
         const currentGeneration = ++generation
-        try { persistMetadata(currentSnapshot, savedAt) } catch (error) { reportError(error, 'persistLocalWorkspaceMetadata') }
+        if (keepRecovery) {
+          // Navigation can close the page before the IndexedDB transaction completes.
+          try { persistMetadata(currentSnapshot, savedAt, committedAt) } catch (error) { reportError(error, 'persistLocalWorkspaceMetadata') }
+        }
         setStatus('브라우저 저장 중…')
         writes.push({generation: currentGeneration, savedAt, snapshot: currentSnapshot, synced})
         return true

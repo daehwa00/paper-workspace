@@ -23,14 +23,12 @@ test('backup restore applies comments, tasks, and manuscript together', async ({
 
 for (const withRuntime of [false, true]) {
   test(`resolved metadata stays deleted when a stale browser joins an established ${withRuntime ? 'runtime' : 'legacy'} room`, async ({ browser, page }) => {
-    const slug = `stale-metadata-${withRuntime}-${Date.now()}`
+    const slug = withRuntime ? 'stale-metadata-runtime' : `stale-metadata-legacy-${Date.now()}`
     await page.goto(`/p/${slug}`)
     await page.waitForFunction(() => sharedMetadataReady && collabReady)
+    if (withRuntime) expect(await page.evaluate(() => sharedProject.get('serverRuntimeRevision'))).toBe('1'.repeat(64))
     await page.evaluate(withRuntime => {
-      if (withRuntime) {
-        sharedProject.set('serverRuntimeRevision', '1'.repeat(64))
-        sharedProject.delete('metadataInitialized')
-      }
+      if (withRuntime) sharedProject.delete('metadataInitialized')
       sharedComments.clear()
       sharedTasks.clear()
     }, withRuntime)

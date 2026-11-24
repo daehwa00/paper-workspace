@@ -13,8 +13,21 @@
     try { return normalize(new URLSearchParams(location.search).get('lang')) } catch (_) { return null }
   }
 
+  const languageStorage = {
+    read() {
+      try { return localStorage.getItem(storageKey) } catch { return null }
+    },
+    write(value) {
+      try { localStorage.setItem(storageKey, value) } catch {}
+    }
+  }
+
   function storedLanguage() {
-    try { return normalize(localStorage.getItem(storageKey)) } catch (_) { return null }
+    const stored = normalize(languageStorage.read())
+    if (stored) return stored
+    try {
+      return normalize(document.cookie.split(';').map(cookie => cookie.trim()).find(cookie => cookie.startsWith('paper_language='))?.slice('paper_language='.length))
+    } catch { return null }
   }
 
   function browserLanguage() {
@@ -81,8 +94,8 @@
     document.documentElement.lang = language
     document.documentElement.dataset.language = language
     if (persist) {
-      try { localStorage.setItem(storageKey, language) } catch (_) {}
-      document.cookie = `paper_language=${language}; Max-Age=31536000; Path=/; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`
+      languageStorage.write(language)
+      try { document.cookie = `paper_language=${language}; Max-Age=31536000; Path=/; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}` } catch {}
     }
     if (updateUrl) {
       const url = new URL(location.href)

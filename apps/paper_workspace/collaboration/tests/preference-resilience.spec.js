@@ -1,3 +1,4 @@
+import {selectControl} from './controls.js'
 import { expect, test } from '@playwright/test'
 
 async function blockLocalStorage (page, mode) {
@@ -42,13 +43,13 @@ test('full localStorage quota does not prevent optional preference changes', asy
   }))
 
   await page.goto('/hub.html?lang=en')
-  await page.locator('#project-sort').selectOption('name')
+  await selectControl(page.locator('#project-sort'),'name')
   await page.locator('.theme-trigger').click()
-  await page.locator('input[name="workspace-theme"][value="dark"]').check()
+  await selectControl(page.locator('select[name="workspace-theme"]'),'dark')
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
   await page.locator('.theme-dialog').press('Escape')
   await page.locator('.theme-trigger').click()
-  await expect(page.locator('input[name="workspace-theme"][value="dark"]')).toBeChecked()
+  await expect(page.locator('select[name="workspace-theme"]')).toHaveValue('dark')
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
   await expectWorkspaceToInitialize(page)
 })
@@ -56,7 +57,7 @@ test('full localStorage quota does not prevent optional preference changes', asy
 test('available preference storage persists choices and observes changes from another tab', async ({ page }) => {
   await page.goto('/hub.html?lang=en')
   await page.locator('.theme-trigger').click()
-  await page.locator('input[name="workspace-theme"][value="dark"]').check()
+  await selectControl(page.locator('select[name="workspace-theme"]'),'dark')
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
   await page.evaluate(() => {

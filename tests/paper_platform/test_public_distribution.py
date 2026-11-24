@@ -320,9 +320,15 @@ def test_public_edge_and_collaboration_are_hardened() -> None:
     assert "collaboration-storage-init:" in compose
     assert 'user: "${HOST_UID:-1000}:${HOST_GID:-1000}"' in compose
     for caddy in caddy_files:
-        assert "script-src 'self'" in caddy
-        assert "frame-ancestors 'none'" in caddy
-        assert "X-Frame-Options DENY" in caddy
+        assert "import Caddyfile.shared" in caddy
+        assert "import paper_security" in caddy
+        assert "import paper_project_routes" in caddy
+    shared = (ROOT / "infra/paper-workspace/Caddyfile.shared").read_text()
+    assert "script-src 'self'" in shared
+    assert "frame-ancestors 'self'" in shared
+    assert "X-Frame-Options SAMEORIGIN" in shared
+    for directory in ("/etc/caddy", "/etc/paper-caddy"):
+        assert f"Caddyfile.shared {directory}/Caddyfile.shared" in caddy_image
     assert "allowedProjectSlugs" in collaboration
     assert "maxPayload" in collaboration
     assert "storage quota exceeded" in collaboration
@@ -351,6 +357,7 @@ def test_browser_error_reports_are_redacted_post_bodies() -> None:
 def test_brand_icons_are_public_before_authentication() -> None:
     password_caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
     oauth_caddy = (ROOT / "infra/paper-workspace/Caddyfile.auth").read_text(encoding="utf-8")
+    accounts_caddy = (ROOT / "infra/paper-workspace/Caddyfile.accounts").read_text(encoding="utf-8")
     icon_paths = (
         "/favicon.ico",
         "/apple-touch-icon.png",
@@ -358,11 +365,12 @@ def test_brand_icons_are_public_before_authentication() -> None:
         "/assets/paper-workspace-icon.png",
         "/assets/paper-workspace-touch.png",
         "/assets/paper-workspace.webmanifest",
+        "/assets/share-preview-v3.png",
     )
 
     for path in icon_paths:
-        assert path in password_caddy
-        assert path in oauth_caddy
+        for config in (password_caddy, oauth_caddy, accounts_caddy):
+            assert path in config[:config.index("forward_auth")]
     assert "/bootstrap.js" not in password_caddy[:password_caddy.index("forward_auth")]
 
     assert password_caddy.index("/apple-touch-icon.png") < password_caddy.index("forward_auth")

@@ -29,8 +29,14 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator('#files')).toBeHidden()
       await expect.poll(async () => {
         const button = await toggle.boundingBox()
-        const header = await page.locator('#editor-panel > .panel-header').boundingBox()
-        return Math.abs(button.y + button.height / 2 - header.y - header.height / 2)
+        // The refreshed sidebar begins beside the project tabs, above the local
+        // editor toolbar. Its collapse control belongs to its own heading row.
+        const heading = await page.locator('.sidebar > .side-heading').boundingBox()
+        const rail = await page.locator('.sidebar').boundingBox()
+        return Math.max(
+          Math.abs(button.y + button.height / 2 - heading.y - heading.height / 2),
+          Math.abs(button.x + button.width / 2 - rail.x - rail.width / 2)
+        )
       }).toBeLessThanOrEqual(1)
       await page.keyboard.press('Tab')
       await toggle.focus()
@@ -187,15 +193,7 @@ test('dark assistant separators and the preview header use dark surface borders'
   await page.setViewportSize({ width: 1600, height: 900 })
   await page.addInitScript(() => localStorage.setItem('paper-workspace-theme', 'dark'))
   await openWorkspace(page)
-  const border = await page.evaluate(() => {
-    const probe = document.createElement('i')
-    probe.style.borderTopColor = 'var(--theme-border-soft)'
-    document.body.append(probe)
-    const color = getComputedStyle(probe).borderTopColor
-    probe.remove()
-    return color
-  })
-  await expect(page.locator('#model-settings')).toHaveCSS('border-top-color', border)
-  await expect(page.locator('#model-settings')).toHaveCSS('border-bottom-color', border)
+  await expect(page.locator('#codex-request-form')).toHaveCSS('border-top-style', 'solid')
+  await expect(page.locator('#codex-request-form')).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await expect(page.locator('.preview-header')).not.toHaveCSS('box-shadow', /rgb\(234, 236, 240\)/)
 })

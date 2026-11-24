@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
 from pathlib import Path
 from types import SimpleNamespace
+import pytest
 
 ROOT = Path(__file__).parents[2]
 SERVER = ROOT / "apps/paper_workspace/password_gate/server.py"
@@ -172,7 +173,7 @@ def test_login_page_is_fully_localized_and_preserves_redirect() -> None:
         assert 'role="alert"' in page
 
 
-def test_login_page_uses_an_inline_character_icon_when_packaged(tmp_path, monkeypatch) -> None:
+def test_login_page_uses_an_inline_favicon_when_packaged(tmp_path, monkeypatch) -> None:
     gate = load_gate()
     icon = tmp_path / "favicon.png"
     icon.write_bytes(b"\x89PNG\r\n\x1a\ncharacter-icon")
@@ -186,10 +187,37 @@ def test_login_page_uses_an_inline_character_icon_when_packaged(tmp_path, monkey
     assert f'href="{data_url}"' in page
 
 
-def test_password_gate_image_packages_the_character_icon() -> None:
+def test_password_gate_image_packages_the_folio_assets() -> None:
     dockerfile = (ROOT / "apps/paper_workspace/password_gate/Dockerfile").read_text(encoding="utf-8")
 
     assert "apps/paper_workspace/static/assets/favicon-64.png /app/favicon-64.png" in dockerfile
+    assert "apps/paper_workspace/static/assets/paper-folio-light.svg" in dockerfile
+    assert "apps/paper_workspace/static/assets/paper-folio-dark.svg" in dockerfile
+    assert "apps/paper_workspace/static/theme.css apps/paper_workspace/static/login.css /app/" in dockerfile
+
+
+def test_packaged_login_styles_keep_the_allowlisted_ui_font(tmp_path, monkeypatch) -> None:
+    gate = load_gate()
+    monkeypatch.setattr(gate, "__file__", str(tmp_path / "server.py"))
+    (tmp_path / "theme.css").write_text(
+        '@font-face {font-family:Inter;src:url("/assets/inter-variable.woff2")}\n'
+        ':root {--theme-accent:#123456}', encoding="utf-8",
+    )
+    (tmp_path / "login.css").write_text(
+        '.login-page {color:var(--theme-accent)}', encoding="utf-8",
+    )
+
+    page = gate.render_login_page("en").decode()
+
+    assert "--theme-accent:#123456" in page
+    assert ".login-page {color:var(--theme-accent)}" in page
+    assert "@font-face" in page
+    assert "/assets/inter-variable.woff2" in page
+    for name in ("Caddyfile.auth", "Caddyfile.password", "Caddyfile.accounts"):
+        caddy = (ROOT / "infra/paper-workspace" / name).read_text(encoding="utf-8")
+        public = next(line for line in caddy.splitlines() if "@public_brand_asset path" in line)
+        assert "/assets/inter-variable.woff2" in public
+        assert "/assets/*" not in public
 
 
 def test_password_login_theme_bootstrap_is_allowed_by_its_exact_csp_hash() -> None:
@@ -198,7 +226,7 @@ def test_password_login_theme_bootstrap_is_allowed_by_its_exact_csp_hash() -> No
     script = re.search(r"<script>(.*?)</script>", page)
     assert script is not None
     digest = base64.b64encode(hashlib.sha256(script.group(1).encode()).digest()).decode()
-    caddy = (ROOT / "infra/paper-workspace/Caddyfile.password").read_text(encoding="utf-8")
+    caddy = (ROOT / "infra/paper-workspace/Caddyfile.shared").read_text(encoding="utf-8")
 
     assert f"'sha256-{digest}'" in caddy
     assert "script-src 'self' 'unsafe-inline'" not in caddy
@@ -331,11 +359,17 @@ def test_password_gate_files_configure_session_cookie_and_private_env() -> None:
 
 def test_password_gate_login_is_mobile_safe_and_touch_accessible() -> None:
     source = SERVER.read_text(encoding="utf-8")
-    assert "viewport-fit=cover" in source
-    assert "*{{box-sizing:border-box}}" in source
-    assert "width:min(380px,100%)" in source
-    assert source.count("min-height:48px") >= 2
-    assert "prefers-reduced-motion:reduce" in source
+    page = load_gate().render_login_page("en").decode()
+    assert "viewport-fit=cover" in page
+    assert "* {box-sizing:border-box}" in page
+    assert "width:min(288px,100%)" in page
+    assert page.count("min-height:44px") >= 2
+    assert "prefers-reduced-motion:reduce" in page
+    assert '<body class="login-page">' in page
+    assert 'class="primary" type="submit"' in page
+    assert "@font-face" in page
+    assert "var(--theme-danger)" in page
+    assert "var(--theme-accent)" in page
     assert "paper_language" in source
     assert "Accept-Language" in source
     assert "Content-Language" in source
@@ -373,14 +407,16 @@ def test_logout_clears_the_session_cookie(monkeypatch) -> None:
 
 
 def test_edge_rejects_unsafe_requests_with_a_foreign_origin() -> None:
-    for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password"):
-        source = (ROOT / "infra/paper-workspace" / name).read_text(encoding="utf-8")
-        assert "@foreign_unsafe" in source
-        assert "method POST PUT PATCH DELETE" in source
-        assert "not header Origin https://{$PAPER_DOMAIN}" in source
-        assert "handle @foreign_unsafe {" in source
-        assert "respond 403" in source
-        assert source.index("handle @foreign_unsafe {") < source.index("handle /__client_error")
+    infrastructure = ROOT / "infra/paper-workspace"
+    for name in ("Caddyfile", "Caddyfile.auth", "Caddyfile.password", "Caddyfile.accounts"):
+        source = (infrastructure / name).read_text()
+        assert "import Caddyfile.shared" in source
+        assert "import paper_security" in source
+    shared = (infrastructure / "Caddyfile.shared").read_text()
+    assert "method POST PUT PATCH DELETE" in shared
+    assert "not header Origin https://{$PAPER_DOMAIN}" in shared
+    assert "handle @foreign_unsafe {\n        respond 403" in shared
+    assert shared.index("handle @foreign_unsafe {") < shared.index("handle /__client_error")
 
 
 def test_unicode_passwords(monkeypatch) -> None:
@@ -413,3 +449,87 @@ def test_unicode_passwords(monkeypatch) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_blocked_login_returns_without_reading_body_or_registry(monkeypatch):
+    import socket
+
+    gate = load_gate()
+    limiter = gate.LoginAttemptLimiter(free_failures=0, base_delay=10)
+    limiter.record_failure("127.0.0.1")
+    monkeypatch.setattr(gate, "LOGIN_LIMITER", limiter)
+    monkeypatch.setattr(gate, "TRUSTED_PROXY_NETWORKS", ())
+    monkeypatch.setattr(gate.accounts, "REGISTRY", "/unavailable")
+    monkeypatch.setattr(gate.accounts, "registry", lambda: pytest.fail("registry read before throttling"))
+    server = gate.create_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with socket.create_connection(server.server_address, timeout=2) as connection:
+            connection.sendall(b"POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4000\r\n\r\n")
+            with connection.makefile("rb") as response:
+                assert b"429" in response.readline()
+                assert b"Retry-After:" in response.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("service_name", ["password_gate", "backup"])
+def test_service_worker_limit_and_socket_timeout(service_name):
+    import socket
+
+    if service_name == "backup":
+        from apps.paper_workspace.backup import server as service
+    else:
+        service = load_gate()
+    accepted = threading.Event()
+    released = threading.Event()
+    observed_timeouts = []
+    from http.server import BaseHTTPRequestHandler
+
+    class WaitingHandler(BaseHTTPRequestHandler):
+        def handle(self):
+            observed_timeouts.append(self.connection.gettimeout())
+            accepted.set()
+            try:
+                self.connection.recv(1)
+            except TimeoutError:
+                pass
+
+    class ObservedServer(service.BoundedHTTPServer):
+        def process_request_thread(self, request, client_address):
+            super().process_request_thread(request, client_address)
+            released.set()
+
+    server = ObservedServer(("127.0.0.1", 0), WaitingHandler, max_workers=1, socket_timeout=0.5)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with socket.create_connection(server.server_address, timeout=2) as first:
+            assert accepted.wait(2)
+            with socket.create_connection(server.server_address, timeout=2) as overflow:
+                assert overflow.recv(1) == b""
+            assert first.recv(1) == b""
+        assert released.wait(2)
+        accepted.clear()
+        with socket.create_connection(server.server_address, timeout=2):
+            assert accepted.wait(2)
+        assert observed_timeouts == [0.5, 0.5]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_login_limiter_serializes_same_ip_without_blocking_another():
+    limiter = load_gate().LoginAttemptLimiter()
+    with limiter.attempt("192.0.2.1") as initial:
+        assert initial == 0
+        with limiter.attempt("192.0.2.1") as repeated:
+            assert repeated > 0
+        with limiter.attempt("192.0.2.2") as independent:
+            assert independent == 0
+    with limiter.attempt("192.0.2.1") as released:
+        assert released == 0

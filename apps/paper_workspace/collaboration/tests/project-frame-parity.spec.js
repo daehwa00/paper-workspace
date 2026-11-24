@@ -1,0 +1,26 @@
+import {test,expect} from './fixtures.js'
+
+for(const width of [1600,1024,390,320]) for(const collapsed of (width>=768?[false,true]:[false])) test(`same project frame at ${width}, collapsed ${collapsed}`,async({page})=>{
+  await page.setViewportSize({width,height:900})
+  await page.addInitScript(collapsed=>localStorage.setItem('paper-workspace-layout',JSON.stringify({sidebarWidth:260,sidebarCollapsed:collapsed})),collapsed)
+  await page.route('**/api/rebuttal/projects/**/state',route=>route.fulfill({json:{revision:0,enabled:true,rounds:[],jobs:[]}}))
+  await page.goto('/?lang=ko')
+  await page.waitForFunction(()=>workspaceReadyForCompile)
+  const selectors={header:'.project-frame-header',brand:'.project-frame-brand',title:'.project-frame-title',main:'.project-frame-main',sidebar:'.project-frame-sidebar',tabs:'.project-workspace-nav'}
+  const measure=async root=>Object.fromEntries(await Promise.all(Object.entries(selectors).map(async([name,selector])=>[name,await root.locator(selector).boundingBox()])))
+  const writing=await measure(page)
+  await page.locator('#open-rebuttal').click()
+  const frame=page.frameLocator('iframe.paper-review-frame')
+  await expect(page.locator('iframe.paper-review-frame')).toHaveClass(/is-active/)
+  await expect(frame.locator('#screen-nav > button')).toHaveCount(0)
+  await expect(frame.locator('#screen-nav [data-screen="reviews"]')).toHaveCount(0)
+  await expect(frame.locator('#screen-nav .sidebar-advanced [data-screen="submission"]')).toBeAttached()
+  await expect(frame.locator('#screen-nav .sidebar-advanced [data-screen="overview"]')).toBeAttached()
+  await expect(frame.locator('#screen-nav .sidebar-advanced [data-screen="evidence"]')).toBeAttached()
+  const review=await measure(frame)
+  for(const name of ['header','brand','title','tabs'])for(const key of ['x','y','height'])expect(Math.abs(writing[name][key]-review[name][key]),`${name}.${key}`).toBeLessThanOrEqual(1)
+  for(const key of ['x','y','width'])expect(Math.abs(writing.main[key]-review.main[key]),`main.${key}`).toBeLessThanOrEqual(1)
+  if(width>=768)for(const key of ['x','y','width'])expect(Math.abs(writing.sidebar[key]-review.sidebar[key]),`sidebar.${key}`).toBeLessThanOrEqual(1)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(width)
+  expect(await frame.locator('html').evaluate(element=>element.scrollWidth)).toBe(width)
+})

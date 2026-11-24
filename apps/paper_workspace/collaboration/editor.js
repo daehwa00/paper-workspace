@@ -1,5 +1,5 @@
-import { EditorState, Transaction } from '@codemirror/state'
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view'
+import { EditorState, Transaction, StateEffect, StateField, Compartment } from '@codemirror/state'
+import { EditorView, Decoration, WidgetType, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
   SearchQuery, closeSearchPanel, findNext, findPrevious, getSearchQuery,
@@ -9,6 +9,7 @@ import {
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { bracketMatching, defaultHighlightStyle, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { latex } from 'codemirror-lang-latex'
+export { renderResponsePreview, previewSourcePosition, previewScrollToPosition } from './response-preview.js'
 
 // Preserve CodeMirror's token categories and formatting. Theme variables change only
 // colors, so switching appearance never rebuilds document or undo state.
@@ -34,8 +35,82 @@ const theme = EditorView.theme({
   '.cm-selectionBackground,.cm-content ::selection': { backgroundColor: '#b2ccff !important' },
   '&.cm-focused': { outline: 'none' },
   '.cm-searchMatch': { backgroundColor: '#fedf897d', outline: '1px solid #fdb022' },
-  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: '#fdb02270' }
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: '#fdb02270' },
+  '.cm-remoteSelection': { borderRadius: '2px' },
+  '.cm-remoteCaret': { position: 'relative', display: 'inline-block', width: '0', height: '1.2em', marginLeft: '-1px', marginRight: '-1px', borderLeft: '2px solid', verticalAlign: 'text-bottom', pointerEvents: 'none' },
+  '.cm-remoteCaret-label': { position: 'absolute', left: '0', bottom: '100%', boxSizing: 'border-box', maxWidth: '160px', padding: '1px 5px', borderRadius: '3px 3px 3px 0', color: '#fff', font: '11px/1.5 system-ui,sans-serif', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', visibility: 'hidden', zIndex: '5' }
 })
+
+// Labels remain attached to the text widget, but fit inside the scroller even
+// when a cursor sits on the first visible line or has a long display name.
+const fitRemoteCursorLabels = view => view.requestMeasure({
+  key: fitRemoteCursorLabels,
+  read(view) {
+    const bounds = view.scrollDOM.getBoundingClientRect()
+    const width = Math.max(0, view.scrollDOM.clientWidth - 8)
+    const height = Math.max(0, view.scrollDOM.clientHeight - 8)
+    const top = bounds.top + view.scrollDOM.clientTop + 4
+    const bottom = top + height
+    return [...view.contentDOM.querySelectorAll('.cm-remoteCaret')].map(caret => {
+      const label = caret.querySelector('.cm-remoteCaret-label')
+      const cursor = caret.getBoundingClientRect()
+      const labelWidth = Math.min(label.scrollWidth, 160, width)
+      const labelHeight = Math.min(label.scrollHeight, height)
+      const preferredTop = cursor.top - labelHeight >= top ? cursor.top - labelHeight : cursor.bottom
+      return {
+        label, width, height,
+        offset: Math.max(bounds.left + 4, Math.min(cursor.left, bounds.left + view.scrollDOM.clientWidth - 4 - labelWidth)) - cursor.left,
+        offsetY: Math.max(top, Math.min(preferredTop, bottom - labelHeight)) - cursor.top,
+        visible: cursor.bottom > top - 4 && cursor.top < bottom + 4 && width > 0 && height > 0
+      }
+    })
+  },
+  write(labels) {
+    for (const { label, width, height, offset, offsetY, visible } of labels) {
+      label.style.maxWidth = `${Math.min(160, width)}px`
+      label.style.maxHeight = `${height}px`
+      label.style.left = `${offset}px`
+      label.style.top = `${offsetY}px`
+      label.style.bottom = 'auto'
+      label.style.visibility = visible ? 'visible' : 'hidden'
+    }
+  }
+})
+
+class RemoteCursor extends WidgetType {
+  constructor({ id, name, color }) { super(); this.id = id; this.name = name; this.color = color }
+  eq(other) { return this.id === other.id && this.name === other.name && this.color === other.color }
+  toDOM(view) {
+    const caret = document.createElement('span')
+    caret.className = 'cm-remoteCaret'
+    caret.dataset.remoteId = this.id
+    caret.style.borderColor = this.color
+    caret.setAttribute('aria-hidden', 'true')
+    const label = document.createElement('span')
+    label.className = 'cm-remoteCaret-label'
+    label.textContent = this.name
+    label.style.backgroundColor = this.color
+    caret.append(label)
+    fitRemoteCursorLabels(view)
+    return caret
+  }
+  ignoreEvent() { return true }
+}
+
+const remoteSelectionDecorations = (selections, length) => {
+  const ranges = []
+  for (const selection of Array.isArray(selections) ? selections : []) {
+    if (!selection || !Number.isFinite(selection.anchor) || !Number.isFinite(selection.head)) continue
+    const anchor = Math.max(0, Math.min(length, Math.trunc(selection.anchor)))
+    const head = Math.max(0, Math.min(length, Math.trunc(selection.head)))
+    const candidate = typeof selection.color === 'string' ? selection.color : ''
+    const color = /^#[\da-f]{6}$/i.test(candidate) ? candidate : /^#[\da-f]{3}$/i.test(candidate) ? `#${[...candidate.slice(1)].map(char => char + char).join('')}` : '#5266b8'
+    const person = { id: String(selection.id ?? '').slice(0, 120), name: String(selection.name ?? 'Collaborator').slice(0, 80), color }
+    if (anchor !== head) ranges.push(Decoration.mark({ class: 'cm-remoteSelection', attributes: { style: `background-color: ${color}33` } }).range(Math.min(anchor, head), Math.max(anchor, head)))
+    ranges.push(Decoration.widget({ widget: new RemoteCursor(person), side: 1 }).range(head))
+  }
+  return Decoration.set(ranges, true)
+}
 
 const documentChange = (previous, next) => {
   if (previous === next) return null
@@ -204,23 +279,50 @@ class PaperSearchPanel {
   get top() { return true }
 }
 
-export function createEditor({ parent, value = '', onChange, onSelection, onScroll }) {
+export function createEditor({ parent, value = '', onChange, onSelection, onScroll, language = 'latex', readOnly = false, showLineNumbers = true }) {
   let suppress = false
   let currentPath = null
   const documents = new Map()
+  const editability = new Compartment()
+  const highlightEffect = StateEffect.define()
+  const remoteSelectionEffect = StateEffect.define()
+  const remoteSelections = StateField.define({
+    create: () => Decoration.none,
+    update(value, transaction) {
+      value = value.map(transaction.changes)
+      for (const effect of transaction.effects) if (effect.is(remoteSelectionEffect)) value = remoteSelectionDecorations(effect.value, transaction.state.doc.length)
+      return value
+    },
+    provide: field => EditorView.decorations.from(field)
+  })
+  const highlights = StateField.define({
+    create: () => Decoration.none,
+    update(value, transaction) {
+      value = value.map(transaction.changes)
+      for (const effect of transaction.effects) if (effect.is(highlightEffect)) {
+        value = Decoration.set(effect.value.filter(span => span.end > span.start && span.start >= 0 && span.end <= transaction.state.doc.length).map(span =>
+          Decoration.mark({ class: `rebuttal-span connection-color-${Number.isInteger(span.color) && span.color >= 0 && span.color < 10 ? span.color : 0}`, attributes: { title: span.reason || '', 'data-mapping-id': span.id || '', 'data-concern-id': span.concernId || '' } }).range(span.start, span.end)
+        ), true)
+      }
+      return value
+    },
+    provide: field => EditorView.decorations.from(field)
+  })
   const createState = doc => EditorState.create({
     doc,
     extensions: [
-      lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), dropCursor(),
+      ...(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []), highlightActiveLine(), drawSelection(), dropCursor(),
       rectangularSelection(), crosshairCursor(), history(), bracketMatching(), closeBrackets(),
       highlightSelectionMatches(), search({ top: true, createPanel: view => new PaperSearchPanel(view) }),
-      autocompletion(), latex(), syntaxHighlighting(syntaxStyle, { fallback: true }),
+      autocompletion(), ...(language === 'latex' ? [latex()] : []), syntaxHighlighting(syntaxStyle, { fallback: true }),
+      editability.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]), highlights, remoteSelections,
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
       EditorView.lineWrapping,
       EditorView.updateListener.of(update => {
         if (update.docChanged && !suppress) onChange?.(update.state.doc.toString(), update)
         if (update.selectionSet) onSelection?.(update.state.selection.main.from, update.state.selection.main.to)
         if (update.viewportChanged) onScroll?.()
+        if (update.docChanged || update.geometryChanged || update.viewportChanged) fitRemoteCursorLabels(update.view)
       }),
       theme
     ]
@@ -229,7 +331,7 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
     parent,
     state: createState(value)
   })
-  view.scrollDOM.addEventListener('scroll', () => onScroll?.(), { passive: true })
+  view.scrollDOM.addEventListener('scroll', () => { onScroll?.(); fitRemoteCursorLabels(view) }, { passive: true })
 
   const replaceCurrentDocument = next => {
     const value = String(next ?? '')
@@ -250,13 +352,14 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
   }
   const setValue = next => {
     replaceCurrentDocument(next)
-    if (currentPath !== null) documents.set(currentPath, view.state)
+    if (currentPath !== null) documents.set(currentPath, view.state.update({ effects: remoteSelectionEffect.of([]) }).state)
   }
   const setDocument = (path, next) => {
     const key = String(path ?? '')
     const value = String(next ?? '')
     if (currentPath === null) {
       currentPath = key
+      view.dispatch({ effects: remoteSelectionEffect.of([]) })
       replaceCurrentDocument(value)
       documents.set(key, view.state)
       return
@@ -266,7 +369,8 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
       return
     }
 
-    documents.set(currentPath, view.state)
+    // Presence belongs to the active response, never to its stored undo state.
+    documents.set(currentPath, view.state.update({ effects: remoteSelectionEffect.of([]) }).state)
     let state = documents.get(key)
     if (!state) state = createState(value)
     else if (state.doc.toString() !== value) {
@@ -277,6 +381,7 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
         annotations: Transaction.addToHistory.of(false)
       }).state
     }
+    state = state.update({ effects: remoteSelectionEffect.of([]) }).state
     currentPath = key
     documents.set(key, state)
     view.setState(state)
@@ -293,8 +398,22 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
     contentDOM: view.contentDOM,
     scrollDOM: view.scrollDOM,
     getValue: () => view.state.doc.toString(),
+    setHighlights: spans => view.dispatch({ effects: highlightEffect.of(spans) }),
+    setRemoteSelections: selections => {
+      view.dispatch({ effects: remoteSelectionEffect.of(selections) })
+      fitRemoteCursorLabels(view)
+    },
     setValue,
     setDocument,
+    retainDocuments(paths) {
+      const retained = new Set(paths)
+      for (const path of documents.keys()) if (!retained.has(path)) documents.delete(path)
+      if (currentPath !== null && !retained.has(currentPath)) {
+        currentPath = null
+        view.setState(createState(view.state.doc.toString()))
+      }
+    },
+    setReadOnly: value => view.dispatch({ effects: editability.reconfigure([EditorState.readOnly.of(Boolean(value)), EditorView.editable.of(!value)]) }),
     getSelection: () => ({ start: view.state.selection.main.from, end: view.state.selection.main.to }),
     setSelection,
     focus: () => view.focus(),
@@ -303,7 +422,7 @@ export function createEditor({ parent, value = '', onChange, onSelection, onScro
     },
     coordsAt: position => view.coordsAtPos(Math.max(0, Math.min(position, view.state.doc.length))),
     lineAt: position => view.state.doc.lineAt(Math.max(0, Math.min(position, view.state.doc.length))),
-    scrollTo: position => view.dispatch({ effects: EditorView.scrollIntoView(position, { y: 'center' }) }),
+    scrollTo: (position, options = {}) => view.dispatch({ effects: EditorView.scrollIntoView(position, { y: 'center', ...options }) }),
     setFontSize: size => view.dom.style.setProperty('--editor-font-size', size),
     focusWithin: () => view.hasFocus,
     destroy: () => view.destroy()

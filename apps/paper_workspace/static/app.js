@@ -4,6 +4,12 @@ const {createWorkspacePersistence,workspaceAssetStore}=window.PaperWorkspaceStor
 const preferences=window.PaperPreferenceStorage;
 const projectRouteMatch=location.pathname.match(/^\/p\/([A-Za-z0-9][A-Za-z0-9_-]{0,63})(?:\/|$)/);
 const projectSlug=projectRouteMatch?.[1]||'default';
+document.getElementById('open-rebuttal').addEventListener('click',()=>{try{sessionStorage.setItem(`paper-project-title:${projectSlug}`,document.getElementById('project-title').value)}catch{}});
+let retainedReviewURL=null;
+function localizeWorkspaceNavigation(){const ko=window.PaperI18n?.getLanguage()==='ko',language=ko?'ko':'en',projectPath=`/p/${encodeURIComponent(projectSlug)}`;document.getElementById('manuscript-link').textContent='Paper';document.getElementById('manuscript-link').href=`${projectPath}?lang=${language}`;document.getElementById('open-rebuttal').textContent='Rebuttal';const reviewURL=new URL(retainedReviewURL||`${projectPath}/rebuttal`,location.origin);reviewURL.searchParams.set('lang',language);document.getElementById('open-rebuttal').href=reviewURL.href}
+localizeWorkspaceNavigation();window.PaperI18n?.onChange(localizeWorkspaceNavigation);
+let rebuttalBackupAdapter=null;
+function rebuttalBackup(){return rebuttalBackupAdapter??=(window.PaperRebuttalBackup&&collabSession?window.PaperRebuttalBackup.create({projectSlug,session:collabSession}):null)}
 const accountReadOnly=Boolean(window.PaperAccess)&&!['owner','editor'].includes(window.PaperAccess.projects?.[projectSlug]);
 const projectBase=projectSlug==='default'?'':`/p/${encodeURIComponent(projectSlug)}`;
 const projectStorageKey=`paper-workspace:${projectSlug}`;
@@ -21,6 +27,8 @@ const parsedState=storedJson(projectStorageKey,projectSlug==='aaai27'?legacyStat
 const localStateHadFiles=Boolean(parsedState?.files&&typeof parsedState.files==='object'&&Object.values(parsedState.files).some(value=>typeof value==='string'&&value.length));
 const state=normalizeState(parsedState,initial);
 let projectBootstrapComplete=false;
+let paperReviewActive=/^\/p\/[^/]+\/rebuttal(?:\/|$)/.test(location.pathname)||new URLSearchParams(location.search).get('view')==='reviews';
+let projectTitleStartupPending=true;
 const bootstrapEdits=new Map();
 function ensureFileTreePreferences(){if(state.fileTreePreferencesVersion!==1){if(!state.collapsedFolders.includes('paper/drafts'))state.collapsedFolders.push('paper/drafts');state.fileTreePreferencesVersion=1}}
 ensureFileTreePreferences();
@@ -30,13 +38,16 @@ const localAssetStore=workspaceAssetStore(projectSlug,'paper-workspace-assets',{
 async function storeLocalAsset(path,asset){await localAssetStore.put(path,asset)}
 async function deleteLocalAsset(path){await localAssetStore.delete(path)}
 async function loadLocalAssets(){for(const record of await localAssetStore.list())state.assets[record.path]=record.asset}
-async function reconcileLocalAssets(){const records=await localAssetStore.list();await Promise.all(records.map(record=>deleteLocalAsset(record.path)));await Promise.all(state.uploads.filter(path=>state.assets[path]?.data).map(path=>storeLocalAsset(path,state.assets[path])))}
+async function reconcileLocalAssets(obsoletePaths,nextPaths=[]){
+  await Promise.all(nextPaths.filter(path=>state.assets[path]?.data).map(path=>storeLocalAsset(path,state.assets[path])));
+  await Promise.all(obsoletePaths.filter(path=>!state.assets[path]).map(path=>deleteLocalAsset(path)));
+}
 const encodeProjectPath=path=>String(path).split('/').map(encodeURIComponent).join('/');
 function serverAssetUrl(path=''){return `/api/backups/projects/${backupProjectId()}/assets${path?`/${encodeProjectPath(path)}`:''}`}
 const mainPageCountPath='__paper_workspace/main-page-count.json';
 const persistedPreviewPattern=/^__paper_workspace\/preview-([0-9a-f]{64})\.(pdf|synctex\.gz)$/;
 let persistedPreviewAssets=[],workspaceReadyForCompile=false,workspaceContentRevision=0;
-async function loadServerAssets(){const response=await fetch(serverAssetUrl(),{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw new Error('공유 자산 목록을 불러오지 못했습니다.');const result=await response.json();persistedPreviewAssets=[];for(const item of Array.isArray(result.assets)?result.assets:[]){if(typeof item?.path!=='string'||item.path===mainPageCountPath)continue;if(persistedPreviewPattern.test(item.path)){persistedPreviewAssets.push(item);continue}const existing=state.assets[item.path]||{};state.assets[item.path]={...existing,type:existing.type||(extensionOf(item.path)==='pdf'?'application/pdf':'application/octet-stream'),size:Number(item.size_bytes)||existing.size||0,server:true};state.uploads=[...new Set([item.path,...state.uploads])]}}
+async function loadServerAssets(){const response=await fetch(serverAssetUrl(),{headers:{Accept:'application/json'},cache:'no-store'});if(!response.ok)throw new Error('공유 자산 목록을 불러오지 못했습니다.');const result=await response.json();persistedPreviewAssets=[];for(const item of Array.isArray(result.assets)?result.assets:[]){if(typeof item?.path!=='string'||item.path===mainPageCountPath||item.path.startsWith('rebuttal/sources/'))continue;if(persistedPreviewPattern.test(item.path)){persistedPreviewAssets.push(item);continue}const existing=state.assets[item.path]||{};state.assets[item.path]={...existing,type:existing.type||(extensionOf(item.path)==='pdf'?'application/pdf':'application/octet-stream'),size:Number(item.size_bytes)||existing.size||0,server:true};state.uploads=[...new Set([item.path,...state.uploads])]}}
 async function uploadServerAsset(path,body,type='application/octet-stream'){const response=await fetch(serverAssetUrl(path),{method:'PUT',headers:{'Content-Type':type||'application/octet-stream'},body});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||`${baseName(path)} 서버 업로드 실패`);return result.asset}
 async function deleteServerAsset(path){const response=await fetch(serverAssetUrl(path),{method:'DELETE'});if(!response.ok&&response.status!==404){const result=await response.json().catch(()=>({}));throw new Error(result.error||`${baseName(path)} 서버 삭제 실패`)}}
 async function copyServerAsset(source,destination,asset){const loaded=asset.data?asset:await ensureAssetLoaded(source);await uploadServerAsset(destination,assetDataUrlBytes(loaded.data),loaded.type)}
@@ -54,7 +65,7 @@ async function moveServerAssetsSafely(moves){
 function base64Bytes(value){return Uint8Array.from(atob(value),character=>character.charCodeAt(0))}
 function bytesBase64(value){let binary='';const bytes=value instanceof Uint8Array?value:new Uint8Array(value);for(let offset=0;offset<bytes.length;offset+=0x8000)binary+=String.fromCharCode(...bytes.subarray(offset,offset+0x8000));return btoa(binary)}
 function previewCachePairs(){const pairs=new Map();for(const item of persistedPreviewAssets){const match=item.path.match(persistedPreviewPattern);if(!match)continue;const pair=pairs.get(match[1])||{fingerprint:match[1],modified_at:item.modified_at||''};pair[match[2]==='pdf'?'pdfPath':'synctexPath']=item.path;if(String(item.modified_at||'')>pair.modified_at)pair.modified_at=item.modified_at;pairs.set(match[1],pair)}return [...pairs.values()].filter(pair=>pair.pdfPath&&pair.synctexPath).sort((a,b)=>String(b.modified_at).localeCompare(String(a.modified_at)))}
-async function fetchPersistedPdfPreview(fingerprint=''){const pair=fingerprint?previewCachePairs().find(item=>item.fingerprint===fingerprint):previewCachePairs()[0];if(!pair)return null;const [pdfResponse,synctexResponse]=await Promise.all([fetch(serverAssetUrl(pair.pdfPath),{cache:'no-store'}),fetch(serverAssetUrl(pair.synctexPath),{cache:'no-store'})]);if(!pdfResponse.ok||!synctexResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer()),synctex=new Uint8Array(await synctexResponse.arrayBuffer());if(new TextDecoder().decode(binary.subarray(0,5))!=='%PDF-'||synctex[0]!==0x1f||synctex[1]!==0x8b)return null;return {...pair,binary,synctex:bytesBase64(synctex)}}
+async function fetchPersistedPdfPreview(fingerprint='',signal){const pair=fingerprint?previewCachePairs().find(item=>item.fingerprint===fingerprint):previewCachePairs()[0];if(!pair)return null;const [pdfResponse,synctexResponse]=await Promise.all([fetch(serverAssetUrl(pair.pdfPath),{cache:'no-store',signal}),fetch(serverAssetUrl(pair.synctexPath),{cache:'no-store',signal})]);if(!pdfResponse.ok||!synctexResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer()),synctex=new Uint8Array(await synctexResponse.arrayBuffer());if(new TextDecoder().decode(binary.subarray(0,5))!=='%PDF-'||synctex[0]!==0x1f||synctex[1]!==0x8b)return null;return {...pair,binary,synctex:bytesBase64(synctex)}}
 async function persistMainPageCount(payload){
   const pageCount=activePdfDocument?.numPages;
   if(accountReadOnly||payload.entrypoint!==projectManifest.entrypoint||payload.preview_mode!=='document'||!Number.isSafeInteger(pageCount)||pageCount<1||pageCount>1000)return;
@@ -82,6 +93,7 @@ function isLockedProjectFile(path=state.current){if(accountReadOnly)return true;
 const remoteAssetPaths=new Set();
 const remoteAssetSources=new Map();
 const $ = id => document.getElementById(id); const esc = value => String(value??'').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const statusCenter=window.PaperSidebarAccount.createStatusPanel({content:$('paper-status-content').content.cloneNode(true)});
 let sourceConflictDismissed=false;
 const sourceConflictBanner=$('source-conflict');
 $('close-source-conflict').onclick=()=>{sourceConflictDismissed=true;sourceConflictBanner.hidden=true};
@@ -108,15 +120,15 @@ const editorSelection=()=>richEditor?richEditor.getSelection():{start:$('editor'
 function setEditorSelection(start,end=start,{scroll=false}={}){richEditor?.setSelection(start,end,{scroll})}
 function focusEditor(){richEditor?.focus()}
 function notify(message,{title='',tone=''}={}){const container=$('app-toasts');if(!container)return;const toast=document.createElement('div');toast.className=`app-toast ${tone}`.trim();toast.innerHTML=`${title?`<strong>${esc(title)}</strong>`:''}<span>${esc(String(message))}</span>`;container.append(toast);requestAnimationFrame(()=>toast.classList.add('visible'));let timer=0;const dismiss=()=>{clearTimeout(timer);toast.classList.remove('visible');toast.classList.add('leaving');setTimeout(()=>toast.remove(),180)};const schedule=delay=>{clearTimeout(timer);timer=setTimeout(dismiss,delay)};schedule(5200);toast.addEventListener('pointerenter',()=>clearTimeout(timer));toast.addEventListener('pointerleave',()=>schedule(900))}
-function actionDialog({title,message='',value=null,confirmLabel='확인'}){const dialog=$('action-dialog'),input=$('action-dialog-input'),previousFocus=document.activeElement;$('action-dialog-title').textContent=title;$('action-dialog-message').textContent=message;$('action-dialog-confirm').textContent=confirmLabel;input.hidden=value===null;input.value=value??'';return new Promise(resolve=>{dialog.addEventListener('close',()=>{if(previousFocus?.isConnected)previousFocus.focus();resolve(dialog.returnValue==='confirm'?(value===null?true:input.value):value===null?false:null)},{once:true});dialog.showModal();if(value!==null){input.focus();input.select()}})}
+function actionDialog({title,message='',value=null,confirmLabel='확인',tone='default'}){const dialog=$('action-dialog'),input=$('action-dialog-input');$('action-dialog-title').textContent=title;$('action-dialog-message').textContent=message;$('action-dialog-confirm').textContent=confirmLabel;$('action-dialog-confirm').classList.toggle('danger',tone==='danger');input.hidden=value===null;input.value=value??'';return new Promise(resolve=>{dialog.addEventListener('close',()=>{resolve(dialog.returnValue==='confirm'?(value===null?true:input.value):value===null?false:null)},{once:true});window.PaperUI.openDialog(dialog);if(value!==null){input.focus();input.select()}})}
 window.alert=message=>notify(message,{tone:/실패|오류|못했습니다|failed|error|could not/i.test(String(message))?'error':''});
 function mathPreview(value){const symbols={alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ε',lambda:'λ',mu:'μ',nu:'ν',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',phi:'φ',omega:'ω',Gamma:'Γ',Delta:'Δ',Lambda:'Λ',Sigma:'Σ',Phi:'Φ',Omega:'Ω',in:'∈',notin:'∉',times:'×',cdot:'·',le:'≤',leq:'≤',ge:'≥',geq:'≥',neq:'≠',approx:'≈',to:'→',rightarrow:'→',leftarrow:'←',top:'⊤',infty:'∞',pm:'±'};let math=value.replace(/\\mathbb\{R\}/g,'ℝ').replace(/\\mathbb\{C\}/g,'ℂ').replace(/\\mathbb\{N\}/g,'ℕ').replace(/\\mathbf\{([^{}]*)\}/g,'<strong>$1</strong>').replace(/\\mathrm\{([^{}]*)\}/g,'<span class="math-roman">$1</span>').replace(/\\operatorname\{([^{}]*)\}/g,'<span class="math-roman">$1</span>').replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g,'<span class="math-frac"><span>$1</span><span>$2</span></span>').replace(/\\([A-Za-z]+)/g,(match,name)=>symbols[name]||name);for(let index=0;index<3;index+=1)math=math.replace(/\^\{([^{}]*)\}/g,'<sup>$1</sup>').replace(/_\{([^{}]*)\}/g,'<sub>$1</sub>');return math.replace(/\^([A-Za-z0-9ℝℂℕα-ωΑ-Ω])/g,'<sup>$1</sup>').replace(/_([A-Za-z0-9ℝℂℕα-ωΑ-Ω]+)/g,'<sub>$1</sub>').replace(/[{}]/g,'')}
 function latexPreview(value){const normalized=String(value??'').replace(/\r\n?/g,'\n').replace(/\n\s*\n+/g,'\u0000').replace(/\s*\n\s*/g,' ');let html=esc(normalized);const commands=[['emph','em'],['textit','em'],['textbf','strong'],['texttt','code'],['underline','u']];for(const [command,tag] of commands)html=html.replace(new RegExp(`\\\\${command}\\{([^{}]*)\\}`,'g'),`<${tag}>$1</${tag}>`);html=html.replace(/\\cite(?:t|p)?\{([^{}]+)\}/g,(_,keys)=>`<span class="latex-citation">${keys.split(',').map(key=>`[${key.trim()}]`).join(' ')}</span>`).replace(/\$([^$\n]+)\$/g,(_,math)=>`<span class="latex-math">${mathPreview(math)}</span>`).replace(/\\(?:pac|prl)\b/g,match=>match==='\\pac'?'PAC':'PRL').replace(/\\%/g,'%').replace(/\\_/g,'_').replace(/~/g,' ').replace(/\\\\/g,'<br>').replace(/\u0000/g,'<br><br>');return html}
 const layoutKey='paper-workspace-layout';
-const defaultLayout={editorWidth:null,assistantWidth:292,assistantCollapsed:false,sidebarWidth:224,sidebarCollapsed:false,editorZoom:1,pdfZoom:1};
-const hasStoredLayout=preferences.get(layoutKey)!==null;
-const layout={...defaultLayout,...storedJson(layoutKey,{})};
-if(!hasStoredLayout&&innerWidth<1600)layout.assistantCollapsed=true;
+const defaultLayout={editorWidth:null,assistantWidth:292,assistantCollapsed:false,sidebarWidth:244,sidebarCollapsed:false,editorZoom:1,pdfZoom:1};
+const storedLayout=storedJson(layoutKey,{});
+const layout={...defaultLayout,...storedLayout};
+if(typeof storedLayout.assistantCollapsed!=='boolean'&&innerWidth<1600)layout.assistantCollapsed=true;
 const minEditorWidth=390, minPreviewWidth=390, minAssistantWidth=240, maxAssistantWidth=500, minSidebarWidth=180, maxSidebarWidth=320, resizerWidth=20;
 function persistLayout(){preferences.set(layoutKey,JSON.stringify(layout))}
 function assistantOverlayNeeded(){return innerWidth>1180&&document.querySelector('.workspace').clientWidth<minEditorWidth+minPreviewWidth+minAssistantWidth+resizerWidth}
@@ -124,29 +136,71 @@ function layoutLimits(){const workspace=$('workspace')||document.querySelector('
 function updateResizerAria(){const limits=layoutLimits();document.querySelectorAll('.panel-resizer').forEach(resizer=>{const assistant=resizer.dataset.resize==='preview-assistant';const value=assistant?layout.assistantWidth:(layout.editorWidth||Math.round($('editor-panel').getBoundingClientRect().width));resizer.setAttribute('aria-valuenow',String(Math.round(value)));resizer.setAttribute('aria-valuemin',String(assistant?minAssistantWidth:minEditorWidth));resizer.setAttribute('aria-valuemax',String(Math.round(assistant?limits.assistantMax:limits.editorMax)));});const sidebar=$('sidebar-resizer');sidebar.setAttribute('aria-valuenow',String(Math.round(layout.sidebarWidth)));sidebar.setAttribute('aria-valuemin',String(minSidebarWidth));sidebar.setAttribute('aria-valuemax',String(maxSidebarWidth))}
 function assistantVisible(){return !layout.assistantCollapsed&&(innerWidth>1180||document.querySelector('.shell').dataset.focus==='assistant')}
 function updateAssistantToggle(){const collapsed=Boolean(layout.assistantCollapsed),visible=assistantVisible(),button=$('toggle-assistant'),workspace=document.querySelector('.workspace');workspace.classList.toggle('assistant-collapsed',collapsed);workspace.classList.toggle('assistant-overlay',!collapsed&&assistantOverlayNeeded());button.title=visible?'논문 도우미 접기':'논문 도우미 펼치기';button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(visible));}
-function updateSidebarToggle(){const collapsed=Boolean(layout.sidebarCollapsed);const button=$('toggle-sidebar');document.querySelector('.shell').classList.toggle('sidebar-collapsed',collapsed);button.classList.toggle('points-right',collapsed);button.title=collapsed?'프로젝트 파일 펼치기':'프로젝트 파일 접기';button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!collapsed))}
+function updateSidebarToggle(){const collapsed=Boolean(layout.sidebarCollapsed);document.querySelector('.shell').classList.toggle('sidebar-collapsed',collapsed);window.PaperUI.updateSidebarToggle($('toggle-sidebar'),collapsed)}
+window.addEventListener('paper-language-change',updateSidebarToggle);
 function applyPdfViewerZoom(){const viewer=document.querySelector('.pdf-canvas-viewer');if(viewer)viewer.style.zoom=String(layout.pdfZoom)}
 function applyZoomControls(){layout.editorZoom=constrain(Number(layout.editorZoom)||1,.7,1.7);layout.pdfZoom=constrain(Number(layout.pdfZoom)||1,.55,2);richEditor?.setFontSize(`${14*layout.editorZoom}px`);$('editor-zoom-value').textContent=`${Math.round(layout.editorZoom*100)}%`;$('pdf-zoom-value').textContent=`${Math.round(layout.pdfZoom*100)}%`;$('editor-zoom-out').disabled=layout.editorZoom<=.7;$('editor-zoom-in').disabled=layout.editorZoom>=1.7;$('pdf-zoom-out').disabled=layout.pdfZoom<=.55;$('pdf-zoom-in').disabled=layout.pdfZoom>=2;applyPdfViewerZoom()}
-function applyLayoutNow({persist=false}={}){const workspace=document.querySelector('.workspace'),shell=document.querySelector('.shell');layout.sidebarWidth=constrain(Number(layout.sidebarWidth)||defaultLayout.sidebarWidth,minSidebarWidth,maxSidebarWidth);shell.style.setProperty('--sidebar-width',`${layout.sidebarWidth}px`);updateSidebarToggle();const limits=layoutLimits();layout.assistantWidth=constrain(Number(layout.assistantWidth)||defaultLayout.assistantWidth,minAssistantWidth,limits.assistantMax);if(layout.editorWidth!==null)layout.editorWidth=constrain(Number(layout.editorWidth),minEditorWidth,limits.editorMax);workspace.style.setProperty('--assistant-width',`${layout.assistantWidth}px`);if(layout.editorWidth!==null)workspace.style.setProperty('--editor-width',`${layout.editorWidth}px`);else workspace.style.removeProperty('--editor-width');updateAssistantToggle();applyZoomControls();updateResizerAria();renderRemoteCursors();renderCommentAnchors();if(persist)persistLayout();}
+function applyLayoutNow({persist=false}={}){const workspace=document.querySelector('.workspace'),shell=document.querySelector('.shell');layout.sidebarWidth=constrain(Number(layout.sidebarWidth)||defaultLayout.sidebarWidth,minSidebarWidth,maxSidebarWidth);shell.style.setProperty('--sidebar-width',`${layout.sidebarWidth}px`);updateSidebarToggle();const limits=layoutLimits();layout.assistantWidth=constrain(Number(layout.assistantWidth)||defaultLayout.assistantWidth,minAssistantWidth,limits.assistantMax);if(layout.editorWidth!==null)layout.editorWidth=constrain(Number(layout.editorWidth),minEditorWidth,limits.editorMax);workspace.style.setProperty('--assistant-width',`${layout.assistantWidth}px`);if(layout.editorWidth!==null)workspace.style.setProperty('--editor-width',`${layout.editorWidth}px`);else workspace.style.removeProperty('--editor-width');updateAssistantToggle();applyZoomControls();updateResizerAria();renderRemoteCursors();renderCommentAnchors();if(persist)persistLayout();if(document.documentElement.classList.contains('paper-layout-starting'))requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('paper-layout-starting')))}
 let layoutAnimationFrame=0;
 function applyLayout(options={}){if(options.persist){if(layoutAnimationFrame)cancelAnimationFrame(layoutAnimationFrame);layoutAnimationFrame=0;applyLayoutNow(options);return}if(layoutAnimationFrame)return;layoutAnimationFrame=requestAnimationFrame(()=>{layoutAnimationFrame=0;applyLayoutNow()})}
 let focusBeforeAssistant='source';
-function setAssistantCollapsed(collapsed,{persist=true}={}){const focusInside=$('assistant-panel').contains(document.activeElement);layout.assistantCollapsed=collapsed;if(collapsed&&innerWidth<=1180&&document.querySelector('.shell').dataset.focus==='assistant')activateFocusMode(focusBeforeAssistant);applyLayout({persist});if(collapsed&&focusInside){if(innerWidth<768)$('focus-modes').querySelector(`[data-focus="${focusBeforeAssistant}"]`)?.focus();else $('toggle-assistant').focus()}}
+// The preloaded Rebuttal view shares only the sidebar portion of the layout.
+window.addEventListener('storage',event=>{
+  if(event.key!==layoutKey || !event.newValue)return;
+  try{const next=JSON.parse(event.newValue);if(typeof next.sidebarCollapsed!=='boolean')return;const width=Number(next.sidebarWidth);layout.sidebarCollapsed=next.sidebarCollapsed;if(Number.isFinite(width)&&width>0)layout.sidebarWidth=constrain(width,minSidebarWidth,maxSidebarWidth);applyLayout()}catch{}
+});
+function setAssistantCollapsed(collapsed,{persist=true}={}){window.PaperUI.cancelSidebarMotion();const focusInside=$('assistant-panel').contains(document.activeElement);layout.assistantCollapsed=collapsed;if(collapsed&&innerWidth<=1180&&document.querySelector('.shell').dataset.focus==='assistant')activateFocusMode(focusBeforeAssistant);applyLayout({persist});if(collapsed&&focusInside){if(innerWidth<768)$('focus-modes').querySelector(`[data-focus="${focusBeforeAssistant}"]`)?.focus();else $('toggle-assistant').focus()}}
 function toggleAssistant(){if(assistantVisible())setAssistantCollapsed(true);else if(innerWidth<=1180)activateFocusMode('assistant');else setAssistantCollapsed(false)}
-function resetLayout(){layout.editorWidth=null;layout.assistantWidth=defaultLayout.assistantWidth;layout.assistantCollapsed=false;layout.sidebarWidth=defaultLayout.sidebarWidth;layout.sidebarCollapsed=false;layout.editorZoom=1;layout.pdfZoom=1;applyLayout({persist:true});}
-function installPanelResizers(){let drag=null;const editorPanel=$('editor-panel');const assistantPanel=$('assistant-panel');document.querySelectorAll('.panel-resizer,.sidebar-resizer').forEach(resizer=>{resizer.addEventListener('pointerdown',event=>{event.preventDefault();if(resizer.dataset.resize==='preview-assistant'&&layout.assistantCollapsed)setAssistantCollapsed(false);if(resizer.dataset.resize==='sidebar'&&layout.sidebarCollapsed){layout.sidebarCollapsed=false;applyLayout({persist:false})}drag={resizer,startX:event.clientX,editorWidth:editorPanel.getBoundingClientRect().width,assistantWidth:assistantPanel.getBoundingClientRect().width,sidebarWidth:layout.sidebarWidth};resizer.classList.add('dragging');document.body.classList.add('panel-resizing');resizer.setPointerCapture(event.pointerId);});resizer.addEventListener('keydown',event=>{const delta=event.key==='ArrowLeft'?-24:event.key==='ArrowRight'?24:0;if(event.key==='Home'){resetLayout();event.preventDefault();return}if(!delta)return;const limits=layoutLimits(),type=resizer.dataset.resize;if(type==='sidebar'){layout.sidebarCollapsed=false;layout.sidebarWidth=constrain(layout.sidebarWidth+delta,minSidebarWidth,maxSidebarWidth)}else if(type==='editor-preview')layout.editorWidth=constrain((layout.editorWidth||editorPanel.getBoundingClientRect().width)+delta,minEditorWidth,limits.editorMax);else{if(layout.assistantCollapsed)setAssistantCollapsed(false,{persist:false});layout.assistantWidth=constrain(layout.assistantWidth-delta,minAssistantWidth,limits.assistantMax)}applyLayout({persist:true});event.preventDefault()})});document.addEventListener('pointermove',event=>{if(!drag)return;const limits=layoutLimits(),type=drag.resizer.dataset.resize;if(type==='sidebar')layout.sidebarWidth=constrain(drag.sidebarWidth+event.clientX-drag.startX,minSidebarWidth,maxSidebarWidth);else if(type==='editor-preview')layout.editorWidth=constrain(drag.editorWidth+event.clientX-drag.startX,minEditorWidth,limits.editorMax);else layout.assistantWidth=constrain(drag.assistantWidth-(event.clientX-drag.startX),minAssistantWidth,limits.assistantMax);applyLayout()});const stopDrag=()=>{if(!drag)return;drag.resizer.classList.remove('dragging');document.body.classList.remove('panel-resizing');drag=null;applyLayout({persist:true})};document.addEventListener('pointerup',stopDrag);document.addEventListener('pointercancel',stopDrag);$('reset-layout').onclick=resetLayout;$('toggle-assistant').onclick=toggleAssistant;$('close-assistant').onclick=()=>setAssistantCollapsed(true);$('toggle-sidebar').onclick=()=>{layout.sidebarCollapsed=!layout.sidebarCollapsed;applyLayout({persist:true})};new ResizeObserver(()=>applyLayout()).observe(document.querySelector('.workspace'));applyLayout()}
+function resetLayout(){window.PaperUI.cancelSidebarMotion();layout.editorWidth=null;layout.assistantWidth=defaultLayout.assistantWidth;layout.assistantCollapsed=false;layout.sidebarWidth=defaultLayout.sidebarWidth;layout.sidebarCollapsed=false;layout.editorZoom=1;layout.pdfZoom=1;applyLayout({persist:true});}
+function installPanelResizers(){
+  const editorPanel=$('editor-panel'),assistantPanel=$('assistant-panel');
+  document.querySelectorAll('.panel-resizer,.sidebar-resizer').forEach(resizer=>{
+    const type=resizer.dataset.resize,direction=type==='preview-assistant'?-1:1;
+    window.PaperUI.bindResizer({
+      element:resizer,step:24,direction,enabled:()=>innerWidth>=768,
+      onStart:()=>{if(type==='preview-assistant'&&layout.assistantCollapsed)setAssistantCollapsed(false,{persist:false});if(type==='sidebar'&&layout.sidebarCollapsed){layout.sidebarCollapsed=false;applyLayout()}},
+      getValue:()=>type==='sidebar'?layout.sidebarWidth:type==='editor-preview'?(layout.editorWidth ?? editorPanel.getBoundingClientRect().width):layout.assistantWidth,
+      getPointerValue:()=>type==='sidebar'?layout.sidebarWidth:type==='editor-preview'?editorPanel.getBoundingClientRect().width:assistantPanel.getBoundingClientRect().width,
+      getLimits:()=>{const limits=layoutLimits();return type==='sidebar'?{min:minSidebarWidth,max:maxSidebarWidth}:type==='editor-preview'?{min:minEditorWidth,max:limits.editorMax}:{min:minAssistantWidth,max:limits.assistantMax}},
+      fromPointer:(event,start)=>start.value+(event.clientX-start.x)*direction,
+      onChange:value=>{if(type==='sidebar')layout.sidebarWidth=value;else if(type==='editor-preview')layout.editorWidth=value;else layout.assistantWidth=value;applyLayout()},
+      onCommit:()=>applyLayout({persist:true})
+    });
+  });
+  $('reset-layout').onclick=resetLayout;$('toggle-assistant').onclick=toggleAssistant;$('close-assistant').onclick=()=>setAssistantCollapsed(true);
+  $('toggle-sidebar').onclick=()=>window.PaperUI.animateSidebarChange(()=>{layout.sidebarCollapsed=!layout.sidebarCollapsed;applyLayout({persist:true})});
+  new ResizeObserver(()=>applyLayout()).observe(document.querySelector('.workspace'));applyLayout()
+}
+
 const looksLikeHtml=value=>typeof value==='string'&&/^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(value);
 const isLatexDocument=value=>typeof value==='string'&&!looksLikeHtml(value)&&value.includes('\\documentclass')&&value.includes('\\begin{document}')&&value.includes('\\end{document}');
 const isProjectSource=(name,value)=>{if(typeof value!=='string'||looksLikeHtml(value))return false;if(name==='paper/main.tex')return isLatexDocument(value);return value.trim().length>0};
 function bibliographyEntries(value){const entries=[];const pattern=/@[A-Za-z]+\s*\{\s*([^,\s]+)\s*,[\s\S]*?(?=\n\s*@[A-Za-z]+\s*\{|\s*$)/g;for(const match of String(value||'').matchAll(pattern))entries.push({key:match[1].toLowerCase(),text:match[0].trim()});return entries}
 function mergeBibliography(local,canonical){const localEntries=bibliographyEntries(local);const keys=new Set(localEntries.map(entry=>entry.key));const missing=bibliographyEntries(canonical).filter(entry=>!keys.has(entry.key));if(!missing.length)return local;return [String(local||'').trim(),...missing.map(entry=>entry.text)].filter(Boolean).join('\n\n')+'\n'}
-async function fetchProjectSource(name,path,{required=false}={}){
+async function sourceCacheWithin(promise){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('source cache timeout')),500)})])}finally{clearTimeout(timer)}}
+async function fetchProjectSource(name,path,{required=false,revision=''}={}){
   try{
+    const canCache = /^[0-9a-f]{64}$/.test(revision) && typeof caches !== 'undefined' && Boolean(globalThis.crypto?.subtle)
+    let cache, cacheKey
+    if(canCache)try{
+      cache=await sourceCacheWithin(caches.open('paper-workspace-project-sources-v1'))
+      cacheKey=new URL(path,location.href);cacheKey.search='';cacheKey.hash=''
+      const cached=await sourceCacheWithin(cache.match(cacheKey.href))
+      if(cached?.headers.get('x-paper-source-revision')===revision){
+        const bytes=await cached.arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')
+        if(hash===revision)return new TextDecoder().decode(bytes)
+      }
+    }catch{cache=null}
     const response=await fetch(path,{headers:{Accept:'text/plain'},cache:'no-store'});
     if(!response.ok){const error=new Error(`project source request failed (${response.status})`);error.status=response.status;throw error}
     const contentType=response.headers.get('content-type')||'';
     if(contentType.toLowerCase().includes('text/html'))throw new Error('project source returned HTML');
-    return await response.text()
+    const bytes=await response.arrayBuffer()
+    if(cache && cacheKey)try{
+      const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('')
+      if(hash===revision)await sourceCacheWithin(cache.put(cacheKey.href,new Response(bytes,{headers:{'content-type':'text/plain; charset=utf-8','x-paper-source-revision':revision}})))
+    }catch{}
+    return new TextDecoder().decode(bytes)
   }catch(error){
     if(!required){if(error?.status!==404)reportClientError(error,`fetchOptionalProjectSource:${name}`);return null}
     const failure=new Error(`${name} 필수 프로젝트 소스를 불러오지 못했습니다.`);
@@ -156,14 +210,11 @@ async function fetchProjectSource(name,path,{required=false}={}){
 }
 function bytesToBase64(bytes){let binary='';const chunk=0x8000;for(let offset=0;offset<bytes.length;offset+=chunk)binary+=String.fromCharCode(...bytes.subarray(offset,Math.min(offset+chunk,bytes.length)));return btoa(binary)}
 function projectFileUrl(path,manifest=projectManifest){return buildProjectFileUrl(projectBase,path,manifest)}
-async function fetchPreviewArtifact(){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(projectFileUrl(projectManifest.preview_pdf),{cache:'no-store'});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(projectFileUrl(projectManifest.preview_synctex),{cache:'no-store'});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
+async function fetchPreviewArtifact(signal){if(!projectManifest.preview_pdf)return null;try{const pdfResponse=await fetch(projectFileUrl(projectManifest.preview_pdf),{cache:'no-store',signal});if(!pdfResponse.ok)return null;const binary=new Uint8Array(await pdfResponse.arrayBuffer());let synctex='';if(projectManifest.preview_synctex){const synctexResponse=await fetch(projectFileUrl(projectManifest.preview_synctex),{cache:'no-store',signal});if(synctexResponse.ok)synctex=bytesToBase64(new Uint8Array(await synctexResponse.arrayBuffer()))}return {binary,synctex}}catch{return null}}
 function ensureFolder(path){if(!state.folders.includes(path))state.folders.push(path)}
-const collaboratorPalette=['#2457d6','#7c3aed','#0891b2','#059669','#d97706','#dc2626','#db2777'];
-const normalizeDisplayName=value=>String(value??'').trim().slice(0,32);
-function hasDisplayName(value){const name=normalizeDisplayName(value);return Boolean(name.replace(/[\s\u200b-\u200d\ufeff]/gu,''))&&!['나','me','secondary_host'].includes(name.toLowerCase())}
+const {palette:collaboratorPalette,normalize:normalizeDisplayName,valid:hasDisplayName,initial:collaboratorInitial}=window.PaperSidebarProfile;
 function collaboratorColor(id){let hash=0;for(const character of id)hash=(hash*31+character.charCodeAt(0))|0;return collaboratorPalette[Math.abs(hash)%collaboratorPalette.length]}
-function collaboratorInitial(name){const words=name.trim().split(/\s+/).filter(Boolean);return (words.length>1?words.slice(0,2).map(word=>word[0]).join(''):words[0]?.slice(0,2)||'?').toUpperCase()}
-const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=preferences.get('collab-id')||crypto.randomUUID();const storedColor=preferences.get('collab-color');let storedActorName=preferences.get('collab-name');if(!preferences.get('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:normalizeDisplayName(storedActorName)||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};preferences.set('collab-id',actor.id);preferences.set('collab-name',actor.name);preferences.set('collab-color',actor.color);$('collab-name').textContent=hasDisplayName(actor.name)?collaboratorInitial(actor.name):'?';$('collab-name').style.background=actor.color;const collaborators=new Map();
+const defaultActorName=window.PaperI18n?.getLanguage()==='ko'?'나':'Me';const actorId=window.PaperSidebarProfile.identity();const storedColor=preferences.get('collab-color');let storedActorName=preferences.get('collab-name');if(!preferences.get('collab-name-user-set')&&(storedActorName==='secondary_host'||storedActorName==='나'||storedActorName==='Me'))storedActorName=defaultActorName;const actor={id:actorId,name:normalizeDisplayName(storedActorName)||defaultActorName,color:collaboratorPalette.includes(storedColor)?storedColor:collaboratorColor(actorId)};preferences.set('collab-name',actor.name);preferences.set('collab-color',actor.color);$('collab-name').textContent=hasDisplayName(actor.name)?collaboratorInitial(actor.name):'?';$('collab-name').style.background=actor.color;$('collab-name').style.color=window.PaperUI.contrastTextFor(actor.color);const collaborators=new Map();
 $('name-toast').hidden=true;
 let projectActivityTimer=0,pendingProjectActivityReason='edit',suppressProjectActivity=false;
 async function recordProjectActivity(reason=pendingProjectActivityReason){if(accountReadOnly)return;clearTimeout(projectActivityTimer);projectActivityTimer=0;if(!hasDisplayName(actor.name))return;pendingProjectActivityReason=reason;try{await fetch(`/api/backups/projects/${backupProjectId()}/activity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor:actor.name,reason}),keepalive:true})}catch{}}
@@ -171,7 +222,16 @@ function markProjectActivity(reason='edit'){if(!hasDisplayName(actor.name))retur
 function setEditorValueWithoutActivity(value){suppressProjectActivity=true;try{setEditorValue(value)}finally{suppressProjectActivity=false}}
 window.addEventListener('pagehide',()=>{if(projectActivityTimer)recordProjectActivity(pendingProjectActivityReason)});
 function collaboratorPosition(person){return Array.isArray(person.selection)?Math.max(0,Number(person.selection[1]??person.selection[0])||0):0}
-function goToCollaborator(person){const file=person.active_file;if(!file||state.files[file]===undefined)return;state.files[state.current]=editorValue();state.current=file;setEditor();listFiles();const position=Math.min(collaboratorPosition(person),editorValue().length);focusEditor();setEditorSelection(position,position,{scroll:true});sendCursor();renderRemoteCursors()}
+function paperCollaboratorLocation(person){return person.workspace?.surface!=='rebuttal'&&person.workspace?.visible!==false}
+function validPaperPresenceFile(file){return typeof file==='string'&&file.length>0&&file.length<=1024&&!/^[a-z][a-z\d+.-]*:/i.test(file)&&!/[\\\u0000-\u001f]/.test(file)&&file.split('/').every(part=>part&&part!=='.'&&part!=='..')}
+function restorePaperPresenceLocation(){
+  let location;
+  try{const key=`paper-presence-location:${projectSlug}`,raw=sessionStorage.getItem(key);if(!raw)return;sessionStorage.removeItem(key);location=JSON.parse(raw)}catch{return}
+  const validPosition=value=>typeof value==='string'&&value.length>0&&value.length<=16384&&/^[A-Za-z0-9+/]+={0,2}$/.test(value);
+  if(!validPaperPresenceFile(location?.file)||!validPosition(location.anchorRelative)||!validPosition(location.headRelative))return;
+  window.PaperWorkspaceFocusLocation?.(location).catch(()=>{});
+}
+
 function remoteCaretCoordinates(position){const coordinates=richEditor?.coordsAt(position),panel=$('editor-panel').getBoundingClientRect();if(!coordinates)return {left:0,top:-100,lineHeight:23};return {left:coordinates.left-panel.left,top:coordinates.top-panel.top-48,lineHeight:coordinates.bottom-coordinates.top||23}}
 function syncHighlightCoordinates(position){
   const panel=$('editor-panel').getBoundingClientRect();
@@ -191,8 +251,52 @@ function showSourceSyncHighlight(position){
   clearTimeout(window.syncHighlightTimer);
   window.syncHighlightTimer=setTimeout(()=>{marker.hidden=true},650);
 }
-function renderRemoteCursors(){const container=$('remote-cursors');container.replaceChildren();const height=$('editor-view').clientHeight;for(const person of collaborators.values()){if(person.id===actor.id||person.active_file!==state.current||!Array.isArray(person.selection))continue;const coordinates=remoteCaretCoordinates(Math.min(collaboratorPosition(person),$('editor').value.length));if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;const caret=document.createElement('span');caret.className='remote-caret';caret.style.left=`${coordinates.left}px`;caret.style.top=`${coordinates.top}px`;caret.style.height=`${coordinates.lineHeight}px`;caret.style.setProperty('--cursor-color',person.color||collaboratorColor(person.id));const label=document.createElement('span');label.className='remote-cursor-label';label.textContent=person.name;caret.append(label);container.append(caret)}}
-function updatePresence(){const container=$('collaborator-avatars');container.replaceChildren();const people=[...collaborators.values()].filter(person=>person.id!==actor.id);for(const person of people.slice(0,4)){const avatar=document.createElement('button');const location=person.active_file?`${person.active_file}${person.line?`:${person.line}`:''}`:'접속 중';avatar.type='button';avatar.className='collaborator-avatar';avatar.textContent=collaboratorInitial(person.name);avatar.style.setProperty('--avatar-color',person.color||collaboratorColor(person.id));avatar.dataset.tooltip=`${person.name} · ${location}`;avatar.setAttribute('aria-label',`${person.name}, ${location}${person.active_file?' — 클릭하여 이동':''}`);avatar.disabled=!person.active_file;avatar.onclick=()=>goToCollaborator(person);container.append(avatar)}if(people.length>4){const overflow=document.createElement('button');overflow.type='button';overflow.className='collaborator-avatar collaborator-overflow';overflow.textContent=`+${people.length-4}`;overflow.dataset.tooltip=people.slice(4).map(person=>person.name).join(' · ');overflow.setAttribute('aria-label',`추가 공동 편집자 ${people.length-4}명: ${people.slice(4).map(person=>person.name).join(', ')}`);container.append(overflow)}renderRemoteCursors()}
+const remoteCursorNodes=new Map();
+function renderRemoteCursors(){
+  const container=$('remote-cursors'),height=$('editor-view').clientHeight,active=new Set();
+  for(const person of collaborators.values()){
+    if(person.id===actor.id||!paperCollaboratorLocation(person)||person.workspace?.editing===false||person.active_file!==state.current||!Array.isArray(person.selection))continue;
+    const coordinates=remoteCaretCoordinates(Math.min(collaboratorPosition(person),$('editor').value.length));
+    if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;
+    const key=String(person.clientId??person.id);active.add(key);
+    let entry=remoteCursorNodes.get(key);
+    if(!entry){
+      const caret=document.createElement('span'),label=document.createElement('span');
+      caret.className='remote-caret';label.className='remote-cursor-label';caret.append(label);container.append(caret);
+      entry={caret,label,style:null,color:null};remoteCursorNodes.set(key,entry);
+    }
+    const style=JSON.stringify([coordinates.left,coordinates.top,coordinates.lineHeight]);
+    if(style!==entry.style){entry.caret.style.left=`${coordinates.left}px`;entry.caret.style.top=`${coordinates.top}px`;entry.caret.style.height=`${coordinates.lineHeight}px`;entry.style=style}
+    const color=person.color||collaboratorColor(person.id);
+    if(color!==entry.color){entry.caret.style.setProperty('--cursor-color',color);entry.label.style.color=window.PaperUI.contrastTextFor(color);entry.color=color}
+    if(entry.label.textContent!==person.name)entry.label.textContent=person.name;
+  }
+  for(const [key,entry] of remoteCursorNodes)if(!active.has(key)){entry.caret.remove();remoteCursorNodes.delete(key)}
+}
+let projectPresence;
+function rebuttalPresenceView(){return document.querySelector('.paper-review-frame')?.contentWindow?.PaperRebuttal}
+function describePresencePeer(peer){
+  if(peer.workspace?.surface==='rebuttal' || (!peer.workspace?.surface && peer.rebuttal))return rebuttalPresenceView()?.describePeer?.(peer) || {label:'Rebuttal',available:false};
+  const file=peer.workspace?.file || peer.cursor?.active_file;
+  return {label:file?`Paper · ${file}`:(window.PaperI18n?.getLanguage()==='ko'?'접속 중':'Connected'),available:validPaperPresenceFile(file)&&Object.hasOwn(state.files,file)};
+}
+async function followPresencePeer(peer){
+  if(peer.workspace?.surface==='rebuttal' || (!peer.workspace?.surface && peer.rebuttal)){
+    const review=rebuttalPresenceView();if(!review?.followPeer)return false;
+    $('open-rebuttal').click();return review.followPeer(peer);
+  }
+  if(!window.PaperWorkspaceFocusLocation)return false;
+  return window.PaperWorkspaceFocusLocation({file:peer.workspace?.file || peer.cursor?.active_file,anchorRelative:peer.cursor?.anchor,headRelative:peer.cursor?.head});
+}
+function updatePresence(){
+  if(window.PaperProjectPresence){
+    projectPresence ||= window.PaperProjectPresence.create({host:$('project-presence-root'),describe:describePresencePeer,onFollow:followPresencePeer,onError:error=>notify(error.message,{title:'Collaboration'})});
+    projectPresence.update({peers:window.PaperProjectPresence.readPeers(collabSession),selfId:actor.id,language:window.PaperI18n?.getLanguage(),connected:Boolean(collabSession?.provider?.wsconnected)});
+  }
+  renderRemoteCursors()
+}
+window.addEventListener('paper-language-change',updatePresence);
+
 const collaborationRoom=`paper-workspace:${location.host}:${projectSlug}`;
 let pendingCollabChanges=0,pendingCollabTimer=0;
 function refreshOverallStatus(){const label=$('collab-label'),dot=$('collab-status'),toggle=$('status-center-toggle');if(!label||!dot)return;const english=window.PaperI18n?.getLanguage()!=='ko',rows=[...document.querySelectorAll('.status-center-list>div')],errorRow=rows.find(row=>row.dataset.health==='error'),warningRow=rows.find(row=>row.dataset.health==='warning'),hasPending=rows.some(row=>row.dataset.health==='pending'),problemRow=errorRow||warningRow,problemName=problemRow?.querySelector('strong')?.textContent||(english?'Status':'상태');const text=errorRow?(english?`${problemName} error`:`${problemName} 오류`):warningRow?(english?`${problemName} check`:`${problemName} 확인`):hasPending?(english?'In progress':'처리 중'):(english?'Healthy':'정상');const tone=errorRow?'error':warningRow?'warning':hasPending?'connecting':'';label.textContent=text;dot.className=`status-dot ${tone}`.trim();if(toggle)toggle.dataset.health=errorRow?'error':warningRow?'warning':hasPending?'pending':'healthy';const description=english?`Workspace status: ${text}. View details`:`작업공간 상태: ${text}. 세부정보 보기`;toggle?.setAttribute('aria-label',description);toggle?.setAttribute('title',description)}
@@ -246,7 +350,117 @@ function handleCollaborationStatus(status){
   setCollaborationStatus('connecting',retrying||status==='disconnected'?'공동 편집 다시 연결 중':status==='connected'?'공동 편집 문서 동기화 중':'공동 편집 서버 연결 중');
   armCollaborationWatchdog()
 }
-collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor:hasDisplayName(actor.name)?actor:null,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+collabSession=createCollaborationSession({url:`${location.protocol==='https:'?'wss':'ws'}://${location.host}/collab`,room:collaborationRoom,actor:hasDisplayName(actor.name)?actor:null,onStatus:handleCollaborationStatus,onPeers:peers=>{collaborators.clear();for(const peer of peers){const selection=peer.workspace?.surface==='rebuttal'?null:collabSession?.resolveCursor(peer);collaborators.set(String(peer.clientId),{...peer,id:peer.id||String(peer.clientId),selection})}updatePresence()}});
+// Keep both project views alive and use the same CRDT session for both editors.
+window.PaperWorkspaceSharedSession=collabSession;
+updatePresence();
+let reviewProjectTitle='';
+function syncReviewProjectTitle(){
+  const field=$('project-title'),frame=document.querySelector('.paper-review-frame');
+  let title=field.value.trim()||reviewProjectTitle;
+  try{if(title)sessionStorage.setItem(`paper-project-title:${projectSlug}`,title);else title=sessionStorage.getItem(`paper-project-title:${projectSlug}`)||''}catch{}
+  try{const heading=frame?.contentDocument?.getElementById('workspace-project-title');if(heading)heading.textContent=title||projectSlug}catch{}
+  if(title&&paperReviewActive)document.title=`${title} · Paper Workspace`;
+}
+async function loadReviewProjectTitle(){
+  // Review-only startup does not need the manuscript recovery watchdog.
+  window.__paperMarkStartupReady?.();
+  const files=collaborationMap('files');
+  let sharedReady=false;
+  const manuscriptTitle=source=>typeof source==='string'&&/\\title\{/.test(source)?titleOf(source).trim().slice(0,160):'';
+  const fromShared=()=>{
+    if(!sharedReady)return false;
+    const text=files.get('paper/main.tex'),title=manuscriptTitle(text?.toString());
+    if(title){reviewProjectTitle=title;syncReviewProjectTitle()}
+    return Boolean(title)
+  };
+  const fallback=()=>{
+    if(reviewProjectTitle)return;
+    try{reviewProjectTitle=sessionStorage.getItem(`paper-project-title:${projectSlug}`)||''}catch{}
+    if(!reviewProjectTitle&&typeof manifest?.display_name==='string')reviewProjectTitle=manifest.display_name.trim().slice(0,160);
+  };
+  collabBootstrapReady.then(()=>{sharedReady=true;files.observeDeep(fromShared);fromShared()}).catch(error=>reportClientError(error,'reviewTitleSync'));
+  let manifest;
+  try{
+    const signal=AbortSignal.timeout(10000);
+    const response=await fetch(`${projectBase}/project/project.json`,{cache:'no-store',signal});
+    if(!response.ok)throw new Error(`Review title manifest ${response.status}`);
+    manifest=normalizeManifest(await response.json());
+    const main=manifest.files.find(item=>item.path==='main.tex'&&!manifestItemIsAsset(item))||manifest.files.find(item=>item.path===manifest.entrypoint&&!manifestItemIsAsset(item));
+    if(main){
+      const source=await fetch(buildProjectFileUrl(projectBase,main.source||main.path,manifest),{cache:'no-store',signal});
+      if(!source.ok)throw new Error(`Review title source ${source.status}`);
+      const title=manuscriptTitle(await source.text());
+      if(title&&!fromShared()){reviewProjectTitle=title;syncReviewProjectTitle();return}
+    }
+    fallback();
+  }catch(error){
+    // A title lookup must not prevent reviewing or replace the cached title.
+    fallback();
+    reportClientError(error,'reviewTitle');
+  }
+  syncReviewProjectTitle();
+}
+// The startup watchdog can set the title without passing through setProjectTitle.
+window.addEventListener('paper:startup-recovered',syncReviewProjectTitle);
+function mountReviewView(){
+  const params=new URLSearchParams(location.search),initialReview=params.get('view')==='reviews' || /^\/p\/[^/]+\/rebuttal(?:\/|$)/.test(location.pathname);
+  let initialTarget;
+  try{const candidate=new URL(params.get('reviewTarget')||location.href,location.origin),base=`/p/${encodeURIComponent(projectSlug)}/rebuttal`;if(candidate.origin===location.origin && (candidate.pathname===base || candidate.pathname.startsWith(`${base}/`)))initialTarget=candidate}catch{}
+  const fallback=()=>{const url=new URL(initialTarget?.href || $('open-rebuttal').href,location.href);url.searchParams.set('standalone','1');location.replace(url.href)};
+  if(!collabSession?.namespacedTextFor || collabSession.offline){if(initialReview)fallback();return}
+  const nav=$('open-rebuttal'),shell=document.querySelector('.shell');
+  const frame=document.createElement('iframe');frame.className='paper-review-frame';frame.title='Reviews & responses';frame.tabIndex=-1;frame.setAttribute('aria-hidden','true');frame.inert=true;
+  const reviewUrl=new URL(initialTarget?.href || nav.href,location.href);reviewUrl.searchParams.set('embedded','1');frame.src=reviewUrl.href;document.body.append(frame);
+  let ready=false,pending=initialReview,pendingRecord=!initialReview,waitingTimer,navigationGeneration=0;
+  window.PaperWorkspaceReviewLocation=(source,href,record=false)=>{
+    if(source!==frame.contentWindow)return;
+    let url;try{url=new URL(href,location.href)}catch{return}
+    const base=`/p/${encodeURIComponent(projectSlug)}/rebuttal`;
+    if(url.origin!==location.origin || (url.pathname!==base && !url.pathname.startsWith(`${base}/`)))return;
+    for(const key of ['embedded','standalone','view','reviewTarget'])url.searchParams.delete(key);
+    retainedReviewURL=url.href;nav.href=url.href;
+    if(paperReviewActive && location.href!==url.href)history[record?'pushState':'replaceState']({paperView:'review'},'',url);
+  };
+  if(initialReview){document.documentElement.classList.add('paper-initial-review');if(initialTarget)history.replaceState({paperView:'review'},'',initialTarget.href);waitingTimer=setTimeout(()=>{if(pending)fallback()},10000)}
+  const show=(review,record=true)=>{
+    ++navigationGeneration;
+    if(review&&!ready){pending=true;pendingRecord=record;clearTimeout(waitingTimer);waitingTimer=setTimeout(()=>{if(pending)fallback()},10000);return}
+    // Each retained view follows the language selected in the visible view.
+    if(review){const select=frame.contentDocument?.getElementById('workspace-language'),language=window.PaperI18n?.getLanguage();if(select&&language&&select.value!==language){select.value=language;select.dispatchEvent(new Event('change',{bubbles:true}))}}
+    else window.PaperI18n?.setLanguage(frame.contentDocument?.documentElement.lang,{persist:false,updateUrl:true});
+    pending=false;clearTimeout(waitingTimer);document.documentElement.classList.remove('paper-initial-review');frame.classList.toggle('is-active',review);frame.inert=!review;frame.setAttribute('aria-hidden',String(!review));shell.inert=review;paperReviewActive=review;clearTimeout(cursorTimer);lastCursorPayload='';frame.contentWindow?.PaperRebuttalSetVisible?.(review);if(!review)sendCursor();
+    if(record){const url=new URL(review?nav.href:$('manuscript-link').href,location.href);if(location.href!==url.href)history.pushState({paperView:review?'review':'manuscript'},'',url)}
+    if(review){const reviewDocument=frame.contentWindow?.document;syncReviewProjectTitle();frame.contentWindow?.dispatchEvent(new Event('resize'));reviewDocument?.querySelector('#main')?.focus({preventScroll:true})}
+    else {ensureProjectLoaded();window.dispatchEvent(new Event('resize'));nav.focus({preventScroll:true})}
+  };
+  window.PaperWorkspaceReviewReady=source=>{if(source!==frame.contentWindow)return;ready=true;window.PaperWorkspaceReviewLocation(source,source.location.href);syncReviewProjectTitle();updatePresence();if(pending)show(true,pendingRecord)};
+  window.PaperWorkspaceShowManuscript=source=>{if(source===frame.contentWindow)show(false)};
+  window.PaperWorkspaceFocusLocation=async location=>{
+    const file=location?.file;if(!validPaperPresenceFile(file))return false;
+    show(false);await ensureProjectLoaded();
+    if(!Object.hasOwn(state.files,file))return false;
+    if(!isLockedProjectFile())state.files[state.current]=editorValue();
+    state.current=file;setEditor();listFiles();
+    const range=location.anchorRelative&&location.headRelative?collabSession.resolveRange(location,sharedText):null;
+    const selection=range||(Array.isArray(location.selection)?location.selection:[0,0]);
+    focusEditor();setEditorSelection(selection[0],selection[1],{scroll:true});sendCursor();renderRemoteCursors();return true;
+  };
+  nav.addEventListener('click',event=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();show(true)});
+  window.addEventListener('pageshow',event=>{if(event.persisted)frame.contentWindow?.PaperRebuttalSetVisible?.(paperReviewActive)});
+  window.addEventListener('popstate',async()=>{
+    const generation=++navigationGeneration,url=location.href;
+    if(/^\/p\/[^/]+\/rebuttal(?:\/|$)/.test(location.pathname)){
+      try{await frame.contentWindow?.PaperRebuttalNavigateURL?.(url)}catch(error){if(generation===navigationGeneration){reportClientError(error,'reviewNavigation');location.reload()}return}
+      // Response initialization can outlive a newer history or mode change.
+      if(generation!==navigationGeneration || location.href!==url)return;
+      show(true,false);
+    }else show(false,false)
+  });
+  frame.addEventListener('error',()=>{if(pending)fallback()});
+}
+mountReviewView();
+
 function retryCollaboration(){
   if(!collabSession?.provider)return;
   collaborationWatchdogFailed=false;collaborationReconnectAttempted=true;clearCollaborationWatchdog();
@@ -265,7 +479,7 @@ const collabBootstrapReady=collabSession.whenReady;
 // vendor assets are immutable. The Y.Doc contract is stable, so use it as a
 // compatibility path while the new cache-keyed bundle replaces the old copy.
 const collaborationMap=name=>typeof collabSession.mapFor==='function'?collabSession.mapFor(name):collabSession.document.getMap(name);
-const sharedComments=collaborationMap('comments'),sharedTasks=collaborationMap('tasks'),sharedFolders=collaborationMap('folders'),sharedAssets=collaborationMap('assets'),sharedProject=collaborationMap('project');let sharedMetadataReady=false;
+const sharedComments=collaborationMap('comments'),sharedTasks=collaborationMap('tasks'),sharedFolders=collaborationMap('folders'),sharedAssets=collaborationMap('assets'),sharedProject=collaborationMap('project');let sharedMetadataReady=false,sharedFileRevision=0;
 function sharedMapValues(map){return [...map.values()].filter(value=>value&&typeof value==='object')}
 function replaceSharedMap(map,entries,keyOf){collabSession.document.transact(()=>{map.clear();for(const entry of entries)map.set(String(keyOf(entry)),structuredClone(entry))},actor.id)}
 function syncSharedMetadataState({persist=true}={}){if(!sharedMetadataReady)return;state.comments=sharedMapValues(sharedComments).sort((a,b)=>(b.revision||0)-(a.revision||0));state.tasks=sharedMapValues(sharedTasks).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));state.folders=[...new Set(['paper',...sharedFolders.keys()])];const sharedPaths=new Set();for(const metadata of sharedMapValues(sharedAssets)){if(typeof metadata.path!=='string')continue;sharedPaths.add(metadata.path);const existing=state.assets[metadata.path]||{};state.assets[metadata.path]={...existing,type:metadata.type||existing.type||'application/octet-stream',size:Number(metadata.size)||existing.size||0,server:true};state.uploads=[...new Set([metadata.path,...state.uploads])]}for(const path of [...state.uploads]){const asset=state.assets[path];if(asset?.server&&!sharedPaths.has(path)){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);deleteLocalAsset(path).catch(()=>{})}}listFiles();renderComments();renderTaskBoard();if(persist)save()}
@@ -306,29 +520,42 @@ function initializeSharedMetadata(){
     else if(status==='error')saveState.textContent='원본 파일 반영 지연 · 재시도 중';
   });
   collabSession.files.observeDeep((events,transaction)=>{
-    let changed=false;
-    for(const [path,text] of collabSession.files){const value=text?.toString?.();if(typeof value==='string'&&state.files[path]!==value){state.files[path]=value;changed=true}}
-    for(const path of Object.keys(state.files))if(path!=='paper/main.tex'&&!collabSession.files.has(path)){delete state.files[path];changed=true}
-    if(changed){if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];if(sharedText?._paperPath!==state.current)setEditor();listFiles();save();if(workspaceReadyForCompile&&transaction.origin!==actor.id)scheduleCompileAfterSave()}
+    ++sharedFileRevision;
+    let changed=false,compileInputsChanged=false;
+    for(const [path,text] of collabSession.files){
+      const value=text?.toString?.();
+      if(typeof value==='string'&&state.files[path]!==value){
+        state.files[path]=value;changed=true;
+        compileInputsChanged||=isCompileInputPath(path);
+      }
+    }
+    for(const event of events){
+      if(event.target!==collabSession.files)continue;
+      for(const [path,{action}] of event.changes.keys){
+        if(action==='delete'&&path!=='paper/main.tex'&&Object.hasOwn(state.files,path)){
+          delete state.files[path];changed=true;
+          compileInputsChanged||=isCompileInputPath(path);
+        }
+      }
+    }
+    richEditor?.retainDocuments?.(Object.keys(state.files));
+    // Concurrent creation may select a different shared object with identical
+    // text. Rebind even then, or later edits stay on the discarded object.
+    const bindingChanged=collabSession.files.has(state.current)&&sharedText!==collabSession.files.get(state.current);
+    if(changed||bindingChanged){if(state.files[state.current]===undefined)state.current=state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0];if(sharedText?._paperPath!==state.current||sharedText!==collabSession.files.get(state.current))setEditor();listFiles();save();if(compileInputsChanged&&transaction.origin!==actor.id)markCompileInputsChanged()}
   });
   syncSharedMetadataState({persist:false});
 }
-function publishSharedTree(){if(!sharedMetadataReady)return;collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.textFor(path),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
+function publishSharedTree(){if(!sharedMetadataReady)return;collabSession.document.transact(()=>{const desiredFolders=new Set(state.folders);for(const folder of desiredFolders)sharedFolders.set(folder,true);for(const folder of [...sharedFolders.keys()])if(!desiredFolders.has(folder))sharedFolders.delete(folder);const desiredAssets=new Set(state.uploads.filter(path=>state.assets[path]?.server));for(const path of desiredAssets){const asset=state.assets[path];sharedAssets.set(path,{path,type:asset.type,size:asset.size})}for(const path of [...sharedAssets.keys()])if(!desiredAssets.has(path))sharedAssets.delete(path);for(const [path,value] of Object.entries(state.files))replaceSharedText(collabSession.files.get(path)||collabSession.textFor(path,value),value);for(const path of [...collabSession.files.keys()])if(state.files[path]===undefined)collabSession.files.delete(path)},actor.id)}
 function replaceSharedText(text,value){const current=text.toString();if(current===value)return;let prefix=0;while(prefix<current.length&&prefix<value.length&&current[prefix]===value[prefix])prefix+=1;let suffix=0;while(suffix<current.length-prefix&&suffix<value.length-prefix&&current[current.length-1-suffix]===value[value.length-1-suffix])suffix+=1;text.doc.transact(()=>{const removed=current.length-prefix-suffix;if(removed)text.delete(prefix,removed);const inserted=value.slice(prefix,value.length-suffix);if(inserted)text.insert(prefix,inserted)},actor.id)}
-function serverSourceFingerprints(manifest,sources){const fingerprints={};for(const item of serverManagedManifestItems(manifest)){const path=`paper/${item.path}`,source=sources[path];if(typeof source==='string')fingerprints[path]=sourceFingerprint(source)}return fingerprints}
-function initializeServerRuntimeState(remoteSources){
-  if(!projectManifest.runtime_revision||!collabSession.isBootstrapLeader?.()||sharedProject.get('serverRuntimeRevision'))return;
-  const paths=serverManagedManifestItems(projectManifest).map(item=>`paper/${item.path}`),fingerprints=serverSourceFingerprints(projectManifest,remoteSources);
-  collabSession.document.transact(()=>{if(sharedProject.get('serverRuntimeRevision'))return;sharedProject.set('serverRuntimeRevision',projectManifest.runtime_revision);sharedProject.set('serverManagedPaths',paths);sharedProject.set('serverSourceFingerprints',fingerprints)},actor.id)
-}
 function changedManifestPaths(previous,next){
   const describe=manifest=>new Map((manifest.files||[]).map(item=>{const source=item.source||item.path;return [`paper/${item.path}`,`${item.type||'text'}:${source}:${runtimeFileRevision(manifest,source)}`]}));
   const before=describe(previous),after=describe(next),paths=new Set([...before.keys(),...after.keys()]);
   return [...paths].filter(path=>before.get(path)!==after.get(path))
 }
 function adoptServerManifest(manifest,sources={}, {changedPaths=[],conflictPaths=[],preservedPaths=[],scheduleCompile=false}={}){
-  const previous=projectManifest,currentPath=state.current,selection=editorSelection();
-  projectManifest=manifest;updateMainCompileControl();syncRemoteManifestAssets(manifest,previous);
+  const currentPath=state.current,selection=editorSelection();
+  projectManifest=manifest;updateMainCompileControl();syncRemoteManifestAssets(manifest);
   for(const [path,value] of Object.entries(sources)){if(path==='paper/main.tex')state.serverMainSnapshot=sourceFingerprint(value);else state.serverSourceSnapshots[path]=sourceFingerprint(value)}
   const sharedFingerprints=sharedProject.get('serverSourceFingerprints');
   if(sharedFingerprints&&typeof sharedFingerprints==='object'&&!Array.isArray(sharedFingerprints))for(const item of serverManagedManifestItems(manifest)){const path=`paper/${item.path}`,fingerprint=sharedFingerprints[path];if(typeof fingerprint!=='string')continue;if(path==='paper/main.tex')state.serverMainSnapshot=fingerprint;else state.serverSourceSnapshots[path]=fingerprint}
@@ -377,44 +604,17 @@ function scheduleServerSourceRefresh(delay=serverSourcePollMs){clearTimeout(serv
 function initializeServerSourceRefresh(){if(!projectManifest.runtime_revision)return;scheduleServerSourceRefresh();window.addEventListener('focus',refreshServerSources);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshServerSources()})}
 function syncCurrentFileToShared(){if(!sharedText||activeAsset||isLockedProjectFile()||state.current!==sharedText._paperPath)return;replaceSharedText(sharedText,editorValue())}
 function transformSharedIndex(index,delta){let oldPosition=0,newPosition=0;for(const part of delta){if(part.retain){if(index<=oldPosition+part.retain)return newPosition+(index-oldPosition);oldPosition+=part.retain;newPosition+=part.retain}else if(part.insert)newPosition+=typeof part.insert==='string'?part.insert.length:1;else if(part.delete){if(index<=oldPosition+part.delete)return newPosition;oldPosition+=part.delete}}return newPosition+(index-oldPosition)}
-function bindSharedFile(path){if(sharedText&&sharedTextObserver)sharedText.unobserve(sharedTextObserver);sharedText=collabSession.textFor(path,state.files[path]||'');sharedText._paperPath=path;const sharedValue=sharedText.toString();if(sharedValue&&sharedValue!==state.files[path])state.files[path]=sharedValue;sharedTextObserver=event=>{if(event.transaction.origin===actor.id||sharedText._paperPath!==state.current)return;const selection=editorSelection(),start=transformSharedIndex(selection.start,event.delta),end=transformSharedIndex(selection.end,event.delta),value=sharedText.toString();state.files[state.current]=value;setEditorValueWithoutActivity(value);setEditorSelection(Math.min(start,value.length),Math.min(end,value.length));$('save-state').textContent=collabReady?'공동 편집 반영됨':'오프라인 변경 병합 중';updateEditorMetadata();renderRemoteCursors();renderCommentAnchors()};sharedText.observe(sharedTextObserver)}
+function bindSharedFile(path){if(sharedText&&sharedTextObserver)sharedText.unobserve(sharedTextObserver);sharedText=(sharedMetadataReady&&collabSession.files.get(path))||collabSession.textFor(path,state.files[path]||'');sharedText._paperPath=path;const sharedValue=sharedText.toString();if(sharedValue&&sharedValue!==state.files[path])state.files[path]=sharedValue;sharedTextObserver=event=>{if(event.transaction.origin===actor.id||sharedText._paperPath!==state.current)return;const selection=editorSelection(),start=transformSharedIndex(selection.start,event.delta),end=transformSharedIndex(selection.end,event.delta),value=sharedText.toString();state.files[state.current]=value;setEditorValueWithoutActivity(value);setEditorSelection(Math.min(start,value.length),Math.min(end,value.length));$('save-state').textContent=collabReady?'공동 편집 반영됨':'오프라인 변경 병합 중';updateEditorMetadata();renderRemoteCursors();renderCommentAnchors()};sharedText.observe(sharedTextObserver)}
 let renderedPdfStale=false;
 function setPdfFreshness(stale){renderedPdfStale=Boolean(stale);const banner=$('pdf-freshness');if(banner)banner.hidden=!renderedPdfStale}
 function canUseRenderedSynctex(){if(!renderedPdfStale)return true;notify('원고와 PDF가 달라 위치 이동을 잠시 멈췄습니다. 최신 PDF가 준비되면 다시 시도해 주세요.',{title:'PDF 갱신 대기 중',tone:'warning'});return false}
 function refreshEditorLayout(){richEditor?.view?.requestMeasure?.();if(innerWidth<768&&richEditor?.scrollDOM)richEditor.scrollDOM.scrollLeft=0}
 function activateFocusMode(focus){const shell=document.querySelector('.shell');if(focus==='assistant'&&shell.dataset.focus!=='assistant')focusBeforeAssistant=shell.dataset.focus==='preview'?'preview':'source';shell.dataset.focus=focus;for(const item of $('focus-modes').querySelectorAll('button')){const active=item.dataset.focus===focus;item.setAttribute('aria-pressed',String(active));item.classList.toggle('is-active',active)}if(focus==='assistant')setAssistantCollapsed(false);else updateAssistantToggle();requestAnimationFrame(()=>{refreshEditorLayout();schedulePdfPageIndicatorUpdate();renderRemoteCursors();renderCommentAnchors()})}
 function installFocusModes(){document.querySelector('.shell').dataset.focus='source';$('focus-modes')?.querySelectorAll('button').forEach(button=>button.onclick=()=>activateFocusMode(button.dataset.focus))}
-function openNameSettings(){
-  const dialog=$('name-dialog');
-  if(dialog.open)return;
-  const required=!hasDisplayName(actor.name);
-  dialog.dataset.required=String(required);
-  dialog.returnValue='';
-  $('name-input').value=required?'':actor.name;
-  $('name-input').setCustomValidity('');
-  $('cancel-name').hidden=required;
-  window.PaperI18n.setText($('name-description'),required?'공동저자가 구분할 수 있도록 이름이나 닉네임을 입력해 주세요. 이 브라우저에서 기억합니다.':'공동 편집자에게 보이는 이름과 프로필 색상입니다.');
-  window.PaperI18n.setText($('save-name'),required?'저장하고 계속':'저장');
-  const selected=document.querySelector(`input[name="profile-color"][value="${actor.color}"]`);
-  if(selected)selected.checked=true;
-  dialog.showModal();
-  $('name-input').focus();
-}
-function syncLocalProfile(){
-  actor.name=normalizeDisplayName(preferences.get('collab-name')??actor.name)||defaultActorName;
-  const color=preferences.get('collab-color');
-  if(collaboratorPalette.includes(color))actor.color=color;
-  const configured=hasDisplayName(actor.name);
-  $('collab-name').textContent=configured?collaboratorInitial(actor.name):'?';
-  $('collab-name').style.background=actor.color;
-  collabSession.updateActor(configured?actor:null);
-  if(!configured)openNameSettings();
-  else if($('name-dialog').open&&$('name-dialog').dataset.required==='true')$('name-dialog').close();
-}
+let profileSettings;
+function openNameSettings(){profileSettings.open()}
 function installStatusCenter(){
-  const panel=$('status-center'),toggle=$('status-center-toggle'),closeButton=$('status-center-close');
   const collabAction=$('health-collab-action'),pdfAction=$('health-pdf-action'),backupAction=$('health-backup-action');
-  let restoreFocus=false,hideTimer=0;
   const syncHealth=()=>{
     const healthSave=$('health-save'),healthPdf=$('health-pdf'),healthBackup=$('health-backup');
     healthSave.textContent=$('save-state').textContent;
@@ -432,135 +632,34 @@ function installStatusCenter(){
   };
   for(const id of ['save-state','render-state','backup-status'])new MutationObserver(syncHealth).observe($(id),{childList:true,subtree:true,characterData:true});
   syncHealth();
-  const close=({returnFocus=true}={})=>{clearTimeout(hideTimer);panel.classList.remove('open');toggle.setAttribute('aria-expanded','false');if(returnFocus&&restoreFocus){const utilities=$('mobile-utilities');const target=innerWidth<768&&!utilities?.open?utilities?.querySelector('summary'):toggle;target?.focus()}restoreFocus=false;const delay=matchMedia('(prefers-reduced-motion: reduce)').matches?0:180;hideTimer=setTimeout(()=>{panel.hidden=true},delay)};
-  const open=()=>{clearTimeout(hideTimer);if(innerWidth<768)$('mobile-utilities')?.removeAttribute('open');panel.hidden=false;toggle.setAttribute('aria-expanded','true');restoreFocus=true;requestAnimationFrame(()=>{if(toggle.getAttribute('aria-expanded')!=='true')return;panel.classList.add('open');closeButton.focus()})};
-  toggle.onclick=event=>{event.stopPropagation();toggle.getAttribute('aria-expanded')==='true'?close():open()};
-  closeButton.onclick=event=>{event.stopPropagation();close()};
+  const {close}=statusCenter;
   collabAction.onclick=()=>{retryCollaboration();close({returnFocus:false})};
   pdfAction.onclick=()=>{close({returnFocus:false});activateAssistantTab('checks',{handoff:true})};
   backupAction.onclick=()=>{close({returnFocus:false});activateAssistantTab('sources',{handoff:true});createServerBackup('manual')};
-  document.addEventListener('click',event=>{if(toggle.getAttribute('aria-expanded')==='true'&&!panel.contains(event.target)&&!toggle.contains(event.target))close({returnFocus:false})});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&toggle.getAttribute('aria-expanded')==='true')close()});
+
 }
-window.addEventListener('storage',event=>{if(event.key==='collab-name'||event.key==='collab-color')syncLocalProfile()});
-window.addEventListener('focus',syncLocalProfile);
-$('collab-name').onclick=openNameSettings;
-$('name-input').addEventListener('input',()=>$('name-input').setCustomValidity(''));
-$('name-dialog').querySelector('form').addEventListener('submit',event=>{
-  if(event.submitter?.value==='cancel'){
-    if(!hasDisplayName(actor.name))event.preventDefault();
-    return;
-  }
-  const name=normalizeDisplayName($('name-input').value);
-  if(!hasDisplayName(name)){
-    event.preventDefault();
-    $('name-input').setCustomValidity(window.PaperI18n.t('기본 이름 대신 본인의 이름이나 닉네임을 입력해 주세요.'));
-    $('name-input').reportValidity();
-    return;
-  }
-  actor.name=name;
-  const color=document.querySelector('input[name="profile-color"]:checked')?.value;
-  if(collaboratorPalette.includes(color))actor.color=color;
-  preferences.set('collab-name',actor.name);
-  preferences.set('collab-name-user-set','1');
-  preferences.set('collab-color',actor.color);
-  $('collab-name').textContent=collaboratorInitial(actor.name);
-  $('collab-name').style.background=actor.color;
-  $('name-toast').hidden=true;
-  collabSession.updateActor(actor);
-  if(backupInitialized)createServerBackup('auto',{quiet:true});
+profileSettings=window.PaperSidebarProfile.create({
+  actor,required:true,
+  onChange:(_profile,configured)=>collabSession.updateActor(configured?actor:null),
+  onSave:()=>{$('name-toast').hidden=true;if(backupInitialized)createServerBackup('auto',{quiet:true})}
 });
-$('name-dialog').addEventListener('cancel',event=>{if(!hasDisplayName(actor.name))event.preventDefault()});
-$('name-dialog').addEventListener('close',()=>{if(!hasDisplayName(actor.name))openNameSettings()});
 $('open-name-settings').onclick=()=>{$('name-toast').hidden=true;openNameSettings()};
-if(!hasDisplayName(actor.name))openNameSettings();
 function persistedFiles({compactDrafts=false}={}){if(!compactDrafts)return {...state.files};const entries=Object.entries(state.files),drafts=entries.filter(([path])=>path.startsWith('paper/drafts/'));const retainedDrafts=new Set(drafts.slice(-3).map(([path])=>path));if(state.current?.startsWith('paper/drafts/'))retainedDrafts.add(state.current);return Object.fromEntries(entries.filter(([path])=>!path.startsWith('paper/drafts/')||retainedDrafts.has(path)))}
 function persistedState(options={}){const {recovery,browserStateVersion,indexedSavedAt,...durableState}=state;return {...durableState,files:persistedFiles(options),assets:{},serverMainSnapshot:compactSourceSnapshot(state.serverMainSnapshot),serverSourceSnapshots:Object.fromEntries(Object.entries(state.serverSourceSnapshots||{}).map(([path,snapshot])=>[path,compactSourceSnapshot(snapshot)]))};}
-const save=()=>{syncCurrentFileToShared();return workspacePersistence.save({synced:collabReady})};
-const backupIntervalMs=10*60*1000;
-let backupInitialized=false;
-let backupBusy=false;
-let backupIdlePromise=Promise.resolve();
-let resolveBackupIdle=null;
-function backupProjectId(){return backupManifestId(projectManifest)}
-function backupApi(path=''){return `/api/backups/projects/${backupProjectId()}/snapshots${path}`}
-function backupPayload(){
-  if(state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();
-  return {title:String(state.projectTitle||titleOf(state.files['paper/main.tex']||'')||'Untitled Paper').slice(0,160),files:Object.fromEntries(Object.entries(state.files).filter(([,content])=>typeof content==='string').sort(([left],[right])=>left.localeCompare(right))),comments:Array.isArray(state.comments)?state.comments:[],tasks:Array.isArray(state.tasks)?state.tasks:[]};
-}
-function setBackupStatus(message,createdAt=null){const status=$('backup-status');status.textContent=message;const time=createdAt?new Date(createdAt).getTime():NaN;const age=Number.isFinite(time)?Date.now()-time:null;status.dataset.health=/오류|실패|error|failed/i.test(message)?'error':age!==null&&age>24*60*60*1000?'error':age!==null&&age>30*60*1000?'warning':/저장하는 중|불러오는 중|대기|saving|loading|waiting/i.test(message)?'pending':'ok'}
-function backupDate(value){const date=new Date(value);return Number.isNaN(date.getTime())?(window.PaperI18n?.t('시간 정보 없음')||'Time unavailable'):window.PaperI18n?.formatDate(date)||new Intl.DateTimeFormat('en-US',{dateStyle:'short',timeStyle:'short'}).format(date)}
-function renderBackupHistory(items){
-  const list=$('backup-list');
-  if(!items.length){list.innerHTML='<p class="backup-empty">아직 서버 백업이 없습니다.</p>';return}
-  list.replaceChildren(...items.map(snapshot=>{
-    const id=String(snapshot.id||snapshot.snapshot_id||'');
-    const card=document.createElement('article');card.className='backup-card';
-    const meta=document.createElement('div');meta.className='backup-card-meta';
-    const title=document.createElement('strong');title.textContent=snapshot.title||snapshot.payload?.title||'논문 백업';
-    const detail=document.createElement('span');const reason=String(snapshot.reason||'auto').startsWith('checkpoint:')?`버전 · ${String(snapshot.reason).slice(11)}`:snapshot.reason==='manual'?'수동':snapshot.reason==='pre-restore'?'복원 전':'자동';detail.textContent=`${backupDate(snapshot.checked_at||snapshot.checkedAt||snapshot.created_at||snapshot.createdAt)} · ${reason}${snapshot.actor?` · ${snapshot.actor}`:''}`;
-    const actions=document.createElement('div');actions.className='tool-row';const compare=document.createElement('button');compare.type='button';compare.className='backup-restore';compare.textContent='비교';compare.disabled=!id;compare.onclick=()=>compareServerBackup(id,compare);const restore=document.createElement('button');restore.type='button';restore.className='backup-restore';restore.textContent='복원';restore.disabled=!id||accountReadOnly;restore.onclick=()=>restoreServerBackup(id,restore);
-    actions.append(compare,restore);meta.append(title,detail);card.append(meta,actions);return card
-  }))
-}
-async function loadBackupHistory(){
-  try{const response=await fetch(backupApi(),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업 기록을 불러오지 못했습니다.');const items=backupItems(result);renderBackupHistory(items);const latest=items[0]?.checked_at||items[0]?.checkedAt||items[0]?.created_at||items[0]?.createdAt;setBackupStatus(items.length?`최근 백업 확인 ${backupDate(latest)}`:'10분 자동 백업 대기 중',latest);}
-  catch(error){renderBackupHistory([]);setBackupStatus(`연결 오류 · ${error.message}`)}
-}
-async function createServerBackup(reason='manual',{quiet=false}={}){
-if(accountReadOnly)return false;
-  if(!hasDisplayName(actor.name))return false;
-  if(backupBusy){if(reason!=='pre-restore')return false;await backupIdlePromise;return createServerBackup(reason,{quiet})}
-  const snapshot=backupPayload();
-  backupBusy=true;backupIdlePromise=new Promise(resolve=>{resolveBackupIdle=resolve});$('create-backup').disabled=true;setBackupStatus(reason==='pre-restore'?'현재 상태를 보존하는 중…':'서버에 저장하는 중…');
-  try{const response=await fetch(backupApi(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snapshot,actor:actor.name,reason})});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업에 실패했습니다.');await loadBackupHistory();setBackupStatus(result.deduplicated?'변경 없음 · 백업 확인 완료':`백업 완료 · ${backupDate(result.checked_at||result.snapshot?.checked_at||result.created_at||result.snapshot?.created_at||Date.now())}`);return true}
-  catch(error){setBackupStatus(`백업 실패 · ${error.message}`);if(!quiet)alert(`서버 백업에 실패했습니다.\n${error.message}`);return false}
-  finally{backupBusy=false;resolveBackupIdle?.();resolveBackupIdle=null;$('create-backup').disabled=false}
-}
-function applyBackupSnapshot(snapshot){
-  state.files=snapshot.files;
-  state.comments=snapshot.comments;
-  state.tasks=snapshot.tasks;
-  state.projectTitle=snapshot.title||state.projectTitle;
-  state.current=state.files[state.current]!==undefined?state.current:(state.files['paper/main.tex']!==undefined?'paper/main.tex':Object.keys(state.files)[0]);
-  state.folders=[...new Set(['paper',...Object.keys(state.files).map(parentPath).filter(Boolean)])];
-  // Metadata observers save immediately, so they must see the restored editor
-  // and all shared maps from the same transaction.
-  setEditorValueWithoutActivity(state.files[state.current]);
-  if(sharedMetadataReady)collabSession.document.transact(()=>{
-    replaceSharedMap(sharedComments,state.comments,item=>item.id||item.revision);
-    replaceSharedMap(sharedTasks,state.tasks,item=>item.id);
-    publishSharedTree();
-  },actor.id);
-}
-async function restoreServerBackup(snapshotId,button){
-  if(!await actionDialog({title:'백업 복원',message:'이 백업으로 원고를 복원할까요? 현재 상태는 먼저 별도 백업으로 저장됩니다.',confirmLabel:'복원'}))return;
-  button.disabled=true;
-  const restoreGuard=JSON.stringify(backupPayload());
-  const protectedCurrent=await createServerBackup('pre-restore');
-  if(!protectedCurrent){button.disabled=false;return}
-  backupBusy=true;setBackupStatus('백업을 복원하는 중…');
-  try{if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'백업을 불러오지 못했습니다.');const snapshot=validateBackupSnapshot(extractBackupSnapshot(result));if(JSON.stringify(backupPayload())!==restoreGuard)throw new Error('복원 중 새 편집 내용이 감지되어 덮어쓰기를 중단했습니다. 다시 비교한 뒤 복원해 주세요.');applyBackupSnapshot(snapshot);setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));setEditor();listFiles();renderComments();renderTaskBoard();save();markProjectActivity('restore');setBackupStatus(`복원 완료 · ${backupDate(result.created_at||result.snapshot?.created_at||Date.now())}`);await runUpdate()}
-  catch(error){setBackupStatus(`복원 실패 · ${error.message}`);alert(`백업을 복원하지 못했습니다.\n${error.message}`)}
-  finally{backupBusy=false;button.disabled=false;$('create-backup').disabled=false}
-}
-async function compareServerBackup(snapshotId,button){button.disabled=true;try{const response=await fetch(backupApi(`/${encodeURIComponent(snapshotId)}`),{headers:{Accept:'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'버전을 불러오지 못했습니다.');const snapshot=validateBackupSnapshot(extractBackupSnapshot(result));const {changed,added,removed,modified}=compareBackupFiles(snapshot.files,backupPayload().files);const panel=$('backup-diff');panel.hidden=false;panel.textContent=changed.length?`현재 버전과 비교: 수정 ${modified.length} · 추가 ${added.length} · 삭제 ${removed.length} — ${changed.slice(0,6).join(', ')}${changed.length>6?'…':''}`:'현재 원고와 동일합니다.'}catch(error){alert(`버전을 비교하지 못했습니다.\n${error.message}`)}finally{button.disabled=false}}
-function initializeServerBackups(){if(backupInitialized)return;backupInitialized=true;loadBackupHistory().finally(()=>createServerBackup('auto',{quiet:true}));setInterval(()=>createServerBackup('auto',{quiet:true}),backupIntervalMs)}
+const save=(options={})=>{syncCurrentFileToShared();return workspacePersistence.save({synced:collabReady,...options})};
 $('create-backup').onclick=()=>createServerBackup('manual');
-async function createNamedCheckpoint(){const input=$('checkpoint-name');const name=input.value.trim().replace(/[\r\n]+/g,' ').slice(0,68);if(!name){input.focus();return}const created=await createServerBackup(`checkpoint:${name}`);if(created)input.value=''}
 $('create-checkpoint').onclick=createNamedCheckpoint;
 function titleOf(tex){return (tex.match(/\\title\{([^}]*)\}/)||['','Untitled Paper'])[1]}
-function setProjectTitle(value,{updateTex=false}={}){const title=value.trim().slice(0,160)||'Untitled Paper';state.projectTitle=title;$('project-title').value=title;$('project-title').title=title;document.title=`${title} · Paper Workspace`;if(updateTex&&!isLockedProjectFile('paper/main.tex')){const source=state.files['paper/main.tex']||'';if(/\\title\{[^}]*\}/.test(source)){const latexTitle=title.replace(/[{}]/g,'');state.files['paper/main.tex']=source.replace(/\\title\{[^}]*\}/,()=>`\\title{${latexTitle}}`);if(state.current==='paper/main.tex')setEditorValueWithoutActivity(state.files['paper/main.tex']);if(!projectBootstrapComplete)bootstrapEdits.set('paper/main.tex',state.files['paper/main.tex']);save();markCompileInputsChanged();markProjectActivity('title')}}}
+function setProjectTitle(value,{updateTex=false}={}){const title=value.trim().slice(0,160)||'Untitled Paper';state.projectTitle=title;if(!projectTitleStartupPending||updateTex){if(updateTex)projectTitleStartupPending=false;$('project-title').value=title;$('project-title').title=title;document.title=`${title} · Paper Workspace`;syncReviewProjectTitle();}if(updateTex&&!isLockedProjectFile('paper/main.tex')){const source=state.files['paper/main.tex']||'';if(/\\title\{[^}]*\}/.test(source)){const latexTitle=title.replace(/[{}]/g,'');state.files['paper/main.tex']=source.replace(/\\title\{[^}]*\}/,()=>`\\title{${latexTitle}}`);if(state.current==='paper/main.tex')setEditorValueWithoutActivity(state.files['paper/main.tex']);if(!projectBootstrapComplete)bootstrapEdits.set('paper/main.tex',state.files['paper/main.tex']);save();markCompileInputsChanged();markProjectActivity('title')}}}
 function syncProjectTitleFromTex(force=false){if(state.current!=='paper/main.tex'&&!force)return;const title=titleOf(state.files['paper/main.tex']||$('editor').value);if(title&&(force||title!==state.projectTitle))setProjectTitle(title)}
-$('project-title').addEventListener('change',event=>setProjectTitle(event.target.value,{updateTex:true}));$('project-title').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur()}if(event.key==='Escape'){event.currentTarget.value=state.projectTitle||titleOf(state.files['paper/main.tex']||'');event.currentTarget.blur()}});setProjectTitle(state.projectTitle||titleOf(state.files['paper/main.tex']||''));
+$('project-title').addEventListener('change',event=>setProjectTitle(event.target.value,{updateTex:true}));$('project-title').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();event.currentTarget.blur()}if(event.key==='Escape'){event.currentTarget.value=state.projectTitle||titleOf(state.files['paper/main.tex']||'');event.currentTarget.blur()}});const initialProjectTitle=state.projectTitle||(state.files['paper/main.tex']?titleOf(state.files['paper/main.tex']):'');if(initialProjectTitle)setProjectTitle(initialProjectTitle);
 function section(tex,name){const match=tex.match(new RegExp('\\\\section\\{' + name + '\\}([\\s\\S]*?)(?=\\\\section|\\\\bibliography|$)'));return match?match[1].replace(/\\\\[a-zA-Z]+(?:\{([^}]*)\})?/g,'$1').replace(/[{}]/g,'').trim():''}
 let renderedPdfUrl='';
 let renderedSynctex='';
 let renderedSynctexFallback='';
-let renderedPdfBytes=null;
 let lastPdfAudit=null;
-let activePdfDocument=null,activePdfObserver=null,activePdfResizeObserver=null,pdfRenderGeneration=0;
-const activePdfRenderTasks=new Set();
+let activePdfDocument=null,activePdfObserver=null,activePdfResizeObserver=null,pdfRenderGeneration=0,pdfRenderRequest=0;
+let activePdfRenderTasks=new Set();
 const pdfPreRenderZoom=2,pdfMaxDevicePixelRatio=2,pdfMaxCanvasPixels=16_000_000;
 let pdfPageIndicatorFrame=0;
 function disposePdfPreview(){activePdfObserver?.disconnect();activePdfObserver=null;activePdfResizeObserver?.disconnect();activePdfResizeObserver=null;for(const task of activePdfRenderTasks)task.cancel?.();activePdfRenderTasks.clear();activePdfDocument?.destroy?.();activePdfDocument=null}
@@ -568,7 +667,7 @@ function resetPdfPageIndicator(){const indicator=$('pdf-page-indicator');indicat
 function updatePdfPageIndicator(){pdfPageIndicatorFrame=0;const indicator=$('pdf-page-indicator');const panel=document.querySelector('.preview-panel');const pages=Array.from(document.querySelectorAll('.pdf-page'));if(!panel||!pages.length){resetPdfPageIndicator();return}const current=window.PaperPdfViewport.currentPage(panel,pages);const pageNumber=Number(current?.dataset.page)||1;indicator.textContent=`${pageNumber} / ${pages.length}`;indicator.setAttribute('aria-label',`현재 PDF ${pageNumber}페이지, 전체 ${pages.length}페이지`);indicator.hidden=false}
 function schedulePdfPageIndicatorUpdate(){if(pdfPageIndicatorFrame)return;pdfPageIndicatorFrame=requestAnimationFrame(updatePdfPageIndicator)}
 function installPdfPageIndicator(){const panel=document.querySelector('.preview-panel');panel.addEventListener('scroll',schedulePdfPageIndicatorUpdate,{passive:true});new ResizeObserver(schedulePdfPageIndicatorUpdate).observe(panel);window.addEventListener('resize',schedulePdfPageIndicatorUpdate)}
-function setRenderedPdf(binary){renderedPdfBytes=binary;if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl);renderedPdfUrl=URL.createObjectURL(new Blob([binary],{type:'application/pdf'}));$('download-pdf').disabled=false;return renderedPdfUrl}
+function setRenderedPdf(binary){const nextUrl=URL.createObjectURL(new Blob([binary],{type:'application/pdf'}));if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl);renderedPdfUrl=nextUrl;$('download-pdf').disabled=false;return renderedPdfUrl}
 function installZoomControls(){
   const setEditorZoom=zoom=>{
     layout.editorZoom=constrain(Math.round(zoom*10)/10,.7,1.7);
@@ -610,8 +709,11 @@ function installZoomControls(){
 function installAssetViewer(){$('asset-zoom-out').onclick=()=>{assetZoom=constrain(assetZoom-.1,.5,3);applyAssetZoom()};$('asset-zoom-in').onclick=()=>{assetZoom=constrain(assetZoom+.1,.5,3);applyAssetZoom()}}
 async function syncPdfToSource(page,x,y){
   if(!renderedSynctex||!canUseRenderedSynctex())return;
+  const generation=pdfRenderGeneration;
   try{
-    const {response,result}=await requestSynctex('/api/synctex',{page,x,y});
+    const attempt=await requestSynctex('/api/synctex',{page,x,y},generation);
+    if(!attempt||generation!==pdfRenderGeneration||!canUseRenderedSynctex())return;
+    const {response,result}=attempt;
     if(!response.ok)throw new Error(result.error||'SyncTeX 위치 검색 실패');
     const candidates=[`paper/${result.file}`,result.file,...Object.keys(state.files).filter(path=>path.endsWith(`/${result.file}`))];
     const file=candidates.find(path=>state.files[path]!==undefined);
@@ -625,119 +727,9 @@ async function syncPdfToSource(page,x,y){
     const initialCoordinates=remoteCaretCoordinates(start);
     const targetTop=Math.max(70,editor.clientHeight*.32);
     editor.scrollTop=constrain(editor.scrollTop+initialCoordinates.top-targetTop,0,Math.max(0,editor.scrollHeight-editor.clientHeight));
-    requestAnimationFrame(()=>showSourceSyncHighlight(start));
+    requestAnimationFrame(()=>{if(generation===pdfRenderGeneration&&state.current===file)showSourceSyncHighlight(start)});
     sendCursor();
-  }catch(error){notify(error.message,{title:'PDF 위치 연결 오류',tone:'error'})}
-}
-async function renderPdfPreviewLazy(binary,synctex,fallbackSynctex=''){
-  const renderGeneration=++pdfRenderGeneration;
-  const ensureCurrent=(document=null)=>{if(renderGeneration===pdfRenderGeneration)return;document?.destroy?.();const error=new Error('A newer PDF render replaced this request.');error.name='RenderingCancelledException';throw error};
-  const panel=document.querySelector('.preview-panel');
-  const viewportSnapshot=window.PaperPdfViewport.capture(panel);
-  disposePdfPreview();
-  renderedSynctex=String(synctex||'');
-  renderedSynctexFallback=renderedSynctex.startsWith('id:')?String(fallbackSynctex||''):'';
-  const preview=$('paper-preview');
-  preview.classList.add('pdf-mode');
-  resetPdfPageIndicator();
-  preview.innerHTML=pdfWaitMarkup('첫 페이지 준비 중','첫 페이지를 먼저 표시합니다');
-  const pdfjs=await import('/vendor/pdfjs/pdf.mjs');
-  ensureCurrent();
-  pdfjs.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/pdf.worker.mjs';
-  const pdfDocument=await pdfjs.getDocument({data:binary}).promise;
-  ensureCurrent(pdfDocument);
-  activePdfDocument=pdfDocument;
-  const viewer=document.createElement('div');
-  viewer.className='pdf-canvas-viewer';
-  viewer.style.zoom=String(layout.pdfZoom);
-  preview.replaceChildren(viewer);
-  const firstPage=await pdfDocument.getPage(1);
-  ensureCurrent(pdfDocument);
-  const firstBase=firstPage.getViewport({scale:1});
-  let fitWidth=Math.max(1,preview.clientWidth-36);
-  const firstScale=Math.max(.35,fitWidth/firstBase.width);
-  const firstViewport=firstPage.getViewport({scale:firstScale});
-  const entries=Array.from({length:pdfDocument.numPages},(_,index)=>{
-    const pageNumber=index+1;
-    const wrapper=document.createElement('div');
-    wrapper.className='pdf-page';
-    wrapper.dataset.page=String(pageNumber);
-    wrapper.dataset.scale=String(firstScale);
-    wrapper.style.width=`${firstViewport.width}px`;
-    wrapper.style.minHeight=`${firstViewport.height}px`;
-    const canvas=document.createElement('canvas');
-    canvas.style.width=`${firstViewport.width}px`;
-    canvas.style.height=`${firstViewport.height}px`;
-    canvas.style.visibility='hidden';
-    canvas.tabIndex=-1;
-    canvas.setAttribute('role','button');
-    canvas.setAttribute('aria-label',`PDF ${pageNumber}페이지 — 클릭하거나 Enter 키를 누르면 LaTeX 원문으로 이동`);
-    wrapper.append(canvas);
-    viewer.append(wrapper);
-    return {pageNumber,canvas,wrapper,promise:null,task:null,rendered:false,scale:firstScale,base:firstBase};
-  });
-  const layoutEntry=entry=>{
-    entry.scale=Math.max(.35,fitWidth/entry.base.width);
-    entry.wrapper.dataset.scale=String(entry.scale);
-    const width=entry.base.width*entry.scale,height=entry.base.height*entry.scale;
-    entry.wrapper.style.width=`${width}px`;
-    entry.wrapper.style.minHeight=`${height}px`;
-    entry.canvas.style.width=`${width}px`;
-    entry.canvas.style.height=`${height}px`;
-  };
-  activePdfResizeObserver=new ResizeObserver(()=>{
-    if(activePdfDocument!==pdfDocument)return;
-    const nextFitWidth=Math.max(1,preview.clientWidth-36);
-    if(Math.abs(nextFitWidth-fitWidth)<1)return;
-    const snapshot=window.PaperPdfViewport.capture(panel,entries.map(entry=>entry.wrapper));
-    fitWidth=nextFitWidth;
-    entries.forEach(layoutEntry);
-    window.PaperPdfViewport.restore(panel,entries.map(entry=>entry.wrapper),snapshot);
-    schedulePdfPageIndicatorUpdate();
-  });
-  activePdfResizeObserver.observe(preview);
-  const renderPage=entry=>{
-    if(entry.rendered)return Promise.resolve();
-    if(entry.promise)return entry.promise;
-    entry.promise=(entry.pageNumber===1?Promise.resolve(firstPage):pdfDocument.getPage(entry.pageNumber)).then(page=>{
-      ensureCurrent(pdfDocument);
-      if(activePdfDocument!==pdfDocument)return;
-      const base=page.getViewport({scale:1});
-      entry.base=base;
-      layoutEntry(entry);
-      const viewport=page.getViewport({scale:entry.scale});
-      const desiredRatio=Math.min(devicePixelRatio||1,pdfMaxDevicePixelRatio)*pdfPreRenderZoom;
-      const pixelBudgetRatio=Math.sqrt(pdfMaxCanvasPixels/(viewport.width*viewport.height));
-      const renderRatio=Math.max(1,Math.min(desiredRatio,pixelBudgetRatio));
-      entry.canvas.width=Math.floor(viewport.width*renderRatio);
-      entry.canvas.height=Math.floor(viewport.height*renderRatio);
-      const syncFromPoint=(clientX,clientY)=>{const rect=entry.canvas.getBoundingClientRect();syncPdfToSource(entry.pageNumber,(clientX-rect.left)*entry.base.width/rect.width,(clientY-rect.top)*entry.base.height/rect.height)};
-      entry.canvas.onclick=event=>syncFromPoint(event.clientX,event.clientY);
-      entry.canvas.onkeydown=event=>{if(event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();const rect=entry.canvas.getBoundingClientRect();syncFromPoint(rect.left+rect.width/2,rect.top+rect.height/2)};
-      const task=page.render({canvasContext:entry.canvas.getContext('2d'),viewport,transform:renderRatio===1?null:[renderRatio,0,0,renderRatio,0,0]});
-      entry.task=task;
-      activePdfRenderTasks.add(task);
-      return task.promise.then(()=>{entry.canvas.style.visibility='visible';entry.canvas.tabIndex=0;entry.rendered=true}).catch(error=>{
-        // Leaving the viewport releases a canvas, including the first page
-        // hidden by mobile source mode. That cancellation must not abort the
-        // project bootstrap awaiting this render. Superseded documents and
-        // actual rendering failures still propagate to their caller.
-        if(error.name==='RenderingCancelledException'&&activePdfDocument===pdfDocument&&entry.task!==task)return;
-        throw error;
-      }).finally(()=>{if(entry.task===task)entry.task=null;activePdfRenderTasks.delete(task)});
-    });
-    return entry.promise;
-  };
-  const releasePage=entry=>{entry.task?.cancel?.();entry.task=null;entry.promise=null;entry.rendered=false;entry.canvas.tabIndex=-1;entry.canvas.style.visibility='hidden';entry.canvas.width=0;entry.canvas.height=0};
-  const entryByWrapper=new Map(entries.map(entry=>[entry.wrapper,entry]));
-  const observer=new IntersectionObserver(observed=>{for(const item of observed){const entry=entryByWrapper.get(item.target);if(!entry)continue;if(item.isIntersecting)renderPage(entry).catch(()=>{});else if(entry.rendered||entry.task)releasePage(entry)}},{root:panel,rootMargin:'1200px 0px'});
-  activePdfObserver=observer;
-  entries.forEach(entry=>observer.observe(entry.wrapper));
-  const restoredPage=window.PaperPdfViewport.restore(panel,entries.map(entry=>entry.wrapper),viewportSnapshot);
-  const restoredEntry=entryByWrapper.get(restoredPage)||entries[0];
-  await renderPage(restoredEntry);
-  ensureCurrent(pdfDocument);
-  schedulePdfPageIndicatorUpdate();
+  }catch(error){if(generation===pdfRenderGeneration)notify(error.message,{title:'PDF 위치 연결 오류',tone:'error'})}
 }
 function pdfFileName(){const title=titleOf(state.files['paper/main.tex']||'').replace(/\\[a-zA-Z]+|[{}]/g,' ').replace(/[^\p{L}\p{N}._ -]+/gu,'').trim().replace(/\s+/g,'-').slice(0,80);return `${title||'paper'}.pdf`}
 function pdfWaitMarkup(title='PDF 준비 중',detail='원고를 렌더링하고 있습니다'){return `<div class="pdf-wait" role="status" aria-live="polite"><span class="pdf-spinner" aria-hidden="true"></span><strong>${title}</strong><span class="pdf-wait-detail">${detail}</span></div>`}
@@ -751,11 +743,28 @@ let activeAsset='',assetZoom=1;
 function isImageAsset(asset,path){return Boolean(asset?.type?.startsWith('image/'))||imageExtensions.has(extensionOf(path))}
 function applyAssetZoom(){const image=$('asset-image');if(!image||image.hidden)return;image.classList.toggle('zoomed',assetZoom>1);image.style.transform=`scale(${assetZoom})`;$('asset-zoom-value').textContent=`${Math.round(assetZoom*100)}%`;$('asset-zoom-out').disabled=assetZoom<=.5;$('asset-zoom-in').disabled=assetZoom>=3}
 function assetDataUrlBytes(data){const encoded=data.slice(data.indexOf(',')+1);const binary=atob(encoded);return Uint8Array.from(binary,char=>char.charCodeAt(0))}
-let assetPdfSession=null;
-function disposeAssetPdf(){if(!assetPdfSession)return;assetPdfSession.observer?.disconnect();for(const task of assetPdfSession.tasks)task.cancel?.();assetPdfSession.document?.destroy?.();assetPdfSession=null}
-async function renderAssetPdf(path,asset,viewer){disposeAssetPdf();viewer.replaceChildren();const loading=document.createElement('div');loading.className='asset-pdf-loading';loading.innerHTML='<span class="pdf-spinner" aria-hidden="true"></span><strong>PDF 미리보기 준비 중</strong>';viewer.append(loading);try{const pdfjs=await import('/vendor/pdfjs/pdf.mjs');pdfjs.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/pdf.worker.mjs';const pdf=await pdfjs.getDocument({data:assetDataUrlBytes(asset.data)}).promise;if(activeAsset!==path){pdf.destroy();return}const stage=$('asset-stage');const firstPage=await pdf.getPage(1);const base=firstPage.getViewport({scale:1});const scale=Math.min(1.5,Math.max(.35,(stage.clientWidth-56)/base.width));const firstViewport=firstPage.getViewport({scale});const session={document:pdf,observer:null,tasks:new Set()};assetPdfSession=session;viewer.replaceChildren();const entries=[];for(let pageNumber=1;pageNumber<=pdf.numPages;pageNumber+=1){const wrapper=document.createElement('div');wrapper.className='asset-pdf-page';wrapper.style.minHeight=`${firstViewport.height}px`;const canvas=document.createElement('canvas');canvas.style.width=`${firstViewport.width}px`;canvas.style.height=`${firstViewport.height}px`;wrapper.append(canvas);viewer.append(wrapper);entries.push({pageNumber,wrapper,canvas,promise:null})}const renderEntry=entry=>{if(entry.promise)return entry.promise;entry.promise=(entry.pageNumber===1?Promise.resolve(firstPage):pdf.getPage(entry.pageNumber)).then(page=>{if(assetPdfSession!==session||activeAsset!==path)return;const viewport=page.getViewport({scale});const ratio=Math.min(devicePixelRatio||1,2);entry.canvas.width=Math.floor(viewport.width*ratio);entry.canvas.height=Math.floor(viewport.height*ratio);entry.canvas.style.width=`${viewport.width}px`;entry.canvas.style.height=`${viewport.height}px`;entry.wrapper.style.minHeight=`${viewport.height}px`;const task=page.render({canvasContext:entry.canvas.getContext('2d'),viewport,transform:ratio===1?null:[ratio,0,0,ratio,0,0]});session.tasks.add(task);return task.promise.finally(()=>session.tasks.delete(task))});return entry.promise};const byWrapper=new Map(entries.map(entry=>[entry.wrapper,entry]));session.observer=new IntersectionObserver(items=>{for(const item of items)if(item.isIntersecting)renderEntry(byWrapper.get(item.target)).catch(()=>{})},{root:stage,rootMargin:'700px 0px'});entries.forEach(entry=>session.observer.observe(entry.wrapper));await renderEntry(entries[0])}catch(error){if(activeAsset!==path)return;viewer.replaceChildren();const message=document.createElement('div');message.className='asset-empty';const title=document.createElement('strong');title.textContent='PDF 미리보기 오류';const detail=document.createElement('span');detail.textContent=String(error.message||error);message.append(title,detail);viewer.append(message)}}
-async function ensureAssetLoaded(path){const asset=state.assets[path];if(!asset)throw new Error(`자산을 찾을 수 없습니다: ${path}`);if(asset.data)return asset;const remoteSource=remoteAssetSources.get(path),sources=[...new Set([asset.server?serverAssetUrl(path):'',remoteSource].filter(Boolean))];if(!sources.length)throw new Error(`자산 원본을 찾을 수 없습니다: ${path}`);if(asset.loading)return asset.loading;asset.loading=(async()=>{let lastError;for(const source of sources){try{const response=await fetch(source,{cache:source===remoteSource?'force-cache':'no-store'});if(!response.ok)continue;const blob=await response.blob();asset.type=blob.type||asset.type||'application/octet-stream';asset.size=blob.size;asset.data=await fileToDataUrl(blob);if(source===remoteSource)asset.server=false;await storeLocalAsset(path,asset).catch(()=>{});return asset}catch(error){lastError=error}}throw lastError||new Error(`${baseName(path)} 다운로드 실패`)})().finally(()=>delete asset.loading);return asset.loading}
-async function showAssetPreview(path){let asset=state.assets[path];if(!asset)return;activeAsset=path;assetZoom=1;$('editor-panel').classList.add('asset-mode');$('asset-viewer').hidden=false;$('active-file').textContent=path;$('asset-name').textContent=baseName(path);$('asset-meta').textContent='불러오는 중…';const image=$('asset-image'),pdfViewer=$('asset-pdf-viewer'),empty=$('asset-empty');image.hidden=true;pdfViewer.hidden=true;empty.hidden=true;try{asset=await ensureAssetLoaded(path)}catch(error){if(activeAsset!==path)return;empty.hidden=false;empty.querySelector('strong').textContent='파일을 불러오지 못했습니다';empty.querySelector('span').textContent=error.message;return}if(activeAsset!==path)return;$('asset-meta').textContent=`${asset.type||'프로젝트 자산'} · ${(asset.size/1024).toFixed(1)} KB`;pdfViewer.replaceChildren();if(isImageAsset(asset,path)){image.src=asset.data;image.alt=`${baseName(path)} 미리보기`;image.hidden=false;pdfViewer.hidden=true;empty.hidden=true;applyAssetZoom()}else if(extensionOf(path)==='pdf'||asset.type==='application/pdf'){image.hidden=true;image.removeAttribute('src');pdfViewer.hidden=false;empty.hidden=true;$('asset-zoom-value').textContent='—';$('asset-zoom-out').disabled=true;$('asset-zoom-in').disabled=true;renderAssetPdf(path,asset,pdfViewer)}else{image.hidden=true;image.removeAttribute('src');pdfViewer.hidden=true;empty.hidden=false;$('asset-zoom-value').textContent='—';$('asset-zoom-out').disabled=true;$('asset-zoom-in').disabled=true}$('asset-download').onclick=()=>{const link=document.createElement('a');link.href=asset.data;link.download=baseName(path);document.body.append(link);link.click();link.remove()};listFiles()}
+async function ensureAssetLoaded(path){
+  const asset=state.assets[path];
+  if(!asset)throw new Error(`자산을 찾을 수 없습니다: ${path}`);
+  if(asset.data)return asset;
+  if(asset.loading)return asset.loading;
+  const remoteSource=remoteAssetSources.get(path);
+  const source=remoteSource||(asset.server?serverAssetUrl(path):'');
+  if(!source)throw new Error(`자산 원본을 찾을 수 없습니다: ${path}`);
+  asset.loading=(async()=>{
+    const response=await fetch(source,{cache:remoteSource&&asset.runtimeSource===source?'force-cache':'no-store'});
+    if(!response.ok)throw new Error(`${baseName(path)} 다운로드 실패`);
+    const blob=await response.blob();
+    asset.type=blob.type||asset.type||'application/octet-stream';
+    asset.size=blob.size;
+    asset.data=await fileToDataUrl(blob);
+    if(remoteSource)asset.server=false;
+    else if(state.assets[path]===asset)await storeLocalAsset(path,asset).catch(error=>reportClientError(error,'storeLocalAsset'));
+    return asset;
+  })().finally(()=>delete asset.loading);
+  return asset.loading;
+}
+async function showAssetPreview(path){let asset=state.assets[path];if(!asset)return;disposeAssetPdf();const generation=assetPreviewGeneration;activeAsset=path;assetZoom=1;$('editor-panel').classList.add('asset-mode');$('asset-viewer').hidden=false;$('active-file').textContent=path;$('asset-name').textContent=baseName(path);$('asset-meta').textContent='불러오는 중…';const image=$('asset-image'),pdfViewer=$('asset-pdf-viewer'),empty=$('asset-empty');image.hidden=true;pdfViewer.hidden=true;empty.hidden=true;try{asset=await ensureAssetLoaded(path)}catch(error){if(activeAsset!==path||generation!==assetPreviewGeneration)return;empty.hidden=false;empty.querySelector('strong').textContent='파일을 불러오지 못했습니다';empty.querySelector('span').textContent=error.message;return}if(activeAsset!==path||generation!==assetPreviewGeneration)return;$('asset-meta').textContent=`${asset.type||'프로젝트 자산'} · ${(asset.size/1024).toFixed(1)} KB`;pdfViewer.replaceChildren();if(isImageAsset(asset,path)){image.src=asset.data;image.alt=`${baseName(path)} 미리보기`;image.hidden=false;pdfViewer.hidden=true;empty.hidden=true;applyAssetZoom()}else if(extensionOf(path)==='pdf'||asset.type==='application/pdf'){image.hidden=true;image.removeAttribute('src');pdfViewer.hidden=false;empty.hidden=true;$('asset-zoom-value').textContent='—';$('asset-zoom-out').disabled=true;$('asset-zoom-in').disabled=true;renderAssetPdf(path,asset,pdfViewer,generation)}else{image.hidden=true;image.removeAttribute('src');pdfViewer.hidden=true;empty.hidden=false;$('asset-zoom-value').textContent='—';$('asset-zoom-out').disabled=true;$('asset-zoom-in').disabled=true}$('asset-download').onclick=()=>{const link=document.createElement('a');link.href=asset.data;link.download=baseName(path);document.body.append(link);link.click();link.remove()};listFiles()}
 const hasLocalFiles=event=>Array.from(event.dataTransfer?.types||[]).includes('Files');
 const assetDataLimit=8*1024*1024;
 function ensureFolderChain(path){let current='';for(const segment of path.split('/').filter(Boolean)){current=current?`${current}/${segment}`:segment;ensureFolder(current)}}
@@ -789,8 +798,8 @@ function installMainCompileControl(){$('pin-main-compile').onclick=toggleMainCom
 function selectedEntrypoint(){const fallback=projectManifest.entrypoint||'main.tex';if(mainCompilePinned)return fallback;const current=state.current?.startsWith('paper/')?state.current.slice('paper/'.length):'';return current&&extensionOf(current)==='tex'&&state.files[`paper/${current}`]!==undefined?current:fallback}
 function selectedPreviewMode(entrypoint=selectedEntrypoint()){const root=projectManifest.entrypoint||'main.tex';const source=state.files[`paper/${entrypoint}`]||'';return entrypoint!==root&&!isLatexDocument(source)?'fragment':'document'}
 async function compilePayload(){const entrypoint=selectedEntrypoint();return buildCompilePayload({files:state.files,assets:state.assets,entrypoint,rootEntrypoint:projectManifest.entrypoint||'main.tex',previewMode:selectedPreviewMode(entrypoint),workspaceId:projectSlug,ensureAssetLoaded})}
-let contextTarget={type:'root',path:''};let pendingUploadFolder='';
-function showTreeMenu(event,type,path){event.preventDefault();event.stopPropagation();contextTarget={type,path};const menu=$('tree-menu');const protectedPaper=(type==='folder'&&path==='paper')||(type==='file'&&path==='paper/main.tex');menu.querySelector('[data-action="new-folder"]').hidden=type==='file';menu.querySelector('[data-action="upload"]').hidden=type==='file';menu.querySelector('[data-action="rename"]').hidden=type==='root'||protectedPaper;menu.querySelector('[data-action="delete"]').hidden=type==='root'||protectedPaper;menu.hidden=false;const width=184,height=220,anchor=event.currentTarget?.getBoundingClientRect?.();const x=event.clientX||anchor?.left||8,y=event.clientY||anchor?.bottom||8;menu.style.left=`${Math.max(8,Math.min(x,innerWidth-width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-height-8))}px`;menu.querySelector('button:not([hidden])')?.focus();}
+let contextTarget={type:'root',path:''};let treeMenuTrigger=null;let pendingUploadFolder='';
+function showTreeMenu(event,type,path){event.preventDefault();event.stopPropagation();treeMenuTrigger=event.currentTarget;contextTarget={type,path};const menu=$('tree-menu');const protectedPaper=!canMutateTreeTarget(type,path);menu.querySelector('[data-action="new-folder"]').hidden=type==='file';menu.querySelector('[data-action="upload"]').hidden=type==='file';menu.querySelector('[data-action="rename"]').hidden=type==='root'||protectedPaper;menu.querySelector('[data-action="delete"]').hidden=type==='root'||protectedPaper;menu.querySelector('.menu-separator').hidden=![...menu.querySelectorAll('[data-action="rename"],[data-action="delete"]')].some(item=>!item.hidden);menu.hidden=false;const {width,height}=menu.getBoundingClientRect(),anchor=event.currentTarget?.getBoundingClientRect?.();const x=event.clientX||anchor?.left||8,y=event.clientY||anchor?.bottom||8;menu.style.left=`${Math.max(8,Math.min(x,innerWidth-width-8))}px`;menu.style.top=`${Math.max(8,Math.min(y,innerHeight-height-8))}px`;menu.querySelector('button:not([hidden])')?.focus();}
 function openTextFile(path){if(state.files[path]===undefined)return false;disposeAssetPdf();if(!isLockedProjectFile())state.files[state.current]=editorValue();state.current=path;setEditor();listFiles();save();sendCursor();if(innerWidth<768)activateFocusMode('source');if(extensionOf(path)==='tex')compileAfterSave();return true}
 const fileIconPaths={code:['M8 8 4 12l4 4','m16 8 4 4-4 4','m14 5-4 14'],library:['M5 5.5h5a2.5 2.5 0 0 1 2.5 2.5v11H7a2 2 0 0 0-2 2z','M19 5.5h-5A2.5 2.5 0 0 0 11.5 8v11H17a2 2 0 0 1 2 2z'],text:['M6 3h8l4 4v14H6z','M14 3v5h5','M9 12h6','M9 16h6'],image:['M4 5h16v14H4z','m6.5 16 3.5-3.5 3 3 2-2 2.5 2.5','M8.5 9h.01'],pdf:['M6 3h8l4 4v14H6z','M14 3v5h5','M9 12h6','M9 16h4'],other:['M6 3h8l4 4v14H6z','M14 3v5h5','M12 12h.01','M12 16h.01'],folder:['M3 6h6l2 2h10v10H3z']};
 function fileIconVariant(path,{kind='',mime=''}={}){if(kind==='folder')return'folder';const extension=extensionOf(path);if(imageExtensions.has(extension)||mime.startsWith('image/'))return'image';if(extension==='pdf'||mime==='application/pdf')return'pdf';if(extension==='bib')return'library';if(['tex','sty','cls','bst','js','mjs','py','sh'].includes(extension))return'code';if(['md','txt','csv','tsv','json','yaml','yml','log','dat'].includes(extension))return'text';return'other'}
@@ -829,11 +838,11 @@ function renderQuickNavigation(){
     navigation.append(item);
   }
 }
-function listFiles(){const files=$('files');files.innerHTML='';const allFolders=new Set(state.folders);for(const file of [...Object.keys(state.files),...Object.keys(state.assets)]){let folder=parentPath(file);while(folder){allFolders.add(folder);folder=parentPath(folder)}}for(const folder of [...state.folders]){let parent=parentPath(folder);while(parent){allFolders.add(parent);parent=parentPath(parent)}}[...allFolders].filter(folder=>!parentPath(folder)).sort((a,b)=>a==='paper'?-1:b==='paper'?1:a.localeCompare(b)).forEach(folder=>files.append(folderElement(folder,allFolders)));Object.keys(state.files).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(fileButton(file)));Object.keys(state.assets).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(assetButton(file)));applyFileFilter();renderQuickNavigation();$('uploaded-files').innerHTML=state.uploads.map(name=>`<div class="source-file">${esc(name)}</div>`).join('')||'<p class="hint">아직 업로드한 자료가 없습니다.</p>'}
+function listFiles(){if($('composer-file'))$('composer-file').textContent=baseName(state.current||'main.tex');const files=$('files');files.innerHTML='';const allFolders=new Set(state.folders);for(const file of [...Object.keys(state.files),...Object.keys(state.assets)]){let folder=parentPath(file);while(folder){allFolders.add(folder);folder=parentPath(folder)}}for(const folder of [...state.folders]){let parent=parentPath(folder);while(parent){allFolders.add(parent);parent=parentPath(parent)}}[...allFolders].filter(folder=>!parentPath(folder)).sort((a,b)=>a==='paper'?-1:b==='paper'?1:a.localeCompare(b)).forEach(folder=>files.append(folderElement(folder,allFolders)));Object.keys(state.files).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(fileButton(file)));Object.keys(state.assets).filter(file=>!parentPath(file)).sort().forEach(file=>files.append(assetButton(file)));applyFileFilter();renderQuickNavigation();$('uploaded-files').innerHTML=state.uploads.map(name=>`<div class="source-file">${esc(name)}</div>`).join('')||'<p class="hint">아직 업로드한 자료가 없습니다.</p>'}
 function commentLocation(comment){const source=state.files[comment.file]||'',relative=comment.anchorRelative&&comment.headRelative?collabSession.resolveRange(comment):null;if(relative)return [Math.min(relative[0],source.length),Math.min(relative[1],source.length)];if(source.slice(comment.start,comment.end)===comment.anchor||source.slice(comment.start,comment.start+comment.anchor.length)===comment.anchor)return [comment.start,Math.min(comment.end,source.length)];const found=source.indexOf(comment.anchor);return found>=0?[found,found+comment.anchor.length]:[Math.min(comment.start,source.length),Math.min(comment.end,source.length)]}
 function renderCommentAnchors(){const container=$('comment-anchors');container.replaceChildren();if(activeAsset)return;const groups=new Map(),height=richEditor?.dom.clientHeight||0;for(const comment of state.comments.filter(item=>item.file===state.current)){const [start]=commentLocation(comment),coordinates=remoteCaretCoordinates(start);if(coordinates.top<-coordinates.lineHeight||coordinates.top>height)continue;const key=Math.round(coordinates.top/coordinates.lineHeight);if(!groups.has(key))groups.set(key,{coordinates,comments:[]});groups.get(key).comments.push(comment)}for(const {coordinates,comments} of groups.values()){const indicator=document.createElement('span');indicator.className='comment-line-indicator';indicator.style.top=`${coordinates.top}px`;indicator.style.height=`${coordinates.lineHeight}px`;const marker=document.createElement('button');marker.type='button';marker.className='comment-anchor-marker';marker.style.top=`${coordinates.top}px`;marker.textContent=String(comments.length);const first=comments[0],more=comments.length>1?` · 외 ${comments.length-1}개`:'';marker.dataset.tooltip=`${first.actor||'공동저자'}: ${first.body}${more}`;marker.setAttribute('aria-label',`${first.actor||'공동저자'}의 댓글${more}. 클릭하여 댓글로 이동`);marker.onclick=()=>{goToComment(first);activateAssistantTab('comments')};container.append(indicator,marker)}}
 function goToComment(comment){if(!state.files[comment.file])return alert('댓글이 연결된 파일을 찾을 수 없습니다.');state.files[state.current]=editorValue();state.current=comment.file;setEditor();listFiles();const [start,end]=commentLocation(comment);focusEditor();setEditorSelection(start,end,{scroll:true});activeSelection={file:comment.file,start,end,text:editorValue().slice(start,end)};sendCursor()}
-function renderComments(){renderCommentAnchors();const container=$('comment-list');if(!state.comments.length){container.innerHTML='<p class="hint">아직 댓글이 없습니다.</p>';return}container.replaceChildren(...state.comments.map(comment=>{const card=document.createElement('article');card.className='comment-card';card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`${comment.file}의 댓글 위치로 이동`);card.innerHTML=`<div class="comment-anchor latex-preview">${latexPreview(comment.anchor)}</div><div class="comment-body">${esc(comment.body)}</div><div class="comment-meta"><span>${comment.actor?`${esc(comment.actor)} · `:''}${esc(comment.file)}</span><button type="button" class="resolve-comment">해결</button></div>`;card.onclick=event=>{if(!event.target.closest('.resolve-comment'))goToComment(comment)};card.onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();goToComment(comment)}};card.querySelector('.resolve-comment').onclick=event=>{event.stopPropagation();const key=String(comment.id||comment.revision);if(sharedMetadataReady)sharedComments.delete(key);else{state.comments=state.comments.filter(item=>String(item.id||item.revision)!==key);save();renderComments()}};return card}))}
+function renderComments(){renderCommentAnchors();const container=$('comment-list');if(!state.comments.length){container.innerHTML='<p class="hint">아직 댓글이 없습니다.</p>';return}container.replaceChildren(...state.comments.map(comment=>{const card=document.createElement('article');card.className='comment-card';card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',`${comment.file}의 댓글 위치로 이동`);card.innerHTML=`<span class="comment-avatar" aria-hidden="true">${esc((comment.actor||"?").slice(0,2).toUpperCase())}</span><div class="comment-message"><div class="comment-meta"><strong>${esc(comment.actor||"작성자")}</strong><span>${esc(comment.file)}</span><button type="button" class="resolve-comment">해결</button></div><div class="comment-body">${esc(comment.body)}</div><blockquote class="comment-anchor latex-preview">${latexPreview(comment.anchor)}</blockquote></div>`;card.onclick=event=>{if(!event.target.closest('.resolve-comment'))goToComment(comment)};card.onkeydown=event=>{if(event.target!==card)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();goToComment(comment)}};card.querySelector('.resolve-comment').onclick=event=>{event.stopPropagation();const key=String(comment.id||comment.revision);if(sharedMetadataReady)sharedComments.delete(key);else{state.comments=state.comments.filter(item=>String(item.id||item.revision)!==key);save();renderComments()}};return card}))}
 let editorEventsBound=false;
 const autoSaveDelayMs=1000;
 function scheduleCompileAfterSave(){if(!workspaceReadyForCompile)return;workspaceContentRevision+=1;clearTimeout(window.saveTimer);window.saveTimer=setTimeout(()=>{if(save())compileAfterSave()},autoSaveDelayMs)}
@@ -842,39 +851,61 @@ function updateWordCount(value=editorValue()){const count=value.trim().split(/\s
 function updateEditorMetadata(){if(isLockedProjectFile())return;const value=editorValue();state.files[state.current]=value;updateWordCount(value);$('save-state').textContent='저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();scheduleCompileAfterSave()}
 function installEditorShortcuts(){document.addEventListener('keydown',event=>{const modifier=event.metaKey||event.ctrlKey;if(!modifier)return;const key=event.key.toLowerCase();if(key==='s'){event.preventDefault();if(isLockedProjectFile()){$('save-state').textContent='수정 잠김';return}state.files[state.current]=editorValue();clearTimeout(window.saveTimer);if(save()){$('save-state').textContent='저장됨';compileAfterSave()}return}if(!richEditor?.focusWithin())return;if(key==='z')return;if(key==='y')return;if(event.altKey&&key==='c'){event.preventDefault();captureEditorSelection();prepareInlineComment();return}if(event.altKey&&key==='a'){event.preventDefault();captureEditorSelection();prepareCodexRequest();return}})}
 let cursorTimer=0,lastCursorPayload='';
-function sendCursor(){clearTimeout(cursorTimer);cursorTimer=setTimeout(()=>{const selection=editorSelection(),position=selection.start;const payload=JSON.stringify({file:state.current,selection:[position,selection.end]});if(payload===lastCursorPayload)return;lastCursorPayload=payload;collabSession.setCursor(state.current,position,selection.end)},50)}
-function setEditor(){activeAsset='';$('editor-panel').classList.remove('asset-mode');$('asset-viewer').hidden=true;const editor=$('editor');bindSharedFile(state.current);suppressProjectActivity=true;try{richEditor.setDocument(state.current,state.files[state.current]);editor.value=richEditor.getValue()}finally{suppressProjectActivity=false}const locked=isLockedProjectFile();editor.readOnly=locked;richEditor.contentDOM.contentEditable=locked?'false':'true';richEditor.contentDOM.setAttribute('aria-readonly',String(locked));$('editor-panel').classList.toggle('source-locked',locked);$('active-file').textContent=`${state.current}${locked?'  🔒':''}`;$('project-title').readOnly=isLockedProjectFile('paper/main.tex');if(locked)$('save-state').textContent='수정 잠김';if(!editorEventsBound){editor.addEventListener('beforeinput',event=>{if(isLockedProjectFile())event.preventDefault()});editor.addEventListener('input',()=>{if(isLockedProjectFile()){setEditorValueWithoutActivity(state.files[state.current]);return}const value=editorValue();state.files[state.current]=value;if(!projectBootstrapComplete)bootstrapEdits.set(state.current,value);if(!suppressProjectActivity)markProjectActivity('edit');syncCurrentFileToShared();markCollaborationChange();$('save-state').textContent=collabReady?'공동 편집 전송 중…':'로컬 저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();renderCommentAnchors();scheduleCompileAfterSave();updateWordCount(value);});editor.addEventListener('click',sendCursor);editor.addEventListener('keyup',sendCursor);editorEventsBound=true}updateWordCount();renderCommentAnchors()}
+function sendCursor(){
+  clearTimeout(cursorTimer);
+  // The retained Rebuttal iframe owns this shared awareness state while active.
+  if(paperReviewActive)return;
+  cursorTimer=setTimeout(()=>{
+    if(paperReviewActive)return;
+    const selection=editorSelection(),position=selection.start;
+    const visible=!document.hidden,focused=visible&&document.hasFocus();
+    const workspace={surface:'paper',visible,focused,editing:focused&&!activeAsset&&!isLockedProjectFile()&&Boolean(richEditor?.focusWithin()),file:state.current};
+    const hasSharedText=sharedText?.doc===collabSession.document;
+    const payload=JSON.stringify({workspace,selection:[position,selection.end],hasSharedText});
+    if(payload===lastCursorPayload)return;
+    lastCursorPayload=payload;
+    const awareness=collabSession.provider?.awareness;
+    if(awareness){
+      const local=awareness.getLocalState();if(!local)return;
+      const range=workspace.editing&&hasSharedText?collabSession.encodeRange(state.current,position,selection.end):null;
+      const cursor=range?{active_file:state.current,anchor:range.anchorRelative,head:range.headRelative}:null;
+      const next={...local,workspace,rebuttal:null,cursor};
+      if(JSON.stringify([local.workspace,local.rebuttal,local.cursor])!==JSON.stringify([workspace,null,cursor]))awareness.setLocalState(next);
+    }
+  },50)
+}
+function setEditor(){if(activeAsset)disposeAssetPdf();activeAsset='';$('editor-panel').classList.remove('asset-mode');$('asset-viewer').hidden=true;const editor=$('editor');bindSharedFile(state.current);suppressProjectActivity=true;try{richEditor.setDocument(state.current,state.files[state.current]);editor.value=richEditor.getValue()}finally{suppressProjectActivity=false}const locked=isLockedProjectFile();editor.readOnly=locked;richEditor.contentDOM.contentEditable=locked?'false':'true';richEditor.contentDOM.setAttribute('aria-readonly',String(locked));$('editor-panel').classList.toggle('source-locked',locked);$('active-file').textContent=`${state.current}${locked?'  🔒':''}`;$('project-title').readOnly=isLockedProjectFile('paper/main.tex');if(locked)$('save-state').textContent='수정 잠김';if(!editorEventsBound){editor.addEventListener('beforeinput',event=>{if(isLockedProjectFile())event.preventDefault()});editor.addEventListener('input',()=>{if(isLockedProjectFile()){setEditorValueWithoutActivity(state.files[state.current]);return}const value=editorValue();state.files[state.current]=value;if(!projectBootstrapComplete)bootstrapEdits.set(state.current,value);if(!suppressProjectActivity)markProjectActivity('edit');syncCurrentFileToShared();markCollaborationChange();$('save-state').textContent=collabReady?'공동 편집 전송 중…':'로컬 저장 중…';setPdfFreshness(Boolean(renderedPdfUrl));sendCursor();renderCommentAnchors();scheduleCompileAfterSave();updateWordCount(value);});editor.addEventListener('click',sendCursor);editor.addEventListener('keyup',sendCursor);editorEventsBound=true}updateWordCount();renderCommentAnchors();sendCursor()}
 let activeSelection=null;
 function selectedEditorRange(){const selection=editorSelection(),value=editorValue();if(selection.end>selection.start){activeSelection={file:state.current,start:selection.start,end:selection.end,text:value.slice(selection.start,selection.end)};return activeSelection}if(activeSelection&&activeSelection.file===state.current&&value.slice(activeSelection.start,activeSelection.end)===activeSelection.text)return activeSelection;return null}
-function resetInlineCodexComposer(){const toolbar=$('selection-toolbar');toolbar.classList.remove('composing','sending');toolbar.style.width='';for(const composer of toolbar.querySelectorAll('.selection-codex-composer'))composer.hidden=true;$('selection-codex-prompt').value='';$('selection-comment-prompt').value=''}
+function resetInlineCodexComposer(){const toolbar=$('selection-toolbar');toolbar.classList.remove('composing','sending');for(const composer of toolbar.querySelectorAll('.selection-codex-composer'))composer.hidden=true;$('selection-codex-prompt').value='';$('selection-comment-prompt').value=''}
 function hideSelectionToolbar(){const toolbar=$('selection-toolbar');toolbar.hidden=true;resetInlineCodexComposer()}
 let selectionPointer={x:0,y:0};
-function captureEditorSelection(event={}){if(Number.isFinite(event.clientX)&&event.clientX>0)selectionPointer={x:event.clientX,y:event.clientY};const selection=editorSelection(),value=editorValue();if(selection.end<=selection.start){hideSelectionToolbar();return}activeSelection={file:state.current,start:selection.start,end:selection.end,text:value.slice(selection.start,selection.end)};const toolbar=$('selection-toolbar'),bounds=richEditor.dom.getBoundingClientRect();toolbar.hidden=false;requestAnimationFrame(()=>{const pointerX=selectionPointer.x||bounds.right-150;const pointerY=selectionPointer.y||bounds.top+70;const preferredLeft=pointerX+10;const left=preferredLeft+toolbar.offsetWidth<=innerWidth-10?preferredLeft:pointerX-toolbar.offsetWidth-10;const above=pointerY-toolbar.offsetHeight-10;const top=above>=bounds.top?above:pointerY+12;toolbar.style.left=`${Math.max(bounds.left+8,Math.min(left,innerWidth-toolbar.offsetWidth-10))}px`;toolbar.style.top=`${Math.max(58,Math.min(top,innerHeight-toolbar.offsetHeight-10))}px`})}
-function activateAssistantTab(id,{handoff=false,focus=false}={}){const panel=$('assistant-panel');setAssistantCollapsed(false);document.querySelectorAll('.tab').forEach(tab=>{const selected=tab.dataset.tab===id;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;if(selected&&focus)tab.focus()});document.querySelectorAll('.assistant-content').forEach(content=>{content.classList.remove('tab-entering');content.classList.toggle('hidden',content.id!==id)});const active=$(id);if(handoff){panel.classList.remove('assistant-handoff');void panel.offsetWidth;panel.classList.add('assistant-handoff');active.classList.add('tab-entering');panel.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});setTimeout(()=>{panel.classList.remove('assistant-handoff');active.classList.remove('tab-entering')},220)}}
+function captureEditorSelection(event={}){if(Number.isFinite(event.clientX)&&event.clientX>0)selectionPointer={x:event.clientX,y:event.clientY};const selection=editorSelection(),value=editorValue();if(selection.end<=selection.start){hideSelectionToolbar();return}activeSelection={file:state.current,start:selection.start,end:selection.end,text:value.slice(selection.start,selection.end)};const toolbar=$('selection-toolbar'),bounds=richEditor.dom.getBoundingClientRect();toolbar.hidden=false;requestAnimationFrame(()=>{const pointerX=selectionPointer.x||bounds.right-150;const pointerY=selectionPointer.y||bounds.top+70;const preferredLeft=pointerX+10;const left=preferredLeft+toolbar.offsetWidth<=innerWidth-10?preferredLeft:pointerX-toolbar.offsetWidth-10;const above=pointerY-toolbar.offsetHeight-10;const top=above>=bounds.top?above:pointerY+12;toolbar.style.setProperty('--selection-toolbar-left',`${Math.max(bounds.left+8,Math.min(left,innerWidth-toolbar.offsetWidth-10))}px`);toolbar.style.setProperty('--selection-toolbar-top',`${Math.max(58,Math.min(top,innerHeight-toolbar.offsetHeight-10))}px`)})}
+function activateAssistantTab(id,{handoff=false,focus=false}={}){const panel=$('assistant-panel');setAssistantCollapsed(false);document.querySelectorAll('.tab').forEach(tab=>{const selected=tab.dataset.tab===id;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;if(selected&&focus)tab.focus()});document.querySelectorAll('.assistant-content').forEach(content=>{content.classList.remove('tab-entering');content.classList.toggle('hidden',content.id!==id)});const active=$(id);$('assistant-tools').dispatchEvent(new Event('paper-tab-selected'));if(handoff){panel.classList.remove('assistant-handoff');void panel.offsetWidth;panel.classList.add('assistant-handoff');active.classList.add('tab-entering');panel.scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});setTimeout(()=>{panel.classList.remove('assistant-handoff');active.classList.remove('tab-entering')},220)}}
 function applyCodexRevision(selection,replacement){if(isLockedProjectFile()){alert('잠긴 파일은 수정할 수 없습니다.');return}if(selection.file!==state.current||editorValue().slice(selection.start,selection.end)!==selection.text){alert('Codex 요청 이후 원문이 변경되어 자동 적용하지 않았습니다. 다시 선택해 주세요.');return}richEditor.replaceRange(replacement,selection.start,selection.end,true);activeSelection={file:state.current,start:selection.start,end:selection.start+replacement.length,text:replacement};updateEditorMetadata();markProjectActivity('codex');hideSelectionToolbar();const apply=$('suggestion').querySelector('#apply-codex');if(apply){apply.textContent='✓ 원문에 적용됨';apply.disabled=true}}
-function openInlineSelectionComposer(composerId,inputId,targetWidth=440){const toolbar=$('selection-toolbar'),composer=$(composerId),input=$(inputId);for(const item of toolbar.querySelectorAll('.selection-codex-composer'))item.hidden=item!==composer;composer.hidden=false;const width=Math.min(targetWidth,innerWidth-20);toolbar.style.setProperty('--composer-width',`${width}px`);requestAnimationFrame(()=>{if(toolbar.hidden||composer.hidden)return;toolbar.classList.add('composing');const currentLeft=parseFloat(toolbar.style.left)||toolbar.getBoundingClientRect().left;toolbar.style.left=`${Math.max(10,Math.min(currentLeft,innerWidth-width-10))}px`;input.focus()})}
+function openInlineSelectionComposer(composerId,inputId,targetWidth=440){const toolbar=$('selection-toolbar'),composer=$(composerId),input=$(inputId);for(const item of toolbar.querySelectorAll('.selection-codex-composer'))item.hidden=item!==composer;composer.hidden=false;const width=Math.min(targetWidth,innerWidth-20);toolbar.style.setProperty('--composer-width',`${width}px`);requestAnimationFrame(()=>{if(toolbar.hidden||composer.hidden)return;toolbar.classList.add('composing');const currentLeft=parseFloat(toolbar.style.getPropertyValue('--selection-toolbar-left'))||toolbar.getBoundingClientRect().left;toolbar.style.setProperty('--selection-toolbar-left',`${Math.max(10,Math.min(currentLeft,innerWidth-width-10))}px`);input.focus()})}
 function prepareCodexRequest(){const selection=selectedEditorRange();if(!selection)return;activeSelection=selection;openInlineSelectionComposer('selection-codex-composer','selection-codex-prompt')}
 function prepareInlineComment(){const selection=selectedEditorRange();if(!selection)return;activeSelection=selection;openInlineSelectionComposer('selection-comment-composer','selection-comment-prompt',400)}
 function closeInlineCodexComposer(){const toolbar=$('selection-toolbar');toolbar.classList.remove('composing');setTimeout(()=>{if(!toolbar.classList.contains('composing'))for(const composer of toolbar.querySelectorAll('.selection-codex-composer'))composer.hidden=true},120)}
 function sendInlineCodexRequest(){const selection=activeSelection;const prompt=$('selection-codex-prompt');const instruction=prompt.value.trim();if(!instruction){prompt.focus();return}if(!selection||state.current!==selection.file||$('editor').value.slice(selection.start,selection.end)!==selection.text){hideSelectionToolbar();alert('선택한 원문이 변경되었습니다. 문장을 다시 선택해 주세요.');return}const toolbar=$('selection-toolbar');toolbar.classList.add('sending');$('instruction').value=instruction;hideSelectionToolbar();requestCodexRevision(selection,instruction,{handoff:true})}
 function addCommentForSelection(selection,body){const comment={id:crypto.randomUUID(),anchor:selection.text.slice(0,90),body,file:selection.file,start:selection.start,end:selection.end,revision:Date.now(),actor:actor.name,color:actor.color,...collabSession.encodeRange(selection.file,selection.start,selection.end)};if(sharedMetadataReady)sharedComments.set(comment.id,comment);else state.comments.unshift(comment);listFiles();renderComments();save();markProjectActivity('comment')}
 function sendInlineComment(){const selection=activeSelection,prompt=$('selection-comment-prompt'),body=prompt.value.trim();if(!body){prompt.focus();return}if(!selection||state.current!==selection.file||$('editor').value.slice(selection.start,selection.end)!==selection.text){hideSelectionToolbar();alert('선택한 원문이 변경되었습니다. 문장을 다시 선택해 주세요.');return}addCommentForSelection(selection,body);$('selection-comment-send').textContent='✓ 등록됨';hideSelectionToolbar();$('selection-comment-send').textContent='등록';activeSelection=null}
-const codexProfiles={"luna-medium":{label:'Luna medium',model:'gpt-5.6-luna',reasoning:'medium'},"luna-high":{label:'Luna high',model:'gpt-5.6-luna',reasoning:'high'},"sol-high":{label:'Sol high',model:'gpt-5.6-sol',reasoning:'high'}};
+const codexProfiles={"luna-medium":{label:'6.1 Sol Light',model:'gpt-6.1-sol',reasoning:'low'},"luna-high":{label:'6.1 Sol Medium',model:'gpt-6.1-sol',reasoning:'medium'},"sol-high":{label:'6.1 Sol High',model:'gpt-6.1-sol',reasoning:'high'}};
 const storedCodexProfile=preferences.get('paper-codex-profile');let codexProfile=codexProfiles[storedCodexProfile]?storedCodexProfile:'luna-medium';
 function selectedCodexProfile(){return codexProfiles[codexProfile]||codexProfiles['luna-medium']}
 function setCodexProfile(profile){if(!codexProfiles[profile])return;codexProfile=profile;preferences.set('paper-codex-profile',profile);$('selected-model-label').textContent=selectedCodexProfile().label;for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.checked=input.value===profile}
-function installCodexProfileSettings(){const instruction=$('instruction');setCodexProfile(codexProfile);instruction.placeholder=['어떻게 다듬을까요?','예: 주장 범위는 유지하고 학술 문체로 간결하게 수정해줘'].join('\n');instruction.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229)return;event.preventDefault();if(!$('ask').disabled)$('ask').click()});for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.onchange=()=>{if(input.checked)setCodexProfile(input.value)}}
+function installCodexProfileSettings(){const instruction=$('instruction');setCodexProfile(codexProfile);instruction.placeholder='어떻게 다듬을까요?';instruction.addEventListener('keydown',event=>{if(event.key!=='Enter'||event.shiftKey||event.isComposing||event.keyCode===229)return;event.preventDefault();if(!$('ask').disabled)$('ask').click()});for(const input of document.querySelectorAll('input[name="codex-profile"]'))input.onchange=()=>{if(input.checked)setCodexProfile(input.value)}}
 function ensureCodexThread(){let thread=$('codex-thread');if(thread)return thread;thread=document.createElement('div');thread.id='codex-thread';thread.className='codex-thread';thread.setAttribute('aria-live','polite');thread.hidden=true;$('codex-request-summary').after(thread);return thread}
 function showSentCodexRequest(){$('codex-request-form').hidden=true;$('codex-request-summary').hidden=false;$('codex-request-text').hidden=true;$('codex-request-summary').querySelector('.codex-sent-badge').textContent='Codex 대화';$('codex-new-request').textContent='새 대화';$('codex-request-model').textContent=selectedCodexProfile().label;ensureCodexThread();window.WorkspaceI18n?.localize($('codex-request-summary'))}
 let codexConversation=[],codexVisibleTurns=[],codexConversationEpoch=0,codexRequestController=null;
 function codexTurnNode(turn,proposalNumber){const article=document.createElement('article');article.className=`codex-thread-turn codex-thread-turn-${turn.role}`;const head=document.createElement('header');head.className='codex-thread-turn-head';const label=document.createElement('strong');label.textContent=turn.role==='user'?'내 요청':'Codex 제안';const meta=document.createElement('small');meta.textContent=turn.role==='assistant'?`${proposalNumber} · ${turn.profile||''}`:turn.profile||'';head.append(label,meta);article.append(head);if(turn.role==='assistant'){const proposal=document.createElement('div');proposal.className='latex-preview codex-thread-proposal';proposal.innerHTML=latexPreview(turn.replacement||'');article.append(proposal);if(turn.summary){const summary=document.createElement('p');summary.className='codex-thread-summary';summary.textContent=turn.summary;article.append(summary)}}else{const request=document.createElement('p');request.className='codex-thread-request';request.textContent=turn.content;article.append(request)}return article}
 function renderCodexThread({excludeLatestAssistant=false}={}){const thread=ensureCodexThread();let turns=codexVisibleTurns;if(excludeLatestAssistant&&turns.at(-1)?.role==='assistant')turns=turns.slice(0,-1);let proposalNumber=0;const nodes=turns.map(turn=>codexTurnNode(turn,turn.role==='assistant'?++proposalNumber:proposalNumber));thread.replaceChildren(...nodes);thread.hidden=!nodes.length;window.WorkspaceI18n?.localize(thread)}
-function startNewCodexRequest(){codexConversationEpoch+=1;codexRequestController?.abort();codexRequestController=null;stopCodexThinking();$('ask').disabled=false;codexConversation=[];codexVisibleTurns=[];$('codex-request-summary').hidden=true;$('codex-request-form').hidden=false;$('instruction').value='';ensureCodexThread().replaceChildren();ensureCodexThread().hidden=true;$('suggestion').replaceChildren();requestAnimationFrame(()=>$('instruction').focus())}
+function startNewCodexRequest(){codexConversationEpoch+=1;codexRequestController?.abort();codexRequestController=null;stopCodexThinking();$('ask').disabled=false;codexConversation=[];codexVisibleTurns=[];$('codex-request-summary').hidden=true;$('codex-request-form').hidden=false;$('instruction').value='';ensureCodexThread().replaceChildren();ensureCodexThread().hidden=true;$('suggestion').replaceChildren();$('assist').querySelector(':scope > .codex-followup')?.remove();requestAnimationFrame(()=>$('instruction').focus())}
 let codexThinkingTimer=0,codexElapsedTimer=0;
 const codexThinkingStages=['선택한 문장의 구조와 의도를 읽고 있습니다','현재 파일 문맥과 LaTeX 표현을 확인하고 있습니다','요청에 맞는 수정안을 구성하고 있습니다','원문의 의미와 변경 범위를 다시 검토하고 있습니다'];
 function stopCodexThinking(){clearInterval(codexThinkingTimer);clearInterval(codexElapsedTimer);codexThinkingTimer=0;codexElapsedTimer=0}
 function startCodexThinking(){stopCodexThinking();let stage=0,elapsed=0;$('suggestion').innerHTML=`<div class="suggestion codex-loading" role="status" aria-live="polite"><div class="codex-thinking-head"><span class="codex-thinking-spinner" aria-hidden="true"></span><span class="codex-thinking-copy"><strong>Codex가 원고를 검토하고 있습니다<span class="codex-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></strong><small id="codex-thinking-stage" class="codex-thinking-stage">${codexThinkingStages[0]}</small><small id="codex-thinking-elapsed" class="codex-thinking-elapsed">0초 경과</small></span></div><div class="codex-thinking-progress" aria-hidden="true"></div></div>`;codexThinkingTimer=setInterval(()=>{stage=(stage+1)%codexThinkingStages.length;const target=$('codex-thinking-stage');if(!target)return;target.classList.remove('stage-changing');void target.offsetWidth;target.textContent=codexThinkingStages[stage];target.classList.add('stage-changing')},1800);codexElapsedTimer=setInterval(()=>{elapsed+=1;const target=$('codex-thinking-elapsed');if(target)target.textContent=`${elapsed}초 경과`},1000)}
-function renderCodexResult(selection,result){const proposalNumber=Math.max(1,codexVisibleTurns.filter(turn=>turn.role==='assistant').length);$('suggestion').innerHTML=`<article class="suggestion codex-result"><header class="codex-result-head"><span class="codex-result-icon" aria-hidden="true">✦</span><span class="codex-result-head-text"><strong>Codex 수정안</strong><small>${esc(selectedCodexProfile().label)} · 원문을 바꾸기 전 검토하세요</small></span></header><div class="latex-preview codex-proposal">${latexPreview(result.replacement)}</div><details class="codex-change-details"><summary>원문과 변경 비교</summary><div class="codex-diff"><div class="diff-block diff-before">− ${esc(selection.text)}</div><div class="diff-block diff-after">+ ${esc(result.replacement)}</div></div></details>${result.summary?`<div class="codex-summary">${esc(result.summary)}</div>`:''}<div class="codex-followup"><div class="codex-followup-head"><strong>이 수정안을 더 다듬기</strong><span>${proposalNumber}번째 제안</span></div><div class="codex-followup-row"><textarea id="codex-followup-input" aria-label="Codex 후속 요청" placeholder="예: 좋긴 한데 너무 비슷해. 다른 제목 3개를 제안해줘"></textarea><button id="codex-followup-send" type="button">이어서 요청</button></div><div id="codex-followup-status" class="codex-followup-status" aria-live="polite">현재 선택과 이전 제안을 이어서 기억합니다.</div></div><div class="codex-result-actions"><button id="apply-codex">검토한 수정안을 원문에 적용</button></div></article>`;$('apply-codex').onclick=()=>applyCodexRevision(selection,result.replacement);$('codex-followup-send').onclick=()=>sendCodexFollowup(selection);$('codex-followup-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();sendCodexFollowup(selection)}})}
+function renderCodexResult(selection,result){$('assist').querySelector(':scope > .codex-followup')?.remove();const proposalNumber=Math.max(1,codexVisibleTurns.filter(turn=>turn.role==='assistant').length);$('suggestion').innerHTML=`<article class="suggestion codex-result"><header class="codex-result-head"><span class="codex-result-icon" aria-hidden="true">✦</span><span class="codex-result-head-text"><strong>Codex 수정안</strong><small>${esc(selectedCodexProfile().label)} · 원문을 바꾸기 전 검토하세요</small></span></header><div class="latex-preview codex-proposal">${latexPreview(result.replacement)}</div><details class="codex-change-details"><summary>원문과 변경 비교</summary><div class="codex-diff"><div class="diff-block diff-before">− ${esc(selection.text)}</div><div class="diff-block diff-after">+ ${esc(result.replacement)}</div></div></details>${result.summary?`<div class="codex-summary">${esc(result.summary)}</div>`:''}<div class="codex-followup"><div class="codex-followup-head"><strong>이 수정안을 더 다듬기</strong><span>${proposalNumber}번째 제안</span></div><div class="codex-followup-row"><textarea id="codex-followup-input" aria-label="Codex 후속 요청" placeholder="예: 좋긴 한데 너무 비슷해. 다른 제목 3개를 제안해줘"></textarea><button id="codex-followup-send" type="button">이어서 요청</button></div><div id="codex-followup-status" class="codex-followup-status" aria-live="polite">현재 선택과 이전 제안을 이어서 기억합니다.</div></div><div class="codex-result-actions"><button id="apply-codex">검토한 수정안을 원문에 적용</button></div></article>`;$('assist').append($('suggestion').querySelector('.codex-followup'));$('apply-codex').onclick=()=>applyCodexRevision(selection,result.replacement);$('codex-followup-send').onclick=()=>sendCodexFollowup(selection);$('codex-followup-input').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();sendCodexFollowup(selection)}})}
 function sendCodexFollowup(selection){const input=$('codex-followup-input'),instruction=input.value.trim();if(!instruction){input.focus();return}requestCodexRevision(selection,instruction,{continuation:true})}
 async function requestCodexRevision(selection,instruction,{handoff=false,continuation=false,displayInstruction=instruction}={}){
   if(!selection){alert('본문에서 수정할 문장을 먼저 선택해 주세요.');return}
@@ -923,19 +954,22 @@ function goToSourceLocation(file,line=1,column=0){
   richEditor?.scrollTo(start);sendCursor();return true;
 }
 function synctexReference(){return renderedSynctex.startsWith('id:')?{compile_id:renderedSynctex.slice(3)}:{synctex_base64:renderedSynctex}}
-async function requestSynctex(path,payload){
+async function requestSynctex(path,payload,generation=pdfRenderGeneration){
   const send=async reference=>{const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,...reference})});const result=await response.json();return {response,result}};
   const attempt=await send(synctexReference());
+  if(generation!==pdfRenderGeneration)return null;
   const fallback=renderedSynctexFallback;
   if(attempt.response.ok||!renderedSynctex.startsWith('id:')||!fallback||!/SyncTeX cache expired/i.test(String(attempt.result.error||'')))return attempt;
   const retry=await send({synctex_base64:fallback});
+  if(generation!==pdfRenderGeneration)return null;
   if(retry.response.ok){renderedSynctex=fallback;renderedSynctexFallback=''}
   return retry;
 }
 async function syncSourceToPdf(){
   if(!renderedSynctex||!state.current.endsWith('.tex')||!canUseRenderedSynctex())return;
   const value=editorValue(),selection=editorSelection();const line=value.slice(0,selection.start).split('\n').length;const column=selection.start-(value.lastIndexOf('\n',selection.start-1)+1);
-  try{const {response,result}=await requestSynctex('/api/synctex-view',{file:state.current.replace(/^paper\//,''),line,column});if(!response.ok)throw new Error(result.error||'PDF 위치 검색 실패');const page=document.querySelector(`.pdf-page[data-page="${result.page}"]`);if(!page)throw new Error('렌더링된 PDF 페이지를 찾지 못했습니다.');page.scrollIntoView({behavior:'smooth',block:'center'});document.querySelectorAll('.pdf-source-highlight').forEach(marker=>marker.remove());const marker=document.createElement('span');marker.className='pdf-source-highlight';const scale=Number(page.dataset.scale)||1;marker.style.left=`${Math.max(0,result.x*scale)}px`;marker.style.top=`${Math.max(0,result.y*scale)}px`;marker.style.width=`${Math.max(24,result.width*scale)}px`;marker.style.height=`${Math.max(10,result.height*scale)}px`;page.append(marker);setTimeout(()=>marker.remove(),700)}catch(error){notify(error.message,{title:'소스 위치 연결 오류',tone:'error'})}
+  const generation=pdfRenderGeneration,file=state.current;
+  try{const attempt=await requestSynctex('/api/synctex-view',{file:file.replace(/^paper\//,''),line,column},generation);if(!attempt||generation!==pdfRenderGeneration||file!==state.current||!canUseRenderedSynctex())return;const {response,result}=attempt;if(!response.ok)throw new Error(result.error||'PDF 위치 검색 실패');const page=document.querySelector(`.pdf-page[data-page="${result.page}"]`);if(!page)throw new Error('렌더링된 PDF 페이지를 찾지 못했습니다.');page.scrollIntoView({behavior:'smooth',block:'center'});document.querySelectorAll('.pdf-source-highlight').forEach(marker=>marker.remove());const marker=document.createElement('span');marker.className='pdf-source-highlight';const scale=Number(page.dataset.scale)||1;marker.style.left=`${Math.max(0,result.x*scale)}px`;marker.style.top=`${Math.max(0,result.y*scale)}px`;marker.style.width=`${Math.max(24,result.width*scale)}px`;marker.style.height=`${Math.max(10,result.height*scale)}px`;page.append(marker);setTimeout(()=>marker.remove(),700)}catch(error){if(generation===pdfRenderGeneration)notify(error.message,{title:'소스 위치 연결 오류',tone:'error'})}
 }
 function lineForOffset(source,offset){return source.slice(0,Math.max(0,offset)).split('\n').length}
 function sourceLocationFor(pattern){for(const [file,source] of Object.entries(state.files)){if(typeof source!=='string')continue;const match=typeof pattern==='string'?{index:source.indexOf(pattern)}:pattern.exec(source);if(match&&match.index>=0)return {file,line:lineForOffset(source,match.index)}}return null}
@@ -971,10 +1005,10 @@ let compileQueue=Promise.resolve(),compileRevision=0,compileController=null,comp
 function compileAfterSave(){const revision=++compileRevision;compileController?.abort();compileQueue=compileQueue.finally(()=>revision===compileRevision?runUpdate():undefined);return compileQueue}
 function setRenderStateCompiling(file){const target=$('render-state'),label=window.PaperI18n.t('workspace.compile.compiling',{file});target.classList.add('compiling');target.removeAttribute('data-i18n');target.removeAttribute('data-i18n-variables');target.setAttribute('aria-label',label);target.innerHTML=`<span class="render-state-spinner" aria-hidden="true"></span><span class="render-state-label">${esc(label)}</span>`}
 function setRenderStateMessage(key,variables={}){const target=$('render-state');target.classList.remove('compiling');target.removeAttribute('aria-label');window.PaperI18n.setText(target,key,variables)}
-async function runUpdate(prepared={}){const generation=++compileRequestGeneration,contentRevision=prepared.contentRevision??workspaceContentRevision;compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=editorValue();let payload=prepared.payload,fingerprint=prepared.fingerprint,compileTimedOut=false;let timeout=0;const current=()=>generation===compileRequestGeneration&&contentRevision===workspaceContentRevision&&!controller.signal.aborted;const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{compileTimedOut=true;controller.abort();reject(new DOMException('Compile request timed out','TimeoutError'))},compileRequestTimeoutMs)});try{payload=payload||await Promise.race([compilePayload(),deadline]);fingerprint=fingerprint||await Promise.race([compilePayloadFingerprint(payload),deadline]);if(prepared.fullBuild)payload={...payload,build_mode:'clean'};if(!current())return false;setRenderStateCompiling(payload.entrypoint);const headers={'Content-Type':'application/json','X-Compile-Client':compileClientId};if(compileStateId)headers['X-Compile-State']=compileStateId;const response=await fetch('/api/compile',{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');if(!current())return false;setCompileStateId(result.build_state_id);clearTimeout(timeout);const binary=base64Bytes(result.pdf_base64),synctex=result.synctex_base64||'';lastPdfAudit=result.pdf_audit||null;setRenderedPdf(binary);await renderPdfPreviewLazy(binary.slice(),result.compile_id?`id:${result.compile_id}`:synctex,synctex);if(!current())return false;renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();persistMainPageCount(payload).catch(error=>reportClientError(error,'persistMainPageCount'));persistPdfPreview(binary,synctex,fingerprint).catch(error=>reportClientError(error,'persistPdfPreview'));return true}catch(error){if(generation!==compileRequestGeneration||contentRevision!==workspaceContentRevision||error.name==='RenderingCancelledException'||(error.name==='AbortError'&&!compileTimedOut))return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(compileTimedOut?'workspace.compile.timeout':hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const message=compileTimedOut?'컴파일 서버가 제한 시간 안에 응답하지 않았습니다.':error.message;const diagnostics=parseLatexDiagnostics(message,payload?.entrypoint);renderCompileDiagnostics(diagnostics,message);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf){if(compileTimedOut)notify('컴파일 응답이 지연되어 마지막 정상 PDF를 유지했습니다.',{title:'PDF 응답 시간 초과',tone:'error'});else notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'})}return false}finally{clearTimeout(timeout);if(compileController===controller)compileController=null}}
+async function runUpdate(prepared={}){const generation=++compileRequestGeneration,contentRevision=prepared.contentRevision??workspaceContentRevision;compileController?.abort();const controller=new AbortController();compileController=controller;state.files[state.current]=editorValue();let payload=prepared.payload,fingerprint=prepared.fingerprint,compileTimedOut=false;let timeout=0;const current=()=>generation===compileRequestGeneration&&contentRevision===workspaceContentRevision&&!controller.signal.aborted;const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{compileTimedOut=true;controller.abort();reject(new DOMException('Compile request timed out','TimeoutError'))},compileRequestTimeoutMs)});try{payload=payload||await Promise.race([compilePayload(),deadline]);fingerprint=fingerprint||await Promise.race([compilePayloadFingerprint(payload),deadline]);if(prepared.fullBuild)payload={...payload,build_mode:'clean'};if(!current())return false;setRenderStateCompiling(payload.entrypoint);const headers={'Content-Type':'application/json','X-Compile-Client':compileClientId};if(compileStateId)headers['X-Compile-State']=compileStateId;const response=await fetch('/api/compile',{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});const result=await response.json();if(!response.ok)throw new Error(result.error||'컴파일 실패');if(!current())return false;setCompileStateId(result.build_state_id);clearTimeout(timeout);const binary=base64Bytes(result.pdf_base64),synctex=result.synctex_base64||'';await renderPdfPreviewLazy(binary,result.compile_id?`id:${result.compile_id}`:synctex,synctex,current);if(!current())return false;lastPdfAudit=result.pdf_audit||null;renderCompileDiagnostics([]);setRenderStateMessage(result.cached?'workspace.compile.cached':'workspace.compile.current',{file:payload.entrypoint,seconds:(result.elapsed_ms/1000).toFixed(1)});setPdfFreshness(false);save();persistMainPageCount(payload).catch(error=>reportClientError(error,'persistMainPageCount'));persistPdfPreview(binary,synctex,fingerprint).catch(error=>reportClientError(error,'persistPdfPreview'));return true}catch(error){if(generation!==compileRequestGeneration||contentRevision!==workspaceContentRevision||error.name==='RenderingCancelledException'||(error.name==='AbortError'&&!compileTimedOut))return false;const hasPreviousPdf=Boolean(renderedPdfUrl),file=payload?.entrypoint||selectedEntrypoint();setRenderStateMessage(compileTimedOut?'workspace.compile.timeout':hasPreviousPdf?'workspace.compile.previousError':'workspace.compile.error',{file});setPdfFreshness(hasPreviousPdf);const message=compileTimedOut?'컴파일 서버가 제한 시간 안에 응답하지 않았습니다.':error.message;const diagnostics=parseLatexDiagnostics(message,payload?.entrypoint);renderCompileDiagnostics(diagnostics,message);if(!renderedPdfUrl){disposePdfPreview();resetPdfPageIndicator();const preview=$('paper-preview');preview.classList.remove('pdf-mode');preview.innerHTML=pdfErrorMarkup(diagnostics[0]);$('pdf-error-action')?.addEventListener('click',openPrimaryCompileDiagnostic)}if(hasPreviousPdf){if(compileTimedOut)notify('컴파일 응답이 지연되어 마지막 정상 PDF를 유지했습니다.',{title:'PDF 응답 시간 초과',tone:'error'});else notify('마지막 정상 PDF를 유지했습니다. 검사 탭에서 오류 위치를 확인하세요.',{title:'PDF 컴파일 오류',tone:'error'})}return false}finally{clearTimeout(timeout);if(compileController===controller)compileController=null}}
 $('refresh-pdf').onclick=async()=>{const button=$('refresh-pdf');button.classList.add('loading');button.disabled=true;try{await runUpdate()}finally{button.classList.remove('loading');button.disabled=false}};
 $('download-pdf').onclick=()=>{if(!renderedPdfUrl)return;const link=document.createElement('a');link.href=renderedPdfUrl;link.download=pdfFileName();document.body.append(link);link.click();link.remove()};
-window.addEventListener('pagehide',()=>{disposePdfPreview();if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl)});
+window.addEventListener('pagehide',event=>{if(event.persisted)return;++pdfRenderRequest;++pdfRenderGeneration;disposeAssetPdf();disposePdfPreview();if(renderedPdfUrl)URL.revokeObjectURL(renderedPdfUrl)});
 async function createFile(folder='paper'){
   const name=cleanSegment(await actionDialog({title:'새 파일',message:`${folder||'프로젝트'}에 만들 파일 이름을 입력하세요.`,value:'section.tex',confirmLabel:'만들기'}));
   if(!name)return;
@@ -1003,13 +1037,16 @@ function renameHasCollision(type,source,destination){
   const movingSet=new Set(moving);
   return moving.some(candidate=>{const target=renamedTreePath(candidate,source,destination);return occupied.includes(target)&&!movingSet.has(target)})
 }
+function canMutateTreeTarget(type,path){return !accountReadOnly&&Boolean(path)&&path!=='paper'&&path!=='paper/main.tex'&&!isLockedProjectFile(path)&&(type!=='folder'||!Object.keys(state.files).some(file=>pathInTree(file,path)&&isLockedProjectFile(file)))}
 async function renameTarget(type,path){
+  if(!canMutateTreeTarget(type,path))return;
   const name=cleanSegment(await actionDialog({title:'이름 변경',message:baseName(path),value:baseName(path),confirmLabel:'변경'}));
-  if(!name||name===baseName(path))return;
+  if(!name||name===baseName(path)||!canMutateTreeTarget(type,path))return;
   const destination=parentPath(path)?`${parentPath(path)}/${name}`:name;
   if(renameHasCollision(type,path,destination))return notify('대상 위치에 같은 이름의 항목이 있어 변경하지 않았습니다.',{tone:'error'});
   const moves=type==='asset'&&state.assets[path]?.server?[{source:path,destination,asset:state.assets[path]}]:type==='folder'?Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&pathInTree(asset,path)).map(([source,asset])=>({source,destination:renamedTreePath(source,path,destination),asset})):[];
   try{if(moves.length)await moveServerAssetsSafely(moves)}catch(error){return notify(error.message,{title:'공유 자료 이름 변경 실패',tone:'error'})}
+  const movedAssets=Object.keys(state.assets).filter(asset=>type==='asset'?asset===path:type==='folder'&&pathInTree(asset,path));
   if(type==='file'){
     state.files[destination]=state.files[path];delete state.files[path];if(state.current===path)state.current=destination
   }else if(type==='asset'){
@@ -1022,33 +1059,69 @@ async function renameTarget(type,path){
     state.collapsedFolders=state.collapsedFolders.map(folder=>renamedTreePath(folder,path,destination));
     if(pathInTree(state.current,path))state.current=renamedTreePath(state.current,path,destination)
   }
-  publishSharedTree();await reconcileLocalAssets().catch(()=>{});setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('rename')
+  richEditor?.retainDocuments?.(Object.keys(state.files));publishSharedTree();
+  const persistence=reconcileLocalAssets(movedAssets,movedAssets.map(asset=>renamedTreePath(asset,path,destination)));
+  setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('rename');
+  await persistence.catch(error=>notify(error.message,{title:'로컬 자료 저장 실패',tone:'error'}));
 }
 async function deleteTarget(type,path){
-  if(!await actionDialog({title:'삭제',message:`'${baseName(path)}'을(를) 삭제할까요? 공동 편집자에게도 즉시 반영됩니다.`,confirmLabel:'삭제'}))return;
+  if(!canMutateTreeTarget(type,path))return;
+  if(!await actionDialog({title:'삭제',message:`'${baseName(path)}'을(를) 삭제할까요? 공동 편집자에게도 즉시 반영됩니다.`,confirmLabel:'삭제',tone:'danger'}))return;
+  if(!canMutateTreeTarget(type,path))return;
   const serverPaths=type==='asset'&&state.assets[path]?.server?[path]:type==='folder'?Object.entries(state.assets).filter(([asset,metadata])=>metadata.server&&pathInTree(asset,path)).map(([asset])=>asset):[];
   try{for(const serverPath of serverPaths)await deleteServerAsset(serverPath)}catch(error){return notify(`${error.message} 삭제가 일부만 반영되었을 수 있으므로 파일 목록을 새로 확인해 주세요.`,{title:'공유 자료 삭제 실패',tone:'error'})}
+  const removedAssets=Object.keys(state.assets).filter(asset=>type==='asset'?asset===path:type==='folder'&&pathInTree(asset,path));
   if(type==='file')delete state.files[path];
-  else if(type==='asset'){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path);await deleteLocalAsset(path).catch(()=>{})}
-  else{state.files=Object.fromEntries(Object.entries(state.files).filter(([file])=>!pathInTree(file,path)));state.assets=Object.fromEntries(Object.entries(state.assets).filter(([file])=>!pathInTree(file,path)));state.uploads=state.uploads.filter(item=>!pathInTree(item,path));state.folders=state.folders.filter(folder=>!pathInTree(folder,path));state.collapsedFolders=state.collapsedFolders.filter(folder=>!pathInTree(folder,path));await reconcileLocalAssets().catch(()=>{})}
-  publishSharedTree();if(!Object.hasOwn(state.files,state.current))state.current=Object.hasOwn(state.files,'paper/main.tex')?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('delete')
+  else if(type==='asset'){delete state.assets[path];state.uploads=state.uploads.filter(item=>item!==path)}
+  else{state.files=Object.fromEntries(Object.entries(state.files).filter(([file])=>!pathInTree(file,path)));state.assets=Object.fromEntries(Object.entries(state.assets).filter(([file])=>!pathInTree(file,path)));state.uploads=state.uploads.filter(item=>!pathInTree(item,path));state.folders=state.folders.filter(folder=>!pathInTree(folder,path));state.collapsedFolders=state.collapsedFolders.filter(folder=>!pathInTree(folder,path))}
+  const persistence=reconcileLocalAssets(removedAssets);
+  richEditor?.retainDocuments?.(Object.keys(state.files));publishSharedTree();if(!Object.hasOwn(state.files,state.current))state.current=Object.hasOwn(state.files,'paper/main.tex')?'paper/main.tex':Object.keys(state.files)[0];setEditor();listFiles();save();markCompileInputsChanged();markProjectActivity('delete');
+  await persistence.catch(error=>notify(error.message,{title:'로컬 자료 삭제 실패',tone:'error'}));
 }
 $('new-file').onclick=()=>createFile(state.activeFolder||'paper');
 $('new-folder').onclick=()=>createFolder('');
+$('active-file-actions').onclick=event=>showTreeMenu(event,activeAsset?'asset':'file',activeAsset||state.current);
 $('files').oncontextmenu=event=>{if(event.target===$('files'))showTreeMenu(event,'root','')};
 let sidebarDragDepth=0;const sidebar=document.querySelector('.sidebar');sidebar.addEventListener('dragenter',event=>{if(!hasLocalFiles(event))return;event.preventDefault();sidebarDragDepth+=1;sidebar.classList.add('file-dragging')});sidebar.addEventListener('dragover',event=>{if(!hasLocalFiles(event))return;event.preventDefault();event.dataTransfer.dropEffect='copy'});sidebar.addEventListener('dragleave',event=>{if(!hasLocalFiles(event))return;sidebarDragDepth=Math.max(0,sidebarDragDepth-1);if(!sidebarDragDepth)clearDropState()});sidebar.addEventListener('drop',async event=>{if(!hasLocalFiles(event))return;event.preventDefault();sidebarDragDepth=0;clearDropState();await importLocalFiles(await droppedLocalFiles(event.dataTransfer),'paper')});
 document.addEventListener('click',()=>{$('tree-menu').hidden=true});document.addEventListener('scroll',()=>{$('tree-menu').hidden=true},true);window.addEventListener('blur',()=>{$('tree-menu').hidden=true});
 $('tree-menu').onclick=async event=>{const action=event.target.dataset.action;if(!action)return;const {type,path}=contextTarget;const folder=type==='folder'?path:type==='file'?parentPath(path):'';if(action==='new-file')await createFile(folder);if(action==='new-folder')await createFolder(folder);if(action==='upload'){pendingUploadFolder=folder;$('upload').click()}if(action==='rename')await renameTarget(type,path);if(action==='delete')await deleteTarget(type,path);$('tree-menu').hidden=true;};
-$('tree-menu').addEventListener('keydown',event=>{const items=[...$('tree-menu').querySelectorAll('button:not([hidden])')];if(event.key==='Escape'){$('tree-menu').hidden=true;event.preventDefault();return}if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;const current=items.indexOf(document.activeElement);const next=event.key==='Home'?0:event.key==='End'?items.length-1:(current+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next]?.focus();event.preventDefault()});
+$('tree-menu').addEventListener('keydown',event=>{if(event.key==='Escape'){$('tree-menu').hidden=true;if(treeMenuTrigger?.isConnected)treeMenuTrigger.focus();event.preventDefault();return}window.PaperUI.navigateMenu(event,$('tree-menu'))});
 $('upload').onchange=async e=>{const folder=pendingUploadFolder||state.activeFolder||'paper';pendingUploadFolder='';await importLocalFiles(Array.from(e.target.files).map(file=>({file,relativePath:file.name})),folder);e.target.value='';};
 document.querySelectorAll('.tab').forEach(tab=>{tab.onclick=()=>activateAssistantTab(tab.dataset.tab);tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const tabs=[...document.querySelectorAll('.tab')],current=tabs.indexOf(tab);const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(current+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;activateAssistantTab(tabs[next].dataset.tab,{focus:true});event.preventDefault()})});
+function installAssistantTabScrolling(){
+  const tabs=document.querySelector('.assistant-tabs'),previous=$('assistant-tabs-prev'),next=$('assistant-tabs-next');
+  let pending=0;
+  const update=()=>{
+    const overflow=tabs.scrollWidth>tabs.parentElement.clientWidth+1,ko=window.PaperI18n?.getLanguage()==='ko';
+    // Reserve both affordances while overflowing so revealing a tab does not
+    // change its viewport width and clip the selected label a second time.
+    previous.hidden=next.hidden=!overflow;
+    previous.disabled=tabs.scrollLeft<1;
+    next.disabled=tabs.scrollLeft+tabs.clientWidth>=tabs.scrollWidth-1;
+    previous.setAttribute('aria-label',ko?'이전 도구':'Previous tools');next.setAttribute('aria-label',ko?'다음 도구':'More tools');
+  };
+  const revealSelected=()=>{
+    pending=0;update();
+    const selected=tabs.querySelector('[aria-selected="true"]');
+    if(!selected||!tabs.clientWidth)return;
+    const viewport=tabs.getBoundingClientRect(),active=selected.getBoundingClientRect(),inset=4;
+    if(active.left<viewport.left+inset)tabs.scrollLeft+=active.left-viewport.left-inset;
+    else if(active.right>viewport.right-inset)tabs.scrollLeft+=active.right-viewport.right+inset;
+    update();
+  };
+  const scheduleReveal=()=>{if(!pending)pending=requestAnimationFrame(revealSelected)};
+  for(const [button,direction] of [[previous,-1],[next,1]])button.onclick=()=>tabs.scrollBy({left:direction*Math.max(80,tabs.clientWidth*.75),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  tabs.addEventListener('scroll',update,{passive:true});tabs.addEventListener('paper-tab-selected',scheduleReveal);
+  const sizes=new ResizeObserver(scheduleReveal);sizes.observe(tabs);tabs.querySelectorAll('.tab').forEach(tab=>sizes.observe(tab));
+  window.PaperI18n?.onChange(scheduleReveal);document.fonts.ready.then(scheduleReveal);scheduleReveal();
+}
+installAssistantTabScrolling();
 installCodexProfileSettings();
 $('codex-new-request').onclick=startNewCodexRequest;
 $('fix-compile-error').onclick=requestCompileDiagnosticFix;
 $('ask').onclick=()=>{const instruction=$('instruction').value.trim();if(!instruction){$('instruction').focus();return}requestCodexRevision(selectedEditorRange(),instruction)};
 $('add-comment').onclick=()=>{const selection=selectedEditorRange();const body=$('comment-body').value.trim();if(!selection||!body){alert('본문에서 문장을 드래그하고 댓글을 입력해 주세요.');return;}addCommentForSelection(selection,body);$('comment-body').value='';activeSelection=null;};
-function syncRemoteManifestAssets(manifest,previous=projectManifest){
-  const previousItems=new Map((previous.files||[]).filter(manifestItemIsAsset).map(item=>[`paper/${item.path}`,item]));
+function syncRemoteManifestAssets(manifest){
   const nextItems=(manifest.files||[]).filter(manifestItemIsAsset),nextPaths=new Set(nextItems.map(item=>`paper/${item.path}`));
   for(const path of [...remoteAssetPaths]){
     if(nextPaths.has(path))continue;
@@ -1056,41 +1129,59 @@ function syncRemoteManifestAssets(manifest,previous=projectManifest){
     if(state.assets[path]?.remote){delete state.assets[path];deleteLocalAsset(path).catch(()=>{})}
   }
   for(const item of nextItems){
-    const name=`paper/${item.path}`,source=item.source||item.path,previousItem=previousItems.get(name),previousSource=previousItem?.source||previousItem?.path||'';
-    const changed=Boolean(previousItem&&runtimeFileRevision(previous,previousSource)!==runtimeFileRevision(manifest,source));
+    const name=`paper/${item.path}`,source=item.source||item.path;
+    const url=projectFileUrl(source,manifest);
     const existing=state.assets[name]||{};
-    if(changed){delete existing.data;delete existing.loading;deleteLocalAsset(name).catch(()=>{})}
-    remoteAssetPaths.add(name);remoteAssetSources.set(name,projectFileUrl(source,manifest));
-    state.assets[name]={...existing,type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||existing.size||0,remote:true};
+    // IndexedDB may still hold bytes fetched before this runtime revision.
+    if(!runtimeFileRevision(manifest,source)||existing.runtimeSource!==url){
+      delete existing.data;delete existing.loading;
+    }
+    remoteAssetPaths.add(name);remoteAssetSources.set(name,url);
+    state.assets[name]={...existing,runtimeSource:runtimeFileRevision(manifest,source)?url:'',type:extensionOf(name)==='pdf'?'application/pdf':'application/octet-stream',size:Number(item.size)||existing.size||0,remote:true};
   }
   if(activeAsset&&!state.assets[activeAsset])setEditor()
 }
 async function loadProjectManifest(){const response=await fetch(`${projectBase}/project/project.json`,{cache:'no-store'});if(!response.ok)throw new Error('project.json을 찾지 못했습니다.');return normalizeManifest(await response.json())}
+let workspacePersistenceReady;
 async function loadProject(){
-  await workspacePersistence.initialize();
-  try{projectManifest=await loadProjectManifest()}catch(error){$('render-state').textContent='프로젝트 설정 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>프로젝트를 불러오지 못했습니다.</strong><br>${esc(error.message)}</div>`;return}
+  await (workspacePersistenceReady??=workspacePersistence.initialize());
+  projectManifest=await loadProjectManifest();
   for(const path of state.uploads)if(state.assets[path]?.data)await storeLocalAsset(path,state.assets[path]).catch(()=>{});
   state.assets={};
   await loadLocalAssets().catch(()=>{});
   await loadServerAssets().catch(error=>notify(error.message,{title:'공유 자산 연결 지연',tone:'warning'}));
-  const previewPromise=fetchPreviewArtifact();
-  const persistedPreviewPromise=fetchPersistedPdfPreview().catch(error=>{reportClientError(error,'fetchPersistedPdfPreview');return null});
+  const previewSignal=AbortSignal.timeout(3000);
+  const previewPromise=fetchPreviewArtifact(previewSignal);
+  const initialPreviewPromise=previewPromise.then(async preview=>{
+    if(preview)return preview;
+    if(projectManifest.runtime_revision)return null;
+    return fetchPersistedPdfPreview('',previewSignal);
+  }).catch(error=>{if(!previewSignal.aborted)reportClientError(error,'fetchPersistedPdfPreview');return null});
   const remoteSources={};
   const manifestAssetPaths=new Set(projectManifest.files.filter(manifestItemIsAsset).map(item=>`paper/${item.path}`));
   remoteAssetPaths.clear();
   remoteAssetSources.clear();
-  syncRemoteManifestAssets(projectManifest,{files:[],runtime_file_revisions:{}});
+  syncRemoteManifestAssets(projectManifest);
   for(const path of manifestAssetPaths)delete state.files[path];
   const requiredProjectSources=new Set(serverManagedManifestItems(projectManifest).map(item=>item.path));
-  // Keep large projects within the gateway's concurrent request capacity.
-  await parallelLimit(projectManifest.files,6,async item=>{
+  // Prioritize the visible manuscript while fetching the remaining files in parallel.
+  const fetchSource=async item=>{
     const name=`paper/${item.path}`;
     const source=item.source||item.path;
     if(!manifestItemIsAsset(item)){
-      const value=await fetchProjectSource(name,projectFileUrl(source),{required:requiredProjectSources.has(item.path)});
+      const value=await fetchProjectSource(name,projectFileUrl(source),{required:requiredProjectSources.has(item.path),revision:runtimeFileRevision(projectManifest,source)});
       if(typeof value==='string')remoteSources[name]=value;
     }
-  });
+  };
+  const mainItem=projectManifest.files.find(item=>item.path==='main.tex'&&!manifestItemIsAsset(item));
+  const rest=projectManifest.files.filter(item=>item!==mainItem);
+  const restPromise=parallelLimit(rest,5,fetchSource).then(()=>null,error=>error);
+  if(mainItem)await fetchSource(mainItem);
+  if(typeof remoteSources['paper/main.tex']==='string'&&!isLatexDocument(state.files['paper/main.tex'])){
+    state.files['paper/main.tex']=remoteSources['paper/main.tex'];
+    if(state.current==='paper/main.tex'){setEditor();syncProjectTitleFromTex(true);window.__paperMarkStartupReady?.();$('save-state').textContent='서버 원고 표시됨 · 공동 편집 병합 중'}
+  }
+  const restError=await restPromise;if(restError)throw restError;
   // Paint the first usable source immediately. Safari can take longer to
   // finish IndexedDB/Yjs bootstrap for an established profile; manuscript
   // visibility must not depend on that background merge completing.
@@ -1099,13 +1190,23 @@ async function loadProject(){
   for(const [name,value] of Object.entries(remoteSources))if(name!=='paper/main.tex'&&!isProjectSource(name,state.files[name]))state.files[name]=value;
   if(state.files[state.current]===undefined)state.current='paper/main.tex';
   setEditor();listFiles();syncProjectTitleFromTex(true);window.__paperMarkStartupReady?.();$('save-state').textContent='서버 원고 표시됨 · 공동 편집 병합 중';
-  let persistedPreview=await persistedPreviewPromise;
-  let displayedPersistedFingerprint='';
-  if(persistedPreview){setRenderedPdf(persistedPreview.binary);await renderPdfPreviewLazy(persistedPreview.binary.slice(),persistedPreview.synctex);displayedPersistedFingerprint=persistedPreview.fingerprint;setRenderStateMessage('workspace.compile.lastSuccessful',{file:selectedEntrypoint()});setPdfFreshness(true)}
+  let persistedPreview=null,displayedPersistedFingerprint='';
+  const initialPdfRequest=pdfRenderRequest;
+  const initialPreviewRender=initialPreviewPromise.then(async preview=>{
+    if(!preview||pdfRenderRequest!==initialPdfRequest)return;
+    if(preview.fingerprint)persistedPreview=preview;
+    if(await renderCachedPdf(preview)){
+      displayedPersistedFingerprint=preview.fingerprint||'';
+      if(!compileController)setRenderStateMessage('workspace.compile.lastSuccessful',{file:selectedEntrypoint()});
+      setPdfFreshness(true);
+    }
+  });
   await collabBootstrapReady;
   projectBootstrapComplete=true;
   const remoteMain=remoteSources['paper/main.tex'];
-  const sharedMainValue=collabSession.textFor('paper/main.tex').toString();
+  // Read the current shared value without allocating an empty manuscript.
+  // Startup seeds the canonical text after the source and draft merge.
+  const sharedMainValue=collabSession.files.get('paper/main.tex')?.toString()||'';
   const localMain=sharedMainValue||state.files['paper/main.tex'];
   const canCoordinateProjectUpgrade=collabSession.offline||collabSession.isBootstrapLeader?.()===true;
   let sharedProjectVersion=sharedProject.get('manifestVersion');
@@ -1116,7 +1217,6 @@ async function loadProject(){
   // a staged source revision. The legacy version migration remains available
   // solely for rooms that predate the runtime-revision protocol.
   const projectVersionChanged=!hasServerRuntime&&canCoordinateProjectUpgrade&&Boolean(sharedProjectVersion&&sharedProjectVersion!==projectManifest.version);
-  const localMainDraft=Boolean(isLatexDocument(localMain)&&((state.serverMainSnapshot&&!sourceSnapshotMatches(state.serverMainSnapshot,localMain))||(!state.serverMainSnapshot&&projectVersionChanged)));
   const serverManagedProjectFiles=new Set(projectManifest.files.filter(item=>item.managed).map(item=>`paper/${item.path}`));
   const retiredProjectFiles=new Set(projectManifest.retired_paths.map(path=>`paper/${path}`));
   collabSession.document.transact(()=>{for(const path of manifestAssetPaths)collabSession.files.delete(path)},actor.id);
@@ -1145,9 +1245,22 @@ async function loadProject(){
   }
 
   let preservedDraftPath='';
+  if(hasServerRuntime){
+    for(const path of retiredProjectFiles){
+      if(collabSession.files.has(path)||typeof state.files[path]!=='string')continue;
+      const value=state.files[path];
+      delete state.files[path];
+      if(state.current===path)state.current='paper/main.tex';
+      if(!value||sourceSnapshotMatches(state.serverSourceSnapshots[path],value))continue;
+      ensureFolder('paper/drafts');
+      const draftPath=`paper/drafts/browser-before-server-sync-${crypto.randomUUID()}-${baseName(path)}`;
+      state.files[draftPath]=value;
+      preservedDraftPath||=draftPath;
+    }
+  }
   if(typeof remoteMain==='string'){
     if(hasServerRuntime){
-      state.files['paper/main.tex']=sharedMainValue;
+      state.files['paper/main.tex']=collabSession.files.has('paper/main.tex')?sharedMainValue:remoteMain;
     }else if(projectVersionChanged&&isLatexDocument(sharedMainValue)&&sharedMainValue!==remoteMain){
       ensureFolder('paper/drafts');
       const previousVersion=state.projectVersion||'collaboration-draft';
@@ -1222,19 +1335,22 @@ async function loadProject(){
   }
   bootstrapEdits.clear();
   initializeSharedMetadata();
-  initializeServerRuntimeState(remoteSources);
-  setEditor();syncProjectTitleFromTex(true);if(!renderedPdfUrl)render();listFiles();save();initializeServerBackups();initializeServerSourceRefresh();
+  setEditor();projectTitleStartupPending=false;syncProjectTitleFromTex(true);if(!renderedPdfUrl&&!activePdfDocument)render();listFiles();save();initializeServerBackups();initializeServerSourceRefresh();
   if(preservedDraftPath&&!sourceConflictDismissed){sourceConflictBanner.hidden=false;$('open-preserved-draft').onclick=()=>{state.current=preservedDraftPath;setEditor();listFiles();sourceConflictBanner.hidden=true};notify('기존 브라우저 초안을 drafts에 보존했습니다.',{title:'서버 원본 변경 감지'})}
   if(typeof state.files[`paper/${projectManifest.entrypoint}`]==='string'){
-    const preview=await previewPromise;
+    if(!document.querySelector('.preview-panel').getClientRects().length)await initialPreviewRender;
     workspaceReadyForCompile=true;updateMainCompileControl();
-    if(preview&&!localMainDraft&&selectedEntrypoint()===projectManifest.entrypoint){setRenderedPdf(preview.binary);await renderPdfPreviewLazy(preview.binary.slice(),preview.synctex);$('render-state').textContent='PDF 미리보기 로드됨';setPdfFreshness(true);displayedPersistedFingerprint=''}
+    try{const context=JSON.parse(sessionStorage.getItem(`paper-workspace-position:${projectSlug}`)||'null');if(context?.file===state.current){const length=editorValue().length;setEditorSelection(Math.min(length,Math.max(0,context.start||0)),Math.min(length,Math.max(0,context.end||0)));requestAnimationFrame(()=>{if(richEditor?.scrollDOM){richEditor.scrollDOM.scrollTop=context.scrollTop||0;richEditor.scrollDOM.scrollLeft=context.scrollLeft||0}})}}catch{}
+
     // A manifest preview has no source fingerprint; it is only a placeholder.
     // Validate against the merged manuscript even when a preview was displayed.
     {
       const contentRevision=workspaceContentRevision,payload=await compilePayload(),fingerprint=await compilePayloadFingerprint(payload);
       if(persistedPreview?.fingerprint!==fingerprint)persistedPreview=await fetchPersistedPdfPreview(fingerprint).catch(()=>null);
-      if(persistedPreview?.fingerprint===fingerprint){if(displayedPersistedFingerprint!==fingerprint){setRenderedPdf(persistedPreview.binary);await renderPdfPreviewLazy(persistedPreview.binary.slice(),persistedPreview.synctex)}setRenderStateMessage('workspace.compile.persisted',{file:payload.entrypoint});setPdfFreshness(false);persistMainPageCount(payload).catch(error=>reportClientError(error,'persistMainPageCount'))}
+      if(contentRevision!==workspaceContentRevision)return;
+      const renderedCached=persistedPreview?.fingerprint===fingerprint&&(displayedPersistedFingerprint===fingerprint||await renderCachedPdf(persistedPreview,()=>contentRevision===workspaceContentRevision));
+      if(contentRevision!==workspaceContentRevision)return;
+      if(renderedCached){setRenderStateMessage('workspace.compile.persisted',{file:payload.entrypoint});setPdfFreshness(false);persistMainPageCount(payload).catch(error=>reportClientError(error,'persistMainPageCount'))}
       else await runUpdate({payload,fingerprint,contentRevision});
     }
   }
@@ -1245,10 +1361,18 @@ function installOptionalFeature(name,installer){try{installer()}catch(error){rep
 initializeRichEditor();
 // Start the manuscript request before optional UI features. A browser-specific
 // failure in resizing, PDF helpers, or selection tools must never block source.
-loadProject().catch(error=>{reportClientError(error,'loadProject');$('render-state').textContent='프로젝트 로드 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>원고 로드 오류</strong><br>${esc(error.message)}</div>`;notify(error.message,{title:'원고를 불러오지 못했습니다.',tone:'error'})});
+let projectLoadPromise
+function ensureProjectLoaded(){
+  if(!projectLoadPromise)projectLoadPromise=loadProject().catch(error=>{projectLoadPromise=undefined;projectTitleStartupPending=false;if(state.projectTitle)setProjectTitle(state.projectTitle);reportClientError(error,'loadProject');$('render-state').textContent='프로젝트 로드 오류';$('suggestion').innerHTML=`<div class="suggestion"><strong>원고 로드 오류</strong><br>${esc(error.message)}</div>`;notify(error.message,{title:'원고를 불러오지 못했습니다.',tone:'error'})})
+  return projectLoadPromise
+}
+if(/^\/p\/[^/]+\/rebuttal(?:\/|$)/.test(location.pathname) || new URLSearchParams(location.search).get('view')==='reviews')void loadReviewProjectTitle();
+else ensureProjectLoaded();
+document.addEventListener('visibilitychange',sendCursor);window.addEventListener('focus',sendCursor);window.addEventListener('blur',sendCursor);document.addEventListener('focusin',sendCursor);document.addEventListener('focusout',sendCursor);collabBootstrapReady.then(()=>{lastCursorPayload='';sendCursor();restorePaperPresenceLocation()});
 installOptionalFeature('초기 편집 화면',setEditor);installOptionalFeature('초기 파일 목록',listFiles);installOptionalFeature('초기 댓글',renderComments);installOptionalFeature('초기 PDF 화면',render);
 for(const [name,installer] of [['본문 컴파일 고정',installMainCompileControl],['패널 조절',installPanelResizers],['집중 화면',installFocusModes],['확대·축소',installZoomControls],['자료 미리보기',installAssetViewer],['PDF 페이지 표시',installPdfPageIndicator],['편집기 단축키',installEditorShortcuts],['선택 영역 도구',installSelectionTools],['논문 작성 도구',installAuthoringTools],['상태 센터',installStatusCenter]])installOptionalFeature(name,installer);
-let mobileUtilitiesCompact=null;function syncMobileUtilities(){const compact=innerWidth<768;if(compact===mobileUtilitiesCompact)return;mobileUtilitiesCompact=compact;$('mobile-utilities').toggleAttribute('open',!compact)}syncMobileUtilities();$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};document.addEventListener('pointerdown',event=>{const menu=$('mobile-utilities');if(menu?.open&&mobileUtilitiesCompact&&!menu.contains(event.target))menu.removeAttribute('open')});$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{syncMobileUtilities();requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',()=>{clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer);if(!activeAsset&&!isLockedProjectFile()&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save();richEditor?.destroy();collabSession.destroy()});
+$('file-search').addEventListener('input',applyFileFilter);$('clear-file-search').onclick=()=>{$('file-search').value='';applyFileFilter();$('file-search').focus()};$('editor').addEventListener('input',()=>{syncProjectTitleFromTex();renderRemoteCursors();renderCommentAnchors()});$('editor').addEventListener('scroll',()=>{renderRemoteCursors();renderCommentAnchors()});window.addEventListener('resize',()=>{requestAnimationFrame(refreshEditorLayout);renderRemoteCursors();renderCommentAnchors()});window.addEventListener('pagehide',event=>{try{const selection=editorSelection();sessionStorage.setItem(`paper-workspace-position:${projectSlug}`,JSON.stringify({file:state.current,...selection,scrollTop:richEditor?.scrollDOM?.scrollTop||0,scrollLeft:richEditor?.scrollDOM?.scrollLeft||0}))}catch{}if(!event.persisted){clearTimeout(window.saveTimer);clearTimeout(serverSourceRefreshTimer)}if(!activeAsset&&!isLockedProjectFile()&&state.current&&state.files[state.current]!==undefined)state.files[state.current]=editorValue();save({keepRecovery:true});if(!event.persisted){richEditor?.destroy();collabSession.destroy()}});
+window.addEventListener('pageshow',event=>{if(event.persisted){refreshEditorLayout();lastCursorPayload='';sendCursor();schedulePdfPageIndicatorUpdate()}});
 
 if(accountReadOnly){
   document.body.dataset.accessRole='viewer';

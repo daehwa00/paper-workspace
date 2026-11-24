@@ -61,7 +61,7 @@ test('dark autocomplete uses readable application surfaces', async ({ page }) =>
         probe.remove()
         return value
       }
-      return { background: token('background-color', '--theme-surface-raised'), color: token('color', '--theme-text') }
+      return { background: token('background-color', '--theme-overlay'), color: token('color', '--theme-menu-text') }
     })
     await expect(popup).toHaveCSS('background-color', expected.background)
     await expect(popup).toHaveCSS('color', expected.color)

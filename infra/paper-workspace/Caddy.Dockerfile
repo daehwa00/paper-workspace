@@ -10,6 +10,8 @@ COPY --chmod=0444 infra/paper-workspace/Caddyfile.auth /etc/paper-caddy/Caddyfil
 COPY --chmod=0444 infra/paper-workspace/Caddyfile.password /etc/paper-caddy/Caddyfile.password
 
 COPY --chmod=0444 infra/paper-workspace/Caddyfile.accounts /etc/paper-caddy/Caddyfile.accounts
+COPY --chmod=0444 infra/paper-workspace/Caddyfile.shared /etc/caddy/Caddyfile.shared
+COPY --chmod=0444 infra/paper-workspace/Caddyfile.shared /etc/paper-caddy/Caddyfile.shared
 
 # Keep the image non-root even when it is started outside the compose profile.
 USER 1000:1000

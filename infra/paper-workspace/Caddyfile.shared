@@ -1,0 +1,69 @@
+(paper_security) {
+    encode zstd gzip
+    @foreign_unsafe {
+        method POST PUT PATCH DELETE
+        header Origin *
+        not header Origin https://{$PAPER_DOMAIN}
+    }
+    handle @foreign_unsafe {
+        respond 403
+    }
+    @client_error {
+        path /__client_error
+        method POST
+        header Content-Type application/json*
+    }
+    handle @client_error {
+        respond 204
+    }
+    handle /__client_error {
+        respond 405
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' wss://{$PAPER_DOMAIN}; font-src 'self' data:; form-action 'self'; frame-ancestors 'self'; frame-src 'self' blob:; img-src 'self' data: blob:; object-src 'none'; script-src 'self' 'sha256-Tx42W/MPQfb1QERV0+646G0lL0n9Pk4i+gHok6qO1LI='; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+}
+
+(paper_default_project_route) {
+    @default_project_asset path_regexp default_project_asset ^/p/aaai27/project/(.*)$
+    handle @default_project_asset {
+        rewrite * /project/{re.default_project_asset.1}
+        reverse_proxy workspace:8080
+    }
+}
+
+(paper_project_routes) {
+    @project_asset path_regexp project_asset ^/p/([A-Za-z0-9][A-Za-z0-9_-]{0,63})/project/(.*)$
+    handle @project_asset {
+        rewrite * /projects/{re.project_asset.1}/{re.project_asset.2}
+        reverse_proxy workspace:8080
+    }
+    @rebuttal_page path_regexp rebuttal_page ^/p/[A-Za-z0-9][A-Za-z0-9_-]{0,63}/rebuttal(?:/[^/]+)?/?$
+    handle @rebuttal_page {
+        @embedded_review query embedded=1
+        @standalone_review query standalone=1
+        handle @embedded_review {
+            rewrite * /rebuttal.html
+            reverse_proxy workspace:8080
+        }
+        handle @standalone_review {
+            rewrite * /rebuttal.html
+            reverse_proxy workspace:8080
+        }
+        handle {
+            rewrite * /index.html
+            reverse_proxy workspace:8080
+        }
+    }
+    @project_root path_regexp project_root ^/p/([A-Za-z0-9][A-Za-z0-9_-]{0,63})/?$
+    handle @project_root {
+        rewrite * /index.html
+        reverse_proxy workspace:8080
+    }
+}

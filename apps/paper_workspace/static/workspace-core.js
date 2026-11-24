@@ -186,6 +186,10 @@
     const validComment = item => record(item) === item && validActor(item) && (validModernComment(item) || validLegacyComment(item))
     const validTask = item => record(item) === item && ['string', 'number'].includes(typeof item.id) && typeof item.title === 'string' && (!item.file || validProjectPath(item.file)) && validActor(item)
     if (!comments.every(validComment) || !tasks.every(validTask)) throw new Error('백업의 댓글 또는 작업 형식이 올바르지 않습니다.')
+    if (snapshot.rebuttal !== undefined && snapshot.rebuttal !== null) {
+      const value = snapshot.rebuttal
+      if (record(value) !== value || value.schema_version !== 1 || !Array.isArray(value.rounds) || value.rounds.length > 100 || !value.rounds.every(item => record(item) === item) || value.texts !== undefined && (record(value.texts) !== value.texts || Object.keys(value.texts).length > 1000 || !Object.entries(value.texts).every(([key, text]) => /^[A-Za-z0-9_.:-]{1,240}$/.test(key) && typeof text === 'string'))) throw new Error('백업의 리버탈 형식이 올바르지 않습니다.')
+    }
     return {...snapshot, title: typeof snapshot.title === 'string' ? snapshot.title.slice(0, 160) : '', files: {...files}, comments, tasks}
   }
 

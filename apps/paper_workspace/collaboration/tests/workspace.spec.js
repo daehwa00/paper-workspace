@@ -20,6 +20,18 @@ function onePagePdf() {
   return pagePdf()
 }
 
+async function expectScreenReaderStatus(page) {
+  const label=page.locator('#collab-label'),button=page.locator('#status-center-toggle')
+  await expect(label).not.toHaveAttribute('aria-hidden','true')
+  await expect.poll(()=>label.evaluate(node=>{
+    const style=getComputedStyle(node),bounds=node.getBoundingClientRect()
+    const clipped=style.clip==='rect(0px, 0px, 0px, 0px)' || style.clipPath!=='none'
+    return style.display!=='none' && style.visibility==='visible' && bounds.width<=1 && bounds.height<=1 && style.overflow==='hidden' && clipped
+  })).toBe(true)
+  await expect(button).toHaveAccessibleName(/^작업공간 상태: .+\. 세부정보 보기$/)
+  await expect.poll(()=>button.evaluate(node=>node.getAttribute('aria-label')?.includes(node.querySelector('#collab-label').textContent))).toBe(true)
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('paper-workspace-language', 'ko'))
 })
@@ -99,24 +111,36 @@ test('file tree refreshes keep the rendered comment cards without a transient fa
   await expect(page.locator('#comment-list .comment-card')).toContainText('single render comment')
 })
 
-test('backup actions use clear hierarchy and segmented history controls', async ({ page }) => {
+test('backup actions use primary saving and quiet activity utilities', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto('/')
   await page.getByRole('tab', { name: '자료' }).click()
-  await expect(page.locator('#create-checkpoint')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(page.locator('#create-checkpoint')).toHaveCSS('background-color', 'rgb(94, 106, 211)')
   await page.locator('#backup-list').evaluate(element => {
     element.innerHTML = '<article class="backup-card"><div class="backup-card-meta"><strong>논문 백업</strong><span>방금 전 · 자동</span></div><div class="tool-row"><button class="backup-restore">비교</button><button class="backup-restore">복원</button></div></article>'
   })
   const actions = page.locator('.backup-card > .tool-row')
-  await expect(actions).toHaveCSS('gap', '0px')
-  await expect(actions).toHaveCSS('border-top-style', 'solid')
-  await expect(actions.locator('.backup-restore').nth(1)).toHaveCSS('border-left-style', 'solid')
+  await expect(actions).toHaveCSS('gap', '2px')
+  await expect(actions).toHaveCSS('border-top-width', '0px')
+  await expect(actions.locator('.backup-restore').nth(1)).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
 })
 
 test('server manuscript paints before collaboration bootstrap finishes', async ({ page }) => {
   await page.goto('/')
   await expect.poll(() => page.evaluate(() => document.getElementById('editor')?.value || ''), { timeout: 1500 }).toContain('\\documentclass')
   await expect(page.locator('#files .file')).toHaveCount(2)
+})
+
+test('main manuscript appears while other project files are still loading', async ({ page }) => {
+  let release
+  const gate=new Promise(resolve=>{release=resolve})
+  await page.route('**/project/references.bib**',async route=>{await gate;await route.continue()})
+  try {
+    await page.goto('/',{waitUntil:'domcontentloaded'})
+    await expect.poll(()=>page.evaluate(()=>document.getElementById('editor')?.value || ''),{timeout:5000}).toContain('\\documentclass')
+    expect(await page.evaluate(()=>workspaceReadyForCompile)).toBe(false)
+  } finally { release() }
+  await page.waitForFunction(()=>workspaceReadyForCompile)
 })
 
 test('an expired API session returns to login with the workspace path preserved', async ({ page }) => {
@@ -139,7 +163,7 @@ test('an expired API session returns to login with the workspace path preserved'
 test('long mobile project trees scroll within the files panel', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  await page.getByRole('button', { name: '파일' }).click()
+  await page.getByRole('button', { name: '파일', exact: true }).click()
   const files = page.locator('#files')
   await files.evaluate(element => {
     for (let index = 0; index < 60; index += 1) {
@@ -704,7 +728,7 @@ test('publishing and synchronizing drafts never deletes user manuscripts', async
 test('a matching saved PDF opens without recompiling and keeps SyncTeX data', async ({ page }) => {
   const assets = new Map(), pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   let compileRequests = 0
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -721,9 +745,10 @@ test('a matching saved PDF opens without recompiling and keeps SyncTeX data', as
     compileRequests += 1
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ elapsed_ms: 12, cached: false, compile_id: '1234567890abcdef12345678', pdf_audit: { page_count: 1 }, pdf_base64: pdf.toString('base64'), synctex_base64: synctex.toString('base64') }) })
   })
-  await page.goto('/')
+  await page.goto(`/p/pdf-cache-${crypto.randomUUID()}`)
   await expect.poll(() => compileRequests).toBe(1)
-  await expect.poll(() => assets.size).toBe(2)
+  // Page-count metadata shares the store; count the actual preview artifacts.
+  await expect.poll(() => [...assets.keys()].filter(path => path.endsWith('.pdf') || path.endsWith('.synctex.gz')).length).toBe(2)
   await page.reload()
   await expect(page.locator('#render-state')).toContainText('저장된 PDF')
   await expect.poll(() => compileRequests).toBe(1)
@@ -733,7 +758,7 @@ test('a matching saved PDF opens without recompiling and keeps SyncTeX data', as
 test('SyncTeX navigation recovers when the compiler cache expires', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   const synctexRequests = []
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -776,7 +801,7 @@ test('SyncTeX navigation recovers when the compiler cache expires', async ({ pag
 test('SyncTeX navigation waits while the visible PDF is stale', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   let synctexRequests = 0
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -804,7 +829,7 @@ test('SyncTeX navigation waits while the visible PDF is stale', async ({ page })
 test('a superseded compile response cannot replace the latest PDF state', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   let compileRequests = 0
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -836,7 +861,7 @@ test('a superseded compile response cannot replace the latest PDF state', async 
 test('compile state is reused for edits while final builds stay clean', async ({ page }) => {
   const pdf = onePagePdf(), synctex = Buffer.from([0x1f, 0x8b, 0x08, 0x00])
   const requests = []
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -1012,7 +1037,9 @@ test('brief collaboration reconnects do not flash an error or resize the top bar
   await expect(page.locator('#health-collab')).toHaveText('다시 연결 중')
   await expect(page.locator('#health-collab').locator('..').locator('..')).toHaveAttribute('data-health', 'pending')
   await expect(status).toHaveAttribute('data-health', 'pending')
-  await expect(page.locator('#collab-label')).toBeHidden()
+  await expectScreenReaderStatus(page)
+  await expect(page.locator('#collab-status')).not.toHaveClass(/error/)
+  await expect(status).toHaveAccessibleName(/작업공간 상태: 처리 중/)
   const widthDuringReconnect = await status.evaluate(element => element.getBoundingClientRect().width)
 
   await page.evaluate(async () => {
@@ -1065,7 +1092,7 @@ test('PDF loading and compiling use minimal status indicators', async ({ page })
   const download = page.locator('#download-pdf')
   await expect(download).toHaveAttribute('aria-label', '렌더링된 PDF 다운로드')
   await expect(download).toHaveText('')
-  await expect(download).toHaveCSS('width', '32px')
+  await expect(download).toHaveCSS('width', '28px')
   await expect(download).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(download).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('#refresh-pdf')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -1154,7 +1181,7 @@ test('lazy PDF pages keep one fit width after the preview panel is resized', asy
   let synctexPoint = null
   await page.setViewportSize({ width: 1600, height: 900 })
   await page.addInitScript(() => localStorage.removeItem('paper-workspace-layout'))
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })
@@ -1183,6 +1210,15 @@ test('lazy PDF pages keep one fit width after the preview panel is resized', asy
   const sixthCanvas = page.locator('.pdf-page[data-page="6"] canvas')
   const canvasBox = await sixthCanvas.boundingBox()
   await sixthCanvas.click({ position: { x: canvasBox.width / 2, y: canvasBox.height / 2 } })
+  // Sidebar animation must not move the reader away from the current PDF passage.
+  const beforeSidebar=await page.evaluate(()=>PaperPdfViewport.capture(document.querySelector('.preview-panel')))
+  for(let index=0;index<2;index++){
+    await page.locator('#toggle-sidebar').click()
+    await page.waitForFunction(()=>!document.documentElement.classList.contains('sidebar-view-transition')&&!document.getAnimations().some(a=>a.id==='paper-sidebar-motion'))
+    const afterSidebar=await page.evaluate(()=>PaperPdfViewport.capture(document.querySelector('.preview-panel')))
+    expect(afterSidebar.pageNumber).toBe(beforeSidebar.pageNumber)
+    expect(Math.abs(afterSidebar.pageProgress-beforeSidebar.pageProgress)).toBeLessThan(.02)
+  }
   await expect.poll(() => synctexPoint).not.toBeNull()
   expect(synctexPoint.page).toBe(6)
   expect(synctexPoint.x).toBeCloseTo(100, 0)
@@ -1218,30 +1254,24 @@ test('dark mode keeps application controls off white surfaces', async ({ page })
   await expect(page.locator('.name-dialog .quiet-dialog')).not.toHaveCSS('background-color', 'rgb(255, 255, 255)')
 })
 
-test('workspace language label and chevron share a stable vertical center', async ({ page }) => {
+test('workspace language label and shared chevron stay vertically centered', async ({ page }) => {
   await page.goto('/p/example-paper')
   await page.locator('#workspace-language').selectOption('ko')
-
   const alignment = await page.locator('.language-control').evaluate(control => {
-    const controlBox = control.getBoundingClientRect()
-    const selectBox = control.querySelector('select').getBoundingClientRect()
-    const chevron = getComputedStyle(control, '::after')
+    const select = control.querySelector('select'), parent = control.getBoundingClientRect(), box = select.getBoundingClientRect(), style = getComputedStyle(select)
     return {
-      centerDelta: Math.abs((controlBox.top + controlBox.height / 2) - (selectBox.top + selectBox.height / 2)),
-      content: chevron.content,
-      top: chevron.top,
-      width: chevron.width,
-      height: chevron.height,
-      transform: chevron.transform
+      centerDelta: Math.abs(parent.top + parent.height / 2 - box.top - box.height / 2),
+      image: style.backgroundImage, position: style.backgroundPosition, size: style.backgroundSize,
+      sharedImage: getComputedStyle(document.documentElement).getPropertyValue('--select-chevron').trim(),
+      oldArrow: getComputedStyle(control, '::after').content
     }
   })
-
   expect(alignment.centerDelta).toBeLessThan(.5)
-  expect(alignment.content).toBe('""')
-  expect(alignment.top).toBe('18px')
-  expect(alignment.width).toBe('5px')
-  expect(alignment.height).toBe('5px')
-  expect(alignment.transform).not.toBe('none')
+  expect(alignment.image).toBe(alignment.sharedImage)
+  expect(alignment.image).toContain('image/svg+xml')
+  expect(alignment.position).toContain('50%')
+  expect(alignment.size).toBe('16px')
+  expect(alignment.oldArrow).toBe('none')
 })
 
 test('wide workspace keeps source, PDF, and assistant visible', async ({ page, browserName }) => {
@@ -1258,7 +1288,7 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   await expect(page.locator('.language-control select')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('.theme-trigger')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('#ask')).toHaveCSS('box-shadow', 'none')
-  await expect(page.locator('#ask')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(page.locator('#ask')).toHaveCSS('background-color', 'rgb(94, 106, 211)')
   const saveState = page.locator('#save-state')
   await expect(saveState).toHaveAttribute('data-health', 'ok')
   await expect(saveState).toHaveText(/\S/)
@@ -1266,15 +1296,15 @@ test('wide workspace keeps source, PDF, and assistant visible', async ({ page, b
   const precisionControls = ['#status-center-toggle', '#collab-name', '#toggle-sidebar', '#new-folder', '#new-file', '#editor-zoom-out', '#editor-zoom-in', '#pdf-zoom-out', '#pdf-zoom-in', '#download-pdf', '#refresh-pdf', '#reset-layout']
   for (const selector of precisionControls) {
     const box = await page.locator(selector).boundingBox()
-    expect(box?.height).toBeGreaterThanOrEqual(32)
-    expect(box?.width).toBeGreaterThanOrEqual(32)
+    expect(box?.height).toBeGreaterThanOrEqual(28)
+    expect(box?.width).toBeGreaterThanOrEqual(28)
   }
   const assistantToggle = await page.locator('#toggle-assistant').boundingBox()
-  expect(assistantToggle?.height).toBeGreaterThanOrEqual(36)
+  expect(assistantToggle?.height).toBeGreaterThanOrEqual(28)
   expect(assistantToggle?.width).toBeGreaterThanOrEqual(36)
   for (const box of await page.locator('.assistant-tabs .tab').evaluateAll(items => items.map(item => item.getBoundingClientRect().toJSON()))) {
     expect(box.width).toBeGreaterThanOrEqual(32)
-    expect(box.height).toBeGreaterThanOrEqual(32)
+    expect(box.height).toBeGreaterThanOrEqual(28)
   }
   if (browserName === 'chromium') {
     await expect(page.locator('body')).toHaveScreenshot('workspace-wide.png', {
@@ -1292,7 +1322,7 @@ test('submission checks use a distinct primary action with summary spacing', asy
   const action = page.locator('#run-submission-checks')
   const summary = page.locator('#submission-check-summary')
   await expect(action).toHaveCSS('display', 'inline-flex')
-  await expect(action).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(action).toHaveCSS('background-color', 'rgb(94, 106, 211)')
   await expect(action).toHaveCSS('color', 'rgb(255, 255, 255)')
   await expect(action).toHaveCSS('margin-bottom', '10px')
   const [actionBox, summaryBox] = await Promise.all([action.boundingBox(), summary.boundingBox()])
@@ -1406,7 +1436,8 @@ test('PDF source highlight matches the full height of a wrapped source line', as
 test('workspace health center exposes collaboration, save, PDF, and backup state', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
-  await page.locator('#status-center-toggle').click()
+  const status=page.locator('#status-center-toggle'),widthBefore=await status.evaluate(node=>node.getBoundingClientRect().width)
+  await status.click()
   await expect(page.locator('#status-center')).toBeVisible()
   await expect(page.locator('#health-collab')).not.toBeEmpty()
   await expect(page.locator('#health-save')).not.toBeEmpty()
@@ -1424,11 +1455,14 @@ test('workspace health center exposes collaboration, save, PDF, and backup state
     window.refreshOverallStatus()
   })
   await expect(page.locator('#status-center-toggle')).toHaveAttribute('data-health', 'healthy')
-  await expect(page.locator('#collab-label')).toBeHidden()
+  await expectScreenReaderStatus(page)
+  await expect(status).toHaveAccessibleName(/작업공간 상태: 정상/)
+  expect(await status.evaluate(node=>node.getBoundingClientRect().width)).toBe(widthBefore)
 })
 
 test('mobile workspace uses focused bottom navigation', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   await page.waitForFunction(() => document.getElementById('editor')?.value.includes('\\documentclass'))
   await expect(page.locator('.sidebar')).toBeHidden()
@@ -1439,7 +1473,7 @@ test('mobile workspace uses focused bottom navigation', async ({ page }) => {
   await expect(page.locator('.sidebar')).toBeHidden()
   await expect(page.locator('.preview-panel')).toBeVisible()
   await expect(page.locator('#editor-panel')).toBeHidden()
-  await expect(page.locator('#focus-modes button[data-focus="preview"]')).toHaveCSS('background-color', 'rgb(36, 87, 214)')
+  await expect(page.locator('#focus-modes button[data-focus="preview"]')).toHaveCSS('background-color', 'rgb(232, 232, 235)')
   await expect(page.locator('#focus-modes button[data-focus="source"]')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   const sizes = await page.locator('#focus-modes button').evaluateAll(items => items.map(item => {
     const rect = item.getBoundingClientRect()
@@ -1530,8 +1564,10 @@ test('compile failure presents a normalized cause and direct source jump', async
   await expect(page.locator('#compile-diagnostic-list .diagnostic-item')).toHaveCount(1)
   await expect(page.locator('#status-center-toggle')).toHaveAttribute('data-health', 'error')
   await expect(page.locator('#collab-status')).toHaveClass(/error/)
-  await expect(page.locator('#collab-status')).toHaveCSS('background-color', 'rgb(240, 68, 56)')
-  await expect(page.locator('#collab-label')).toHaveCSS('color', 'rgb(255, 138, 128)')
+  await expect(page.locator('#collab-status')).toBeVisible()
+  await expect(page.locator('#collab-status')).toHaveCSS('background-color', 'rgb(181, 46, 58)')
+  await expectScreenReaderStatus(page)
+  await expect(page.locator('#status-center-toggle')).toHaveAccessibleName(/작업공간 상태: PDF 오류/)
   await expect(page.locator('#pdf-error-action')).toHaveText('paper/main.tex:5로 이동')
   await page.locator('#pdf-error-action').click()
   await expect(page.locator('#active-file')).toHaveText('paper/main.tex')
@@ -1692,8 +1728,9 @@ test('Codex result stays flat while controls retain clear boundaries', async ({ 
   await expect(result).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(page.locator('.codex-change-details')).toHaveCSS('border-radius', '0px')
   await expect(page.locator('.codex-result .codex-summary')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.codex-followup')).toHaveCSS('border-left-width', '0px')
+  await expect(page.locator('#assist > .codex-followup')).toHaveCSS('border-left-width', '1px')
   await expect(page.locator('.codex-followup-row')).toHaveCSS('display', 'grid')
+  expect(await page.locator('#codex-followup-input').evaluate(e=>Boolean(e.closest('.assistant-stream')))).toBe(false)
   const inputBox = await page.locator('#codex-followup-input').boundingBox()
   const buttonBox = await page.locator('#codex-followup-send').boundingBox()
   expect(buttonBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height + 7)
@@ -1749,7 +1786,7 @@ test('Yjs merges text and awareness between two browsers', async ({ browser }) =
   const room = `e2e-${Date.now()}`
   const create = (page, name) => page.evaluate(({ room, name }) => {
     window.e2eSession = PaperCollab.createSession({
-      url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`, room,
+      url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/collab`, room: `paper-workspace:${location.host}:${room}`,
       actor: { id: name, name, color: '#2457d6' }
     })
     return window.e2eSession.whenReady.then(() => true)
@@ -1776,6 +1813,34 @@ test('Yjs merges text and awareness between two browsers', async ({ browser }) =
     return values[0] === values[1] && values[0].includes('A') && values[0].includes('B')
   }).toBe(true)
   await Promise.all([first.close(), second.close()])
+})
+
+test('replacing a shared text with identical content preserves editor binding, selection and undo', async ({ browser }) => {
+  const contexts = await Promise.all([namedContext(browser), namedContext(browser)])
+  try {
+    const [first, second] = await Promise.all(contexts.map(context => context.newPage()))
+    const url = `/p/text-rebind-${Date.now()}`
+    await Promise.all([first.goto(url), second.goto(url)])
+    await Promise.all([first, second].map(page => page.waitForFunction(() => workspaceReadyForCompile)))
+    await second.locator('.cm-content').focus()
+    await second.keyboard.insertText('Local undo remains. ')
+    await expect.poll(() => first.evaluate(() => editorValue())).toContain('Local undo remains.')
+    await second.evaluate(() => setEditorSelection(4, 9))
+    await first.evaluate(() => {
+      const session = window.PaperWorkspaceSharedSession, text = session.files.get(state.current)
+      session.files.set(state.current, new text.constructor(text.toString()))
+    })
+    await Promise.all([first, second].map(page => page.waitForFunction(() => sharedText === window.PaperWorkspaceSharedSession.files.get(state.current))))
+    expect(await second.evaluate(() => editorSelection())).toEqual({ start: 4, end: 9 })
+    await second.keyboard.press('Control+z')
+    await expect.poll(() => first.evaluate(() => editorValue())).not.toContain('Local undo remains.')
+    await second.evaluate(() => setEditorSelection(0))
+    await second.keyboard.insertText('Shared after text replacement. ')
+    await expect.poll(() => first.evaluate(() => editorValue())).toContain('Shared after text replacement.')
+    expect(await second.evaluate(() => window.PaperWorkspaceSharedSession.files.get(state.current).toString())).toContain('Shared after text replacement.')
+  } finally {
+    await Promise.all(contexts.map(context => context.close()))
+  }
 })
 
 test('a fresh browser cannot replace an established shared manuscript with the static seed', async ({ browser }) => {

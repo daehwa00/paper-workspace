@@ -1,0 +1,20 @@
+import {test,expect} from './fixtures.js';
+for(const theme of ['light','dark'])for(const width of [320,1600])test(`native review upload uses shared controls and remains explicit ${theme} ${width}`,async({page})=>{
+ const round={id:'r1',title:'Review round',reviewers:[],reviews:[],imports:[],documents:[],concerns:[],mappings:[],findings:[],evidence:[],work_items:[],rules:[],active_rules_id:null,analyses:[],submissions:[],glossary:{}};
+ let writes=0;
+ await page.addInitScript(theme=>localStorage.setItem('paper-workspace-theme',theme),theme);
+ await page.route('**/api/rebuttal/projects/**',route=>{if(route.request().method()!=='GET')writes++;return route.fulfill({json:{schema_version:1,revision:0,enabled:true,jobs:[],rounds:[round]}})});
+ await page.setViewportSize({width,height:1000});await page.goto(`/p/native-upload-${theme}-${width}/rebuttal?round=r1&lang=en#reviews`);
+ const iframe=page.locator('iframe.paper-review-frame');await expect(iframe).toHaveClass(/is-active/);
+ const review=page.frameLocator('iframe.paper-review-frame'),importReviews=review.getByRole('button',{name:'Import reviews',exact:true});
+ await importReviews.click();const file=review.locator('#dialog-body input[type=file]');await expect(file).toBeVisible();
+ const pseudo=await file.evaluate(e=>{const s=getComputedStyle(e,'::file-selector-button');return {height:s.height,radius:s.borderRadius,background:s.backgroundColor}});
+ expect(pseudo.height).toBe(width<768?'44px':'28px');expect(pseudo.radius).toBe('6px');
+ await file.focus();await page.keyboard.press('Shift+Tab');await page.keyboard.press('Tab');await expect(file).toBeFocused();await expect(file).toHaveCSS('outline-style','solid');
+ const picker=page.waitForEvent('filechooser');await file.click();const chooser=await picker;
+ await chooser.setFiles({name:'isolated-review.txt',mimeType:'text/plain',buffer:Buffer.from('A review file selected without submitting it.')});
+ expect(await file.evaluate(e=>e.files[0].name)).toBe('isolated-review.txt');
+ await file.focus();await expect(file).toBeFocused();
+ expect(writes).toBe(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+ await page.keyboard.press('Escape');await expect(review.locator('#form-dialog')).not.toBeVisible();await expect(importReviews).toBeFocused();
+});

@@ -5,8 +5,8 @@
   "lang": "en",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#172b4d",
-  "theme_color": "#172b4d",
+  "background_color": "#101113",
+  "theme_color": "#101113",
   "icons": [
     {
       "src": "/assets/paper-workspace-touch.png?v=__APPLE_TOUCH_ICON_HASH__",

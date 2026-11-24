@@ -3,22 +3,39 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import html
 import ipaddress
 import json
-import math
 import os
-import threading
+import sys
 import time
-from collections import OrderedDict
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import import_module
 from pathlib import Path
-import sys
-sys.path.insert(0, str(Path(__file__).parent))
-import accounts
 from urllib.parse import parse_qs, urlencode
+
+# Support package imports, standalone container entrypoints and file-based callers.
+package = __package__
+if not package:
+    package_directory = Path(__file__).resolve().parent
+    sys.path.insert(0, str(package_directory.parent))
+    package = package_directory.name
+
+accounts = import_module(".accounts", package)
+rate_limit = import_module(".rate_limit", package)
+BoundedHTTPServer = import_module(".password_gate_http", package).BoundedHTTPServer
+render_page = import_module(".password_gate_rendering", package).render_page
+
+LOGIN_BASE_DELAY = rate_limit.LOGIN_BASE_DELAY
+LOGIN_FAILURE_WINDOW = rate_limit.LOGIN_FAILURE_WINDOW
+LOGIN_FREE_FAILURES = rate_limit.LOGIN_FREE_FAILURES
+LOGIN_MAX_DELAY = rate_limit.LOGIN_MAX_DELAY
+LOGIN_MAX_TRACKED_IPS = rate_limit.LOGIN_MAX_TRACKED_IPS
+FailureState = rate_limit.FailureState
+LoginAttemptLimiter = rate_limit.LoginAttemptLimiter
+bounded_float = rate_limit.bounded_float
+bounded_int = rate_limit.bounded_int
 
 PASSWORD = os.environ.get("PAPER_ACCESS_PASSWORD", "")
 SESSION_SECRET = os.environ.get("PAPER_SESSION_SECRET", "")
@@ -56,25 +73,6 @@ except ValueError:
     SESSION_MAX_AGE = 2_592_000
 
 
-def bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
-    try:
-        return max(minimum, min(maximum, int(os.environ.get(name, str(default)))))
-    except ValueError:
-        return default
-
-
-def bounded_float(name: str, default: float, minimum: float, maximum: float) -> float:
-    try:
-        return max(minimum, min(maximum, float(os.environ.get(name, str(default)))))
-    except ValueError:
-        return default
-
-
-LOGIN_FREE_FAILURES = bounded_int("PAPER_LOGIN_FREE_FAILURES", 3, 0, 10)
-LOGIN_BASE_DELAY = bounded_float("PAPER_LOGIN_BASE_DELAY", 1.0, 0.25, 10.0)
-LOGIN_MAX_DELAY = bounded_float("PAPER_LOGIN_MAX_DELAY", 60.0, 1.0, 300.0)
-LOGIN_FAILURE_WINDOW = bounded_float("PAPER_LOGIN_FAILURE_WINDOW", 900.0, 60.0, 86_400.0)
-LOGIN_MAX_TRACKED_IPS = bounded_int("PAPER_LOGIN_MAX_TRACKED_IPS", 4096, 128, 65_536)
 CLIENT_IP_HEADER = "X-Paper-Client-IP"
 FAVICON_PATH = Path(os.environ.get("PAPER_FAVICON_PATH", "/app/favicon-64.png"))
 
@@ -88,6 +86,18 @@ def favicon_data_url(path: Path = FAVICON_PATH) -> str:
 
 
 FAVICON_DATA_URL = favicon_data_url()
+
+
+def logo_data_url(mode: str) -> str:
+    """Embed the approved mark so the login page works before authentication."""
+    name = f"paper-folio-{mode}.svg"
+    paths = (Path("/app") / name, Path(__file__).resolve().parents[1] / "static" / "assets" / name)
+    for path in paths:
+        try:
+            return "data:image/svg+xml;base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+        except OSError:
+            continue
+    return FAVICON_DATA_URL
 
 
 def configuration_errors(password: str | None = None, session_secret: str | None = None) -> list[str]:
@@ -151,98 +161,6 @@ def client_ip(handler: BaseHTTPRequestHandler) -> str:
     if len(values) != 1 or "," in values[0]:
         return peer
     return canonical_ip(values[0]) or peer
-
-
-class FailureState:
-    __slots__ = ("blocked_until", "failures", "last_failure")
-
-    def __init__(self, failures: int, last_failure: float, blocked_until: float) -> None:
-        self.failures = failures
-        self.last_failure = last_failure
-        self.blocked_until = blocked_until
-
-
-class LoginAttemptLimiter:
-    """Thread-safe, bounded per-client exponential login cooldowns."""
-
-    def __init__(
-        self,
-        *,
-        free_failures: int = LOGIN_FREE_FAILURES,
-        base_delay: float = LOGIN_BASE_DELAY,
-        max_delay: float = LOGIN_MAX_DELAY,
-        failure_window: float = LOGIN_FAILURE_WINDOW,
-        max_entries: int = LOGIN_MAX_TRACKED_IPS,
-    ) -> None:
-        self.free_failures = max(0, free_failures)
-        self.base_delay = max(0.01, base_delay)
-        self.max_delay = max(self.base_delay, max_delay)
-        self.failure_window = max(self.max_delay, failure_window)
-        self.max_entries = max(1, max_entries)
-        self._states: OrderedDict[str, FailureState] = OrderedDict()
-        self._lock = threading.Lock()
-
-    def _prune(self, now: float) -> None:
-        while self._states:
-            _, state = next(iter(self._states.items()))
-            if now - state.last_failure < self.failure_window:
-                break
-            self._states.popitem(last=False)
-        while len(self._states) > self.max_entries:
-            self._states.popitem(last=False)
-
-    def retry_after(self, client: str, now: float | None = None) -> int:
-        current = time.monotonic() if now is None else now
-        with self._lock:
-            self._prune(current)
-            state = self._states.get(client)
-            if state is None or state.blocked_until <= current:
-                return 0
-            return max(1, math.ceil(state.blocked_until - current))
-
-    def record_failure(self, client: str, now: float | None = None) -> int:
-        current = time.monotonic() if now is None else now
-        with self._lock:
-            return self._record_failure(client, current)
-
-    def _record_failure(self, client: str, now: float) -> int:
-        self._prune(now)
-        previous = self._states.get(client)
-        failures = (
-            previous.failures + 1
-            if previous is not None and now - previous.last_failure < self.failure_window
-            else 1
-        )
-        delay = 0.0
-        if failures > self.free_failures:
-            exponent = min(failures - self.free_failures - 1, 30)
-            delay = min(self.max_delay, self.base_delay * (2**exponent))
-        self._states[client] = FailureState(failures, now, now + delay)
-        self._states.move_to_end(client)
-        self._prune(now)
-        return max(1, math.ceil(delay)) if delay else 0
-
-    def evaluate_attempt(
-        self,
-        client: str,
-        password_matches: bool,
-        now: float | None = None,
-    ) -> tuple[bool, int]:
-        """Atomically accept, reject, or throttle a completed password comparison."""
-        current = time.monotonic() if now is None else now
-        with self._lock:
-            self._prune(current)
-            state = self._states.get(client)
-            if state is not None and state.blocked_until > current:
-                return False, max(1, math.ceil(state.blocked_until - current))
-            if password_matches:
-                self._states.pop(client, None)
-                return True, 0
-            return False, self._record_failure(client, current)
-
-    def record_success(self, client: str) -> None:
-        with self._lock:
-            self._states.pop(client, None)
 
 
 LOGIN_LIMITER = LoginAttemptLimiter()
@@ -352,22 +270,27 @@ def login_url(redirect: str, language: str) -> str:
     return "/_auth/login?" + urlencode({"rd": safe_redirect(redirect), "lang": language})
 
 
+def login_styles() -> str:
+    """Inline shared styles; the bundled UI font is an allowlisted public asset."""
+    directory = Path(__file__).resolve().parent
+    static = directory.parent / "static"
+    styles = []
+    for name in ("theme.css", "login.css"):
+        path = directory / name
+        if not path.is_file():
+            path = static / name
+        css = path.read_text(encoding="utf-8")
+        styles.append(css)
+    return "\n".join(styles)
+
+
 def render_login_page(language: str, redirect: str = "/", error_code: str = "") -> bytes:
     language = normalize_language(language) or "en"
     copy = dict(COPY[language])
-    username_field = ''
-    if accounts.REGISTRY:
-        copy['description'] = '개인 공간 이름과 발급받은 암호를 입력하세요.' if language == 'ko' else 'Enter your workspace name and issued password.'
-        label = '개인 공간' if language == 'ko' else 'Workspace'
-        username_field = f'<label>{label}<input name="username" autocomplete="username" required pattern="[A-Za-z0-9][A-Za-z0-9_-]{{0,63}}" placeholder="daehwa"></label>'
-    error = copy.get(error_code, "")
-    message = f'<p class="error" role="alert">{html.escape(error)}</p>' if error else ""
-    action = html.escape(login_url(redirect, language), quote=True)
-    english_url = html.escape(login_url(redirect, "en"), quote=True)
-    korean_url = html.escape(login_url(redirect, "ko"), quote=True)
-    favicon = html.escape(FAVICON_DATA_URL, quote=True)
-    body = f"""<!doctype html><html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101828"><script>try{{const t=localStorage.getItem('paper-workspace-theme')||'system',d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.colorScheme=d?'dark':'light'}}catch(_){{}}</script><link rel="icon" href="/favicon.ico"><link rel="icon" type="image/png" sizes="64x64" href="/assets/paper-workspace-icon.png"><link rel="icon" type="image/png" sizes="64x64" href="{favicon}"><title>{html.escape(copy['title'])}</title><style>*{{box-sizing:border-box}}:root{{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#101828;background:#f2f4f7}}body{{margin:0;display:grid;min-width:320px;min-height:100dvh;place-items:center;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));background:linear-gradient(145deg,#f8fafc,#eef2f7)}}main{{width:min(380px,100%);padding:30px;border:1px solid #e4e7ec;border-radius:18px;background:#fff;box-shadow:0 22px 60px #1018281a}}header{{display:flex;align-items:center;gap:12px;margin-bottom:22px}}.mark{{display:grid;width:44px;height:44px;place-items:center;border-radius:12px;background:#101828;color:#fff;font-size:21px}}.eyebrow{{margin:0 0 3px;color:#667085;font-size:11px;font-weight:800;letter-spacing:.1em}}h1{{margin:0;font-size:23px;letter-spacing:-.035em}}p{{margin:0;color:#667085;font-size:14px;line-height:1.55}}.language{{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin:-4px 0 18px;font-size:12px}}.language a{{color:#475467;text-decoration:none}}.language a[aria-current=true]{{color:#2457d6;font-weight:800}}.language span{{color:#d0d5dd}}label{{display:grid;gap:8px;margin-top:24px;color:#344054;font-size:13px;font-weight:700}}input{{width:100%;min-height:48px;padding:12px 13px;border:1px solid #b2ccff;border-radius:10px;background:#fff;color:#101828;font:16px inherit;outline:0;transition:border-color 120ms ease,box-shadow 120ms ease}}input:focus{{border-color:#4f7cff;box-shadow:0 0 0 4px #4f7cff1a}}button{{width:100%;min-height:48px;margin-top:16px;padding:12px;border:0;border-radius:10px;background:#2457d6;color:#fff;font:700 15px inherit;cursor:pointer;transition:background-color 120ms ease,transform 120ms ease}}button:hover{{background:#1745bb}}button:active{{transform:scale(.98)}}button:focus-visible,a:focus-visible{{outline:3px solid #84adff;outline-offset:2px}}.error{{margin:16px 0 0;padding:9px 10px;border-radius:8px;background:#fef3f2;color:#b42318;font-size:13px}}html[data-color-scheme=dark]{{color-scheme:dark;background:#0b1220}}html[data-color-scheme=dark] body{{background:linear-gradient(145deg,#0b1220,#101a2b)}}html[data-color-scheme=dark] main{{border-color:#2a3850;background:#111a2b;box-shadow:0 22px 60px #0008}}html[data-color-scheme=dark] h1{{color:#f5f8ff}}html[data-color-scheme=dark] p,html[data-color-scheme=dark] .eyebrow,html[data-color-scheme=dark] .language a{{color:#a8b5c9}}html[data-color-scheme=dark] .language a[aria-current=true]{{color:#84adff}}html[data-color-scheme=dark] label{{color:#dbe5f5}}html[data-color-scheme=dark] input{{border-color:#365f9f;background:#182235;color:#f5f8ff}}@media(prefers-reduced-motion:reduce){{input,button{{transition:none}}button:active{{transform:none}}}}@media(prefers-contrast:more){{main,input{{border-color:#667085}}}}</style></head><body><main><nav class="language" aria-label="{html.escape(copy['language_label'])}"><a href="{english_url}" hreflang="en" lang="en" aria-current="{'true' if language == 'en' else 'false'}">English</a><span aria-hidden="true">·</span><a href="{korean_url}" hreflang="ko" lang="ko" aria-current="{'true' if language == 'ko' else 'false'}">한국어</a></nav><header><span class="mark" aria-hidden="true">✎</span><span><p class="eyebrow">{html.escape(copy['eyebrow'])}</p><h1>{html.escape(copy['heading'])}</h1></span></header><p>{html.escape(copy['description'])}</p>{message}<form method="post" action="{action}">{username_field}<label>{html.escape(copy['password_label'])}<input name="password" type="password" autocomplete="current-password" autofocus required></label><button type="submit">{html.escape(copy['submit'])}</button></form></main></body></html>"""
-    return body.encode("utf-8")
+    return render_page(
+        language, redirect, error_code, copy, bool(accounts.REGISTRY),
+        login_url, login_styles(), FAVICON_DATA_URL, logo_data_url("light"), logo_data_url("dark"),
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -476,27 +399,44 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", "/_auth/login")
             self.send_header("Set-Cookie", "paper_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax")
+            self.send_header("Set-Cookie", "rebuttal_session=; Max-Age=0; Path=/api/rebuttal/; HttpOnly; Secure; SameSite=Strict")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
         if request_path != "/login":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
+        identity = client_ip(self)
+        query = parse_qs(self.path.partition("?")[2])
+        query_language = query.get("lang", [None])[0]
+        language = resolve_language(
+            query_language, self.headers.get("Cookie"), self.headers.get("Accept-Language")
+        )
+        with LOGIN_LIMITER.attempt(identity) as retry_after:
+            if retry_after:
+                self.close_connection = True
+                self._login_form(
+                    "rate_limited",
+                    redirect=safe_redirect(query.get("rd", ["/"])[0]),
+                    language=language,
+                    remember_language=normalize_language(query_language) is not None,
+                    status=HTTPStatus.TOO_MANY_REQUESTS,
+                    retry_after=retry_after,
+                )
+                return
+            self._submit_login(identity, query, query_language, language)
+
+    def _submit_login(self, identity, query, query_language, language):
         try:
             size = int(self.headers.get("Content-Length", "0"))
             if size < 1 or size > 4096:
                 raise ValueError("invalid login request")
-            values = parse_qs(self.rfile.read(size).decode("utf-8"), keep_blank_values=True)
+            body = self.rfile.read(size)
+            if len(body) != size:
+                raise ValueError("incomplete login request")
+            values = parse_qs(body.decode("utf-8"), keep_blank_values=True)
             supplied = values.get("password", [""])[0]
-            query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
             redirect = safe_redirect(values.get("rd", query.get("rd", ["/"]))[0])
-            query_language = query.get("lang", [None])[0]
-            language = resolve_language(
-                query_language,
-                self.headers.get("Cookie"),
-                self.headers.get("Accept-Language"),
-            )
-            identity = client_ip(self)
             name = values.get('username', [''])[0].strip()
             try:
                 data = accounts.registry() if accounts.REGISTRY else None
@@ -520,7 +460,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if data is not None:
                 token = accounts.issue(data, name, SESSION_SECRET, SESSION_MAX_AGE)
-                if redirect == '/': redirect = '/' + name
+                if redirect == "/":
+                    redirect = "/" + name
             else:
                 token, _ = issue_session()
             self.send_response(HTTPStatus.SEE_OTHER)
@@ -529,16 +470,11 @@ class Handler(BaseHTTPRequestHandler):
                 "Set-Cookie",
                 f"paper_session={token}; Max-Age={SESSION_MAX_AGE}; Path=/; HttpOnly; Secure; SameSite=Lax",
             )
+            self.send_header("Set-Cookie", "rebuttal_session=; Max-Age=0; Path=/api/rebuttal/; HttpOnly; Secure; SameSite=Strict")
             self.send_header("Set-Cookie", language_cookie(language))
             self.send_header("Content-Length", "0")
             self.end_headers()
         except (UnicodeDecodeError, ValueError):
-            query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
-            language = resolve_language(
-                query.get("lang", [None])[0],
-                self.headers.get("Cookie"),
-                self.headers.get("Accept-Language"),
-            )
             self._json(
                 HTTPStatus.BAD_REQUEST,
                 {
@@ -582,8 +518,12 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+def create_server(host: str = "0.0.0.0", port: int = 8079) -> ThreadingHTTPServer:
+    return BoundedHTTPServer((host, port), Handler)
+
+
 if __name__ == "__main__":
     errors = configuration_errors()
     if errors:
         raise SystemExit("password gate configuration is unsafe: " + "; ".join(errors))
-    ThreadingHTTPServer(("0.0.0.0", 8079), Handler).serve_forever()
+    create_server().serve_forever()

@@ -23,7 +23,7 @@ async function openWorkspaceWithPdf(page, { zoom = null, waitForVisiblePdf = tru
   } else {
     await page.addInitScript(() => localStorage.removeItem('paper-workspace-layout'))
   }
-  await page.route('**/vendor/pdfjs/*.mjs', async route => {
+  await page.route('**/vendor/pdfjs/*.mjs*', async route => {
     const response = await route.fetch()
     await route.fulfill({ response, headers: { ...response.headers(), 'content-type': 'text/javascript' } })
   })

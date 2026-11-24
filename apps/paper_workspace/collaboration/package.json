@@ -6,17 +6,18 @@
   "type": "module",
   "scripts": {
     "build:client": "esbuild client.js --bundle --format=iife --global-name=PaperCollab --minify --outfile=../static/vendor/paper-collab.js && esbuild editor.js --bundle --format=iife --global-name=PaperEditor --minify --outfile=../static/vendor/paper-editor.js",
+    "compare:openreview": "node compare-openreview.mjs",
     "capture:demo": "node capture-demo.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ci": "CI=1 playwright test --reporter=line",
     "start": "HOST=0.0.0.0 PORT=8765 node server.cjs",
-    "test:server": "node --test server.test.cjs",
+    "test:server": "node --test server.test.cjs rebuttal-sources.test.cjs rebuttal-concurrency.test.cjs rebuttal-backup.test.cjs",
     "check:client": "npm run build:client && git diff --exit-code -- ../static/vendor/paper-collab.js ../static/vendor/paper-editor.js"
   },
   "dependencies": {
+    "ws": "8.21.0",
     "y-indexeddb": "9.0.12",
     "y-leveldb": "0.2.0",
-    "ws": "8.21.0",
     "y-websocket": "2.1.0",
     "yjs": "13.6.31"
   },
@@ -30,6 +31,9 @@
     "@cursor.js/core": "^0.9.0",
     "@playwright/test": "1.61.1",
     "codemirror-lang-latex": "^0.4.1",
-    "esbuild": "0.25.6"
+    "dompurify": "^3.4.17",
+    "esbuild": "0.25.6",
+    "marked": "^15.0.6",
+    "mathjax-full": "^3.2.2"
   }
 }

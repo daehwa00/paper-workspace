@@ -1,5 +1,6 @@
 from __future__ import annotations
 import importlib.util
+import json
 from pathlib import Path
 import pytest
 
@@ -25,7 +26,7 @@ def test_password_and_revocable_sessions(registry):
     registry['users']['alice']['disabled'] = True
     assert a.session(registry, cookie, 'secret', now=110) is None
 
-@pytest.mark.parametrize('path', ['/p/first', '/p/first/project/main.tex', '/projects/first/thumbnail.png', '/project/main.tex', '/index.html', '/api/backups/projects/first-backup/assets/x.pdf', '/api/backups/projects/first-backup/snapshots/1', '/collab/paper-workspace:paper.glowme.kr:first', '/collab-runtime/paper-workspace:paper.glowme.kr:first'])
+@pytest.mark.parametrize('path', ['/p/first', '/p/first/project/main.tex', '/projects/first/thumbnail.png', '/api/backups/projects/first-backup/assets/x.pdf', '/api/backups/projects/first-backup/snapshots/1', '/collab/paper-workspace:paper.glowme.kr:first', '/collab-runtime/paper-workspace:paper.glowme.kr:first'])
 def test_foreign_project_denied(registry, path):
     assert a.authorize(registry, 'bob', path, 'GET') is None
     assert a.authorize(registry, 'alice', path, 'GET') == 'owner'
@@ -47,6 +48,16 @@ def test_catalog_filter_and_password_reset(registry, tmp_path, monkeypatch):
     token = a.issue(registry, 'alice', 'secret', 60, now=100)
     registry['users']['alice']['password_hash'] = a.password_hash('replacement password')
     assert a.session(registry, 'paper_session=' + token, 'secret', now=110) is None
+
+
+def test_project_metadata_reuses_project_read_and_write_permissions(registry):
+    first = '/api/backups/projects/first-backup/metadata'
+    second = '/api/backups/projects/second-backup/metadata'
+    assert a.authorize(registry, 'alice', first, 'PUT') == 'owner'
+    assert a.authorize(registry, 'alice', second, 'GET') == 'viewer'
+    assert a.authorize(registry, 'alice', second, 'PUT') is None
+    assert a.authorize(registry, 'bob', first, 'GET') is None
+    assert a.authorize(registry, 'bob', second, 'PUT') == 'owner'
 
 def test_http_login_identity_headers_and_empty_activity_scope(registry, tmp_path, monkeypatch):
     import http.client
@@ -83,3 +94,64 @@ def test_http_login_identity_headers_and_empty_activity_scope(registry, tmp_path
         connection.close()
     finally:
         server.shutdown(); server.server_close(); thread.join()
+
+
+@pytest.mark.parametrize("suffix", ["/rebuttal/", "/rebuttal/round-1/"])
+def test_rebuttal_authorization_accepts_trailing_slash(registry, suffix):
+    assert a.authorize(registry, "alice", "/p/first" + suffix, "GET") == "owner"
+    assert a.authorize(registry, "bob", "/p/first" + suffix, "GET") is None
+
+
+def test_canonical_source_uses_edge_owner_even_with_legacy_default(registry):
+    registry["projects"]["aaai27"] = {"backup_id": "canonical-backup", "members": {"bob": "owner"}}
+    shared = (ROOT / "infra/paper-workspace/Caddyfile.shared").read_text()
+    accounts_caddy = (ROOT / "infra/paper-workspace/Caddyfile.accounts").read_text()
+    assert f"^/p/{a.CANONICAL_PROJECT}/project/" in shared
+    assert f"^/projects/{a.CANONICAL_PROJECT}/" in accounts_caddy
+    assert "disable_symlinks on" in (ROOT / "infra/paper-workspace/nginx.conf").read_text()
+    for path in ("/index.html", "/project/main.tex", "/p/aaai27/project/main.tex", "/projects/aaai27/main.tex"):
+        assert a.authorize(registry, "bob", path, "GET") == "owner"
+        assert a.authorize(registry, "alice", path, "GET") is None
+
+
+def test_issue_user_registry_write_failure_never_publishes_secret(tmp_path, monkeypatch):
+    from scripts.paper_platform import manage_accounts
+
+    registry_path = tmp_path / "registry.json"
+    output = tmp_path / "issued.txt"
+    replace = manage_accounts.os.replace
+
+    def fail_registry_write(source, destination):
+        if destination == registry_path:
+            raise OSError("registry volume unavailable")
+        return replace(source, destination)
+
+    monkeypatch.setattr(manage_accounts.os, "replace", fail_registry_write)
+    data = {"users": {"alice": {"password_hash": "example"}}, "projects": {}}
+    with pytest.raises(OSError, match="registry volume unavailable"):
+        manage_accounts.save_registry(registry_path, data, output, "issued password")
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("option", ["argument", "environment"])
+def test_issue_user_uses_configured_login_domain(tmp_path, monkeypatch, option):
+    import os
+    import subprocess
+    import sys
+
+    registry_path = tmp_path / "registry.json"
+    output = tmp_path / "issued.txt"
+    command = [
+        sys.executable, str(ROOT / "scripts/paper_platform/manage_accounts.py"),
+        "--registry", str(registry_path), "issue-user", "--user", "alice",
+        "--secret-output", str(output),
+    ]
+    if option == "argument":
+        command.extend(["--domain", "papers.example.test"])
+    else:
+        monkeypatch.setenv("PAPER_DOMAIN", "papers.example.test")
+    subprocess.run(command, check=True, capture_output=True, env=os.environ)
+    assert output.read_text().splitlines()[0] == "주소: https://papers.example.test/alice"
+    assert output.stat().st_mode & 0o777 == 0o600
+    password = output.read_text().splitlines()[-1].split(" ", 1)[1]
+    assert a.authenticate(json.loads(registry_path.read_text()), "alice", password)

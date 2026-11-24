@@ -56,5 +56,11 @@
     return target
   }
 
-  window.PaperPdfViewport = Object.freeze({ capture, currentPage, restore })
+  function relayout(panel, pages, update) {
+    const snapshot = capture(panel, pages)
+    update()
+    return restore(panel, pages, snapshot)
+  }
+
+  window.PaperPdfViewport = Object.freeze({ capture, currentPage, relayout, restore })
 })()

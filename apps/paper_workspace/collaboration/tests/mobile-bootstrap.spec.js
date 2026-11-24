@@ -39,7 +39,7 @@ for (const width of [390, 1600]) {
       delete manifest.preview_synctex
       await route.fulfill({ response, json: manifest })
     })
-    await page.route('**/vendor/pdfjs/pdf.mjs', route => route.fulfill({ contentType: 'text/javascript', body: delayedPdfModule }))
+    await page.route('**/vendor/pdfjs/pdf.mjs*', route => route.fulfill({ contentType: 'text/javascript', body: delayedPdfModule }))
     await page.route(/\/api\/backups\/projects\/[^/]+\/assets(?:\/.*)?$/, route => {
       const path = new URL(route.request().url()).pathname
       if (path.endsWith('/assets')) return route.fulfill({ json: { assets: ['pdf', 'synctex.gz'].map(extension => ({ path: `__paper_workspace/preview-${fingerprint}.${extension}` })) } })

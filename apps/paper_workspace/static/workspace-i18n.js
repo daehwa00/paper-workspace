@@ -2,7 +2,8 @@
   const i18n = window.PaperI18n
   if (!i18n) return
   const en = {
-    '본문으로 고정': 'Pin main document', '본문 고정됨': 'Main document pinned', '본문 고정 해제': 'Unpin main document',
+    '프로젝트 자료':'Project sources','서버 버전 이력':'Version history','논문 백업':'Paper backup','비교':'Compare','복원':'Restore','변경 없음 · 백업 확인 완료':'No changes · Backup checked','10분 자동 백업 대기 중':'Waiting for the next automatic backup','아직 서버 백업이 없습니다.':'No server backups yet.','현재 상태를 보존하는 중…':'Preserving the current state…','서버에 저장하는 중…':'Saving to the server…','백업을 복원하는 중…':'Restoring backup…','10분마다 변경 사항을 자동 백업합니다. 중요한 시점에는 이름 있는 버전을 남길 수 있습니다.':'Changes are backed up every 10 minutes. Save a named version at important milestones.',
+    '해결': 'Resolve', '파일 작업': 'File actions', '작성자': 'Author', '본문으로 고정': 'Pin main document', '본문 고정됨': 'Main document pinned', '본문 고정 해제': 'Unpin main document',
     '논문 허브': 'Paper hub', '논문 허브로 돌아가기': 'Back to paper hub', '논문 제목': 'Paper title',
     '작업공간 상태 보기': 'View workspace status', '연결 중': 'Connecting', '화면 모드 설정': 'Appearance settings',
     '표시 이름 변경': 'Change display name', '접속 중인 공동 편집자': 'Active collaborators', '작업 화면': 'Workspace view',
@@ -25,7 +26,7 @@
     '수정': 'Revise', '댓글': 'Comments', '자료': 'Sources', '검사': 'Checks', '작업': 'Tasks',
     '선택 영역을 바로 다듬어 보세요': 'Refine a selection in place', '선택한 문장과 현재 원고 문맥을 함께 읽어 수정합니다.': 'Codex reads the selection with its surrounding manuscript context.',
     '어떻게 다듬을까요?\n예: 주장 범위는 유지하고 학술 문체로 간결하게 수정해줘': 'How should it be revised?\nExample: Preserve the claim scope and make the academic prose concise.',
-    'Codex 수정 요청': 'Codex revision request', '모델 설정': 'Model settings', '모델 설정 ·': 'Model settings ·', '단문·문법·표현만 빠르게 수정할 때 적합합니다.': 'Best for quick sentence-level grammar and expression edits.',
+    '어떻게 다듬을까요?': 'How should it be revised?', 'Codex 수정 요청': 'Codex revision request', '모델 설정': 'Model settings', '모델 설정 ·': 'Model settings ·', '단문·문법·표현만 빠르게 수정할 때 적합합니다.': 'Best for quick sentence-level grammar and expression edits.',
     '논문 문단 전체를 자연스럽고 일관되게 다듬을 때 적합합니다.': 'Best for polishing a full paragraph naturally and consistently.',
     '논리 구조와 주장 강도까지 함께 검토할 때 적합합니다.': 'Best for reviewing logic and claim strength together.',
     'Codex에게 요청 보내기': 'Send request to Codex', '보낸 요청': 'Sent request', '새 요청': 'New request', 'Codex 대화': 'Codex conversation', '새 대화': 'New conversation', '내 요청': 'My request', 'Codex 제안': 'Codex suggestion',
@@ -105,6 +106,11 @@
   })
 
   const patterns = [
+    [/^(백업 완료|복원 완료|백업 실패|복원 실패|연결 오류) · (.+)$/, (_, label, detail) => i18n.getLanguage() === 'ko' ? `${label} · ${detail}` : `${{'백업 완료':'Backup complete','복원 완료':'Restore complete','백업 실패':'Backup failed','복원 실패':'Restore failed','연결 오류':'Connection error'}[label]} · ${detail}`],
+    [/^최근 백업 확인 (.+)$/, (_, date) => i18n.getLanguage() === 'ko' ? `최근 백업 확인 ${date}` : `Backup checked ${date}`],
+    [/^(.+?) · (자동|수동|복원 전)( ·.*)?$/, (_, date, reason, actor='') => i18n.getLanguage() === 'ko' ? `${date} · ${reason}${actor}` : `${date} · ${{자동:'Automatic',수동:'Manual','복원 전':'Before restore'}[reason]}${actor}`],
+    [/^(.+?) · 버전 · (.+)$/, (_, date, name) => i18n.getLanguage() === 'ko' ? `${date} · 버전 · ${name}` : `${date} · Version · ${name}`],
+    [/^(.*)의 댓글 위치로 이동$/, (_, file) => i18n.getLanguage() === 'ko' ? `${file}의 댓글 위치로 이동` : `Go to comment in ${file}`],
     [/^(본문으로 고정|본문 고정 해제): (.+)$/, (_, label, file) => `${en[label]}: ${file}`],
     [/^(메인 원고|본문|참고문헌|현재 파일 찾기): (.+)$/, (_, label, path) => `${en[label]}: ${path}`],
     [/^(\d+)개 검사 · 오류 (\d+) · 확인 필요 (\d+)$/, (_, total, errors, warnings) => i18n.getLanguage() === 'ko' ? `${total}개 검사 · 오류 ${errors} · 확인 필요 ${warnings}` : `${total} checks · ${errors} errors · ${warnings} warnings`],
@@ -120,7 +126,7 @@
     for (const [pattern, render] of patterns) if (pattern.test(core)) return `${leading}${core.replace(pattern, render)}${trailing}`
     return value
   }
-  const excluded = '.cm-editor,#editor,#asset-stage,#project-title,.file-label,.comment-body,.task-label,.codex-proposal,.codex-request-text,.diff-block,.latex-preview'
+  const excluded = '[data-ui-locale],.cm-editor,#editor,#asset-stage,#project-title,.file-label,.comment-body,.task-label,.codex-proposal,.codex-request-text,.diff-block,.latex-preview'
   const textState = new WeakMap(), attributeState = new WeakMap(), attributes = ['aria-label', 'title', 'placeholder']
   const excludedNode = node => Boolean((node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest(excluded))
   function translateTextNode(node) {

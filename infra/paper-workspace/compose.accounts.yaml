@@ -1,5 +1,11 @@
 # Apply after compose.yaml and compose.password.yaml. Registry stays outside the repository.
 services:
+  backup:
+    environment:
+      BACKUP_ACTOR_MODE: proxy
+  rebuttal:
+    environment:
+      REBUTTAL_SHARED_SCOPE: "false"
   collaboration:
     environment:
       COLLAB_MAX_CONNECTION_AGE_MS: 60000

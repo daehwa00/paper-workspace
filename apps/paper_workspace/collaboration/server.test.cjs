@@ -1434,3 +1434,94 @@ test('async quota scan failures leave existing sockets and health responsive', a
     finishScan?.()
   }
 })
+
+const loadClient = (Provider, Persistence, fetchFile) => {
+  const source = fs.readFileSync(path.join(__dirname, 'client.js'), 'utf8')
+  const { code } = require('esbuild').transformSync(source, { format: 'cjs' })
+  const transformed = { exports: {} }
+  const load = module => {
+    if (module === 'y-websocket') return { WebsocketProvider: Provider }
+    if (module === 'y-indexeddb') return { IndexeddbPersistence: Persistence }
+    return require(module)
+  }
+  new Function('require', 'module', 'exports', 'fetch', code)(load, transformed, transformed.exports, fetchFile)
+  return transformed.exports.createSession
+}
+
+test('two client sessions adopt one server-allocated Y.Text and retain simultaneous initial edits', async t => {
+  const room = 'paper-workspace:paper.example:example-paper'
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['example-paper'])
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  class TestProvider extends WebsocketProvider {
+    constructor(url, room, document, options) {
+      super(url, room, document, { ...options, WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+    }
+  }
+  class SyncedPersistence {
+    whenSynced = Promise.resolve()
+    destroy() {}
+  }
+  let release
+  const requested = new Promise(resolve => { release = resolve })
+  let initRequests = 0
+  const createSession = loadClient(TestProvider, SyncedPersistence, async (resource, options) => {
+    initRequests += 1
+    if (initRequests === 2) release()
+    await requested
+    const result = await postJson(`http://127.0.0.1:${port}${resource}`, JSON.parse(options.body),
+      { 'X-Paper-Role': 'editor', 'X-Paper-Allowed-Projects': 'example-paper' })
+    return { ...result, ok: result.status === 200, json: async () => result.body }
+  })
+  const options = { url: `ws://127.0.0.1:${port}/collab`, room }
+  const first = createSession(options)
+  const second = createSession(options)
+  t.after(() => { first.destroy(); second.destroy() })
+  assert.deepEqual(await Promise.all([first.whenReady, second.whenReady]), [{status: 'ready'}, {status: 'ready'}])
+  const key = 'paper/new.tex'
+  const firstEditor = first.textFor(key, 'seed')
+  const secondEditor = second.textFor(key, 'seed')
+  firstEditor.insert(firstEditor.length, ' first')
+  secondEditor.insert(secondEditor.length, ' second')
+  const serverText = () => docs.get(`collab/${room}`)?.getMap('files').get(key)
+  await waitFor(() => {
+    const value = serverText()?.toString()
+    return value?.includes(' first') && value.includes(' second') &&
+      firstEditor.toString() === value && secondEditor.toString() === value
+  }, 'a concurrent edit was lost or an editor remained bound to a discarded file')
+  assert.equal(initRequests, 2)
+  const canonical = serverText()
+  assert.ok(canonical instanceof Y.Text)
+  assert.equal(canonical.toString().match(/seed/g).length, 1)
+  assert.equal(first.textFor(key), first.files.get(key))
+  assert.equal(second.textFor(key), second.files.get(key))
+  firstEditor.insert(0, 'after adoption ')
+  await waitFor(() => secondEditor.toString().startsWith('after adoption '), 'the initial editor binding was not adopted')
+  assert.equal(serverText(), canonical)
+})
+
+test('destroy settles readiness before the WebSocket or IndexedDB completes', async () => {
+  class UnconnectedProvider extends WebsocketProvider {
+    constructor(url, room, document, options) {
+      super(url, room, document, { ...options, WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+    }
+    connect() {}
+  }
+  class PendingPersistence {
+    whenSynced = new Promise(() => {})
+    destroy() {}
+  }
+  const createSession = loadClient(UnconnectedProvider, PendingPersistence)
+  const session = createSession({ url: 'ws://127.0.0.1:1/collab', room: 'example' })
+  session.destroy()
+  session.destroy()
+  let timer
+  try {
+    const deadline = new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('destroy left readiness pending')), 500)
+    })
+    assert.deepEqual(await Promise.race([session.whenReady, deadline]), {status: 'destroyed'})
+  } finally { clearTimeout(timer) }
+})

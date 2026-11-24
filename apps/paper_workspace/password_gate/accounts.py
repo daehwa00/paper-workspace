@@ -8,7 +8,6 @@ import os
 import re
 import time
 import threading
-HASH_LOCK = threading.Lock()
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -16,21 +15,34 @@ from urllib.parse import unquote, urlsplit
 SLUG = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}')
 REGISTRY = os.environ.get('PAPER_ACCOUNTS_FILE', '')
 CATALOG = os.environ.get('PAPER_ACCOUNT_CATALOG', '')
+CANONICAL_PROJECT = 'aaai27'  # Matches the edge route to /project.
+ROLES = ('owner', 'editor', 'viewer')
+HASH_LOCK = threading.Lock()
 
 
 def registry():
-    data = json.loads(Path(REGISTRY).read_text())
-    if not isinstance(data.get('users'), dict) or not isinstance(data.get('projects'), dict):
+    return validate_registry(json.loads(Path(REGISTRY).read_text()))
+
+
+def validate_registry(data):
+    if not isinstance(data, dict) or not isinstance(data.get('users'), dict) or not isinstance(data.get('projects'), dict):
         raise ValueError('invalid account registry')
-    for name, user in data['users'].items():
-        if not SLUG.fullmatch(name) or not isinstance(user.get('password_hash'), str):
+    users = data['users']
+    for name, user in users.items():
+        if not isinstance(name, str) or not SLUG.fullmatch(name) or not isinstance(user, dict) or not isinstance(user.get('password_hash'), str):
             raise ValueError('invalid account')
-    backup_ids = [p.get('backup_id') for p in data['projects'].values()]
-    if len(set(backup_ids)) != len(backup_ids): raise ValueError('duplicate backup identity')
+    backup_ids = set()
     for slug, project in data['projects'].items():
-        if not SLUG.fullmatch(slug) or not SLUG.fullmatch(project.get('backup_id', '')):
+        if not isinstance(slug, str) or not SLUG.fullmatch(slug) or not isinstance(project, dict):
             raise ValueError('invalid project')
-        if any(name not in data['users'] or role not in ('owner', 'editor', 'viewer') for name, role in project['members'].items()):
+        backup_id = project.get('backup_id')
+        if not isinstance(backup_id, str) or not SLUG.fullmatch(backup_id):
+            raise ValueError('invalid project')
+        if backup_id in backup_ids:
+            raise ValueError('duplicate backup identity')
+        backup_ids.add(backup_id)
+        members = project.get('members')
+        if not isinstance(members, dict) or any(name not in users or role not in ROLES for name, role in members.items()):
             raise ValueError('invalid project membership')
     return data
 
@@ -87,15 +99,18 @@ def authorize(data, name, uri, method):
     if any(ord(c) < 32 or ord(c) == 127 for c in path) or '//' in path or '%' in path or '\\' in path or any(part in ('.', '..') for part in path.split('/')):
         return None
     roles = memberships(data, name)
-    if path in ('/', '/' + name, '/' + name + '/', '/hub.html', '/projects/index.json', '/api/backups/activity'):
+    if path in ('/', '/' + name, '/' + name + '/', '/hub.html', '/projects/index.json', '/api/backups/activity', '/api/backups/activity/'):
         return 'member' if method in ('GET', 'HEAD') else None
     slug = None
-    match = re.fullmatch(r'/p/([^/]+)(?:/project/.*|/)?', path)
+    match = re.fullmatch(r'/p/([^/]+)(?:/project/.*|/rebuttal(?:/[^/]+)?/?|/)?', path)
     if match: slug = match[1]
+    rebuttal = re.fullmatch(r'/api/rebuttal/projects/([^/]+)(?:/.*)?', path)
+    if rebuttal: slug = rebuttal[1]
+    readonly_export = bool(rebuttal and method == 'POST' and re.fullmatch(r'/api/rebuttal/projects/[^/]+/rounds/[^/]+/exports', path))
     match = re.fullmatch(r'/projects/([^/]+)/.+', path)
     if match: slug = match[1]
     if path.startswith('/project/') or path == '/index.html':
-        slug = data.get('default_project')
+        slug = CANONICAL_PROJECT
     match = re.fullmatch(r'/collab(?:-runtime)?/paper-workspace:[^/]+:([^/:]+)', path)
     if match: slug = match[1]
     match = re.fullmatch(r'/api/backups/(?:projects|assets|activity)/([^/]+)(?:/.*)?', path)
@@ -104,7 +119,7 @@ def authorize(data, name, uri, method):
         if slug is None: return None
     if slug is not None:
         role = roles.get(slug)
-        return role if role and (method in ('GET', 'HEAD') or role in ('owner', 'editor')) else None
+        return role if role and (method in ('GET', 'HEAD') or readonly_export or role in ('owner', 'editor')) else None
     # Compiler/Codex operate on request-supplied source only. Persistent source reads
     # are separately guarded above; rendering never writes a project source.
     if path in ('/api/compile', '/api/package', '/api/synctex', '/api/synctex-view'):
