@@ -1,177 +1,250 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { chromium } from 'playwright'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const repository = resolve(here, '../../..')
-const cursorBundle = resolve(here, 'node_modules/@cursor.js/core/dist/cursor.umd.cjs')
-const output = resolve(process.env.PAPER_DEMO_OUTPUT || join(repository, 'docs/demo'))
-const base = (process.env.PAPER_DEMO_URL || 'https://localhost').replace(/\/$/, '')
-const project = process.env.PAPER_DEMO_PROJECT || 'example-paper'
-const password = process.env.PAPER_DEMO_PASSWORD || process.env.PAPER_ACCESS_PASSWORD || ''
-const projectUrl = `${base}/p/${encodeURIComponent(project)}`
+const output = resolve(process.env.PAPER_DEMO_OUTPUT || join(here, '../../../docs/demo'))
+const verification = process.env.PAPER_DEMO_VERIFY_DIR
+const base = new URL(process.env.PAPER_DEMO_URL || 'http://127.0.0.1:19984').origin
+const password = process.env.PAPER_DEMO_PASSWORD
+const project = '/p/example-paper'
+const original = 'A Reusable Paper Workspace'
+const replacement = 'A Collaborative Paper Workspace'
+const cursorBundle = join(here, 'node_modules/@cursor.js/core/dist/cursor.umd.cjs')
+const roundTitle = 'Example Paper Review'
+const reviewQuestion = 'Could you clarify the evaluation setup and state the runtime of the sorting step?'
+const responseText = [
+  '**Evaluation setup.** Thank you for the suggestion. We will add the input sizes and use the same synthetic inputs for both methods.',
+  String.raw`The sorting step takes $O(n \log n)$ time, where $n$ is the number of examples.`
+].join('\n\n')
+
+if (base !== 'http://127.0.0.1:19984') {
+  throw new Error('Run the demo against the isolated Compose stack at http://127.0.0.1:19984')
+}
+
+async function seedReview(context) {
+  const endpoint = `${base}/api/rebuttal/projects/example-paper`
+  const response = await context.request.get(`${endpoint}/state`, { maxRedirects: 0 })
+  if (!response.ok()) throw new Error(`Rebuttal state returned HTTP ${response.status()}`)
+  const state = await response.json()
+  const [existing] = state.rounds
+  if (state.rounds.length === 1 && existing.title === roundTitle
+      && existing.reviews.length === 1 && existing.reviews[0].fields.Questions === reviewQuestion
+      && existing.documents.length === 1 && existing.documents[0].seed_text === responseText) return
+  if (state.enabled === false || state.revision !== 0 || state.rounds.length !== 0) {
+    throw new Error('Start with an empty, enabled Rebuttal Studio in the isolated stack')
+  }
+
+  const seeded = await context.request.post(`${endpoint}/restore`, {
+    maxRedirects: 0,
+    data: {
+      expected_revision: state.revision,
+      snapshot: {
+        schema_version: 1,
+        rounds: [{
+          id: 'example-round',
+          title: roundTitle,
+          reviewers: [{ id: 'reviewer-1', label: 'Reviewer 1' }],
+          reviews: [{
+            id: 'review-1',
+            reviewer_id: 'reviewer-1',
+            fields: {
+              Summary: 'Example Paper describes a reproducible writing and evaluation workflow.',
+              Questions: reviewQuestion
+            },
+            translations: {}
+          }],
+          documents: [{
+            id: 'response-1', title: 'Response to Reviewer 1', kind: 'reviewer',
+            reviewer_id: 'reviewer-1', text_key: 'response-1'
+          }],
+          imports: [], concerns: [], mappings: [], findings: [], evidence: [],
+          work_items: [], rules: [], analyses: [], submissions: []
+        }],
+        texts: { 'response-1': responseText }
+      }
+    }
+  })
+  if (!seeded.ok()) throw new Error(`Synthetic review seed returned HTTP ${seeded.status()}: ${await seeded.text()}`)
+}
+
+async function initializeCursor(page, startPoint) {
+  await page.addScriptTag({ path: cursorBundle })
+  await page.evaluate(point => {
+    const { Cursor, ThemePlugin } = window.Cursor
+    window.demoCursor = new Cursor({ humanize: false, speed: 0.95, size: 1.16, startPoint: point })
+    const colors = { primary: '#2457d6', outline: '#ffffff' }
+    window.demoCursor.use(new ThemePlugin({
+      default: ThemePlugin.cursors.default({ colors }),
+      pointer: ThemePlugin.cursors.pointer({ colors }),
+      text: ThemePlugin.cursors.text({ colors })
+    }, { auto: true }))
+  }, startPoint)
+}
+
 const frames = mkdtempSync(join(tmpdir(), 'paper-workspace-demo-'))
+const animation = []
+const samples = []
+let cursorPosition
 
-mkdirSync(output, { recursive: true })
+async function capture(page, centiseconds, sample) {
+  const path = join(frames, `${animation.length}.png`)
+  const screenshot = await page.screenshot({ path, caret: 'initial' })
+  animation.push('-delay', String(centiseconds), path)
+  if (sample) {
+    samples.push(path)
+    if (verification) writeFileSync(join(verification, `frame_${sample}.png`), screenshot)
+  }
+}
 
-function profileScript(profile) {
-  return ({ name, color }) => {
-    localStorage.setItem('collab-name', name)
+async function moveCursor(page, target, { x = 0.5, y = 0.5 } = {}) {
+  const box = await target.boundingBox()
+  if (!box) throw new Error('Demo cursor target is not visible')
+  const destination = { x: box.x + box.width * x, y: box.y + box.height * y }
+  const steps = Math.min(13, Math.max(7, Math.ceil(Math.hypot(
+    destination.x - cursorPosition.x, destination.y - cursorPosition.y
+  ) / 65)))
+  for (let step = 1; step <= steps; step += 1) {
+    const progress = (1 - Math.cos(Math.PI * step / steps)) / 2
+    const point = {
+      x: cursorPosition.x + (destination.x - cursorPosition.x) * progress,
+      y: cursorPosition.y + (destination.y - cursorPosition.y) * progress
+    }
+    await page.evaluate(({ x, y }) => window.demoCursor.teleportTo(x, y), point)
+    await capture(page, 4)
+  }
+  cursorPosition = destination
+  return destination
+}
+
+async function clickAt(page, point) {
+  await page.mouse.click(point.x, point.y)
+}
+
+function verifyBuild(result) {
+  if (result.cached || !result.passes || !result.pdf_base64) {
+    throw new Error('Expected a fresh LaTeX build after saving the edited title')
+  }
+  const pdfText = execFileSync('pdftotext', ['-', '-'], {
+    input: Buffer.from(result.pdf_base64, 'base64'), encoding: 'utf8'
+  })
+  if (!pdfText.includes(replacement)) throw new Error('Rendered PDF is missing the updated title')
+}
+
+let browser
+try {
+  mkdirSync(output, { recursive: true })
+  if (verification) mkdirSync(verification, { recursive: true })
+  browser = await chromium.launch()
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, serviceWorkers: 'block', bypassCSP: true })
+  // Keep the browser entirely on the capture stack, including subresources.
+  await context.route('**/*', route => (
+    new URL(route.request().url()).origin === base ? route.continue() : route.abort()
+  ))
+  await context.addInitScript(() => {
+    localStorage.setItem('collab-name', 'Demo Author')
     localStorage.setItem('collab-name-user-set', '1')
-    localStorage.setItem('collab-color', color)
+    localStorage.setItem('collab-color', '#2457d6')
     localStorage.setItem('paper-workspace-theme', 'light')
     localStorage.setItem('paper-workspace-language', 'en')
-    localStorage.removeItem('paper-workspace-layout')
-  }
-}
-
-async function authenticate(context) {
-  if (!password) return
-  const response = await context.request.post(`${base}/_auth/login?rd=${encodeURIComponent(`/p/${project}`)}`, {
-    form: { password }
   })
-  if (!response.ok()) throw new Error(`Demo authentication failed with HTTP ${response.status()}`)
-}
-
-async function openWorkspace(browser, profile) {
-  const context = await browser.newContext({
-    viewport: { width: 1600, height: 1000 },
-    deviceScaleFactor: 1,
-    ignoreHTTPSErrors: true
-  })
-  await context.addInitScript(profileScript(profile), profile)
-  await authenticate(context)
-  const page = await context.newPage()
-  await page.goto(`${projectUrl}?lang=en`, { waitUntil: 'domcontentloaded' })
-  await page.waitForFunction(() => document.querySelector('#editor')?.value?.includes('\\documentclass'), null, { timeout: 30_000 })
-  await page.waitForFunction(() => document.querySelector('#paper-preview canvas'), null, { timeout: 60_000 })
-  return { context, page }
-}
-
-let frameIndex = 0
-
-async function captureFrame(page, frameDelay = 100) {
-  frameIndex += 1
-  await page.screenshot({ path: join(frames, `${String(frameIndex).padStart(3, '0')}.png`) })
-  if (frameDelay) await page.waitForTimeout(frameDelay)
-}
-
-async function hold(page, count, frameDelay = 100) {
-  for (let index = 0; index < count; index += 1) await captureFrame(page, frameDelay)
-}
-
-async function initializeDemoCursor(page) {
-  await page.addScriptTag({ path: cursorBundle })
-  await page.evaluate(() => {
-    window.demoCursor = new window.Cursor.Cursor({
-      humanize: true,
-      speed: 0.72,
-      size: 1.08,
-      startPoint: { x: window.innerWidth / 2, y: 72 }
+  if (password) {
+    const login = await context.request.post(`${base}/_auth/login?rd=${encodeURIComponent(project)}`, {
+      form: { password }, maxRedirects: 0
     })
-    const colors = { primary: '#2457d6', outline: '#ffffff' }
-    window.demoCursor.use(new window.Cursor.ThemePlugin({
-      default: window.Cursor.ThemePlugin.cursors.default({ colors }),
-      pointer: window.Cursor.ThemePlugin.cursors.pointer({ colors }),
-      text: window.Cursor.ThemePlugin.cursors.text({ colors })
-    }, { auto: true }))
-  })
-}
-
-async function recordCursorMove(page, target) {
-  let finished = false
-  const movement = page.evaluate(async destination => {
-    const element = document.querySelector(destination.selector)
-    if (!element) throw new Error(`Demo cursor target not found: ${destination.selector}`)
-    const box = element.getBoundingClientRect()
-    const x = box.left + box.width * (destination.xRatio ?? 0.5)
-    const y = box.top + (destination.yOffset ?? box.height * 0.5)
-    await window.demoCursor.move(x, y)
-  }, target).then(() => { finished = true })
-  for (let index = 0; index < 32; index += 1) {
-    await captureFrame(page, 45)
-    if (finished) break
+    if (!login.ok() && login.status() !== 303) throw new Error(`Demo login returned HTTP ${login.status()}`)
   }
-  await movement
-}
+  await seedReview(context)
 
-async function selectPaperTitle(page) {
-  const editor = page.locator('#editor-view .cm-content')
-  await editor.click()
-  await page.keyboard.press('Control+Home')
-  for (let index = 0; index < 3; index += 1) await page.keyboard.press('ArrowDown')
+  const page = await context.newPage()
+  page.setDefaultTimeout(30_000)
+  await page.goto(`${base}/hub.html?lang=en`)
+  const example = page.locator('[data-project-slug="example-paper"]')
+  await page.waitForFunction(() => document.querySelector('[data-project-slug="example-paper"] .project-thumbnail')?.naturalWidth > 0)
+  await page.locator('#hub-calendar-days td').first().waitFor({ state: 'visible' })
+  await page.evaluate(() => document.fonts.ready)
+  cursorPosition = { x: 700, y: 185 }
+  await initializeCursor(page, cursorPosition)
+  await capture(page, 100, 1)
+  const projectLink = await moveCursor(page, example.locator('.project-open h3'))
+  await capture(page, 12)
+  await Promise.all([page.waitForURL(`**${project}**`), clickAt(page, projectLink)])
+
+  const title = page.locator('.cm-content .cm-line').filter({ hasText: `\\title{${original}}` })
+  const canvas = page.locator('#paper-preview canvas').first()
+  await title.waitFor()
+  if (await page.locator('#toggle-assistant').getAttribute('aria-expanded') === 'true') {
+    await page.locator('#toggle-assistant').click()
+  }
+  await canvas.waitFor({ timeout: 60_000 })
+  await page.evaluate(() => document.fonts.ready)
+  await initializeCursor(page, projectLink)
+  await capture(page, 65, 2)
+  const titlePoint = await moveCursor(page, title, { x: 0.24 })
+  await clickAt(page, titlePoint)
   await page.keyboard.press('Home')
-  for (let index = 0; index < 7; index += 1) await page.keyboard.press('ArrowRight')
+  for (const character of '\\title{') await page.keyboard.press('ArrowRight')
   await page.keyboard.press('Shift+End')
   await page.keyboard.press('Shift+ArrowLeft')
-}
-
-const browser = await chromium.launch({ headless: true })
-try {
-  const author = await openWorkspace(browser, { name: 'Demo Author', color: '#2457d6' })
-  const { page } = author
-  await page.locator('#toggle-assistant').click()
-  await page.waitForTimeout(400)
-  await initializeDemoCursor(page)
-
-  await hold(page, 10, 100)
-
-  await recordCursorMove(page, { selector: '.cm-line:nth-child(4)', xRatio: 0.62 })
-  await selectPaperTitle(page)
-  await hold(page, 5, 100)
-
-  const replacement = 'A Collaborative Paper Workspace'
-  for (const [index, character] of [...replacement].entries()) {
-    await page.keyboard.type(character)
-    if (index % 2 === 1 || character === ' ') await captureFrame(page, 65)
+  if (await page.evaluate(() => getSelection().toString()) !== original) {
+    throw new Error('Could not select the original LaTeX title')
   }
-  await hold(page, 4, 100)
-
-  let compileFinished = false
-  const compileResponse = page.waitForResponse(response => (
-    response.url().includes('/api/compile') && response.request().method() === 'POST'
-  ), { timeout: 60_000 }).then(response => {
-    if (!response.ok()) throw new Error(`Demo compile failed with HTTP ${response.status()}`)
-    compileFinished = true
-    return response
-  })
-  await page.keyboard.press('Control+s')
-  let framesAfterCompile = 0
-  for (let index = 0; index < 36; index += 1) {
-    await captureFrame(page, 125)
-    if (compileFinished) framesAfterCompile += 1
-    if (framesAfterCompile >= 10) break
+  await capture(page, 25)
+  for (const chunk of replacement.match(/.{1,2}/g)) {
+    await page.keyboard.insertText(chunk)
+    await capture(page, 7)
   }
-  await compileResponse
-  await page.waitForFunction(() => document.querySelector('#paper-preview canvas'), null, { timeout: 60_000 })
-  await recordCursorMove(page, { selector: '#paper-preview canvas', xRatio: 0.5, yOffset: 82 })
-  await hold(page, 12, 100)
+  await capture(page, 30)
 
-  const animationFrames = Array.from({ length: frameIndex }, (_, index) => (
-    join(frames, `${String(index + 1).padStart(3, '0')}.png`)
-  ))
-  const gif = join(output, 'edit-and-render-flow.gif')
-  const conversion = spawnSync('convert', [
-    '-delay', '10', ...animationFrames,
-    '-resize', '1200x', '-colors', '128', '-layers', 'Optimize', '-loop', '0', gif
-  ], { encoding: 'utf8' })
-  if (conversion.status !== 0) {
-    throw new Error(`ImageMagick conversion failed: ${conversion.stderr || conversion.stdout}`)
-  }
-
-  console.log(`Captured real workspace demo at ${output}`)
-  await selectPaperTitle(page)
-  await page.keyboard.type('A Reusable Paper Workspace')
-  const restoreResponse = page.waitForResponse(response => (
-    response.url().includes('/api/compile') && response.request().method() === 'POST'
+  const previousCanvas = await canvas.elementHandle()
+  const compiled = page.waitForResponse(response => (
+    new URL(response.url()).pathname === '/api/compile' && response.request().method() === 'POST'
+      && response.request().postData()?.includes(replacement)
   ), { timeout: 60_000 })
   await page.keyboard.press('Control+s')
-  await restoreResponse
-  await author.context.close()
+  await page.locator('#render-state.compiling').or(page.locator('#render-state[data-i18n="workspace.compile.current"]')).waitFor()
+  await capture(page, 25)
+  const result = await compiled
+  if (!result.ok()) throw new Error(`LaTeX compile returned HTTP ${result.status()}`)
+  const build = await result.json()
+  verifyBuild(build)
+  await page.waitForFunction(previous => {
+    const current = document.querySelector('#paper-preview canvas')
+    return current && current !== previous && current.width && getComputedStyle(current).visibility === 'visible'
+  }, previousCanvas)
+  await moveCursor(page, canvas, { x: 0.72, y: 0.195 })
+  await capture(page, 95, 3)
+  console.log(`Verified PDF compile (${build.build_mode}, ${build.passes} passes) and updated canvas`)
+
+  const rebuttalTab = await moveCursor(page, page.locator('#open-rebuttal'))
+  await capture(page, 10)
+  await clickAt(page, rebuttalTab)
+  const studio = page.frameLocator('iframe.paper-review-frame.is-active')
+  const avatar = studio.locator('.reviewer-mate').first()
+  await avatar.evaluate(image => image.decode())
+  await studio.locator('#review-content').getByText('Could you clarify', { exact: false }).waitFor()
+  await studio.locator('#notice').waitFor({ state: 'hidden' })
+  const previewToggle = studio.locator('[data-response-view="toggle"]')
+  await capture(page, 36)
+  const toggle = await moveCursor(page, previewToggle)
+  await clickAt(page, toggle)
+  await studio.locator('#response-preview mjx-container').first().waitFor()
+  await studio.locator('#response-preview strong').getByText('Evaluation setup.', { exact: true }).waitFor()
+  await capture(page, 230, 4)
+
+  const gif = join(output, 'edit-and-render-flow.gif')
+  const stagedGif = join(frames, 'edit-and-render-flow.gif')
+  const palette = join(frames, 'palette.png')
+  execFileSync('convert', [...samples, '-resize', '1200x', '-append', '-colors', '128', '-unique-colors', palette])
+  execFileSync('convert', [
+    ...animation, '-resize', '1200x', '+dither', '-remap', palette, '-layers', 'Optimize', '-loop', '0', stagedGif
+  ])
+  copyFileSync(stagedGif, gif)
+  console.log(`Captured ${animation.length / 3} frames at ${gif}`)
 } finally {
-  await browser.close()
+  await browser?.close()
   rmSync(frames, { recursive: true, force: true })
 }
