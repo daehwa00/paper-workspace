@@ -13,6 +13,11 @@ def workspace_markup() -> str:
     )
 
 
+def source_group(directory: str, pattern: str) -> str:
+    paths = sorted((ROOT / directory).glob(pattern))
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths if not path.name.endswith(".test.cjs"))
+
+
 def test_default_paper_has_one_catalog_entry_with_an_explicit_source() -> None:
     private_deployment = (ROOT / "paper/project.json").is_file()
     default_root = ROOT / ("paper" if private_deployment else "examples/paper-workspace-project")
@@ -805,7 +810,7 @@ def test_workspace_deployment_is_unprivileged_and_tls_terminated() -> None:
 def test_codex_bridge_uses_chatgpt_auth_without_exposing_it_to_browser() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     caddy = (ROOT / "infra/paper-workspace/Caddyfile").read_text(encoding="utf-8")
-    bridge = (ROOT / "apps/paper_workspace/codex_bridge/server.mjs").read_text(encoding="utf-8")
+    bridge = source_group("apps/paper_workspace/codex_bridge", "*.mjs")
     dockerfile = (ROOT / "apps/paper_workspace/codex_bridge/Dockerfile").read_text(encoding="utf-8")
     assert "env_file:" in compose
     assert "path: .env" in compose
@@ -822,17 +827,20 @@ def test_codex_bridge_uses_chatgpt_auth_without_exposing_it_to_browser() -> None
     assert "'--disable', 'multi_agent'" in bridge
     assert "containsSecret" in bridge
     assert "redactSecrets" in bridge
-    assert "env: codexEnvironment()" in bridge
+    assert "environment: codexEnvironment" in bridge
+    assert "env: environment()" in bridge
     assert "...process.env, CODEX_HOME" not in bridge
     assert "--ephemeral" in bridge
     assert "--output-schema" in bridge
-    assert "@openai/codex@0.144.4" in dockerfile
-    assert "gpt-5.6-sol" in bridge
-    assert "gpt-5.6-luna" in bridge
+    assert "@openai/codex@0.164.0" in dockerfile
+    assert "gpt-6.1-sol" in bridge
+    assert "gpt-5.6-" not in bridge
     assert "'luna-medium'" in bridge
     assert "'luna-high'" in bridge
     assert "'sol-high'" in bridge
-    assert "modelProfiles[payload.profile]" in bridge
+    assert "prepareRevision(await bodyOf(request), modelProfiles)" in bridge
+    assert "Object.hasOwn(profiles, payload.profile)" in bridge
+    assert "profile: profiles[profileName]" in bridge
     assert "boundedHistory" in bridge
     assert "revision_history" in bridge
     assert "history = boundedHistory(payload.history)" in bridge
@@ -933,7 +941,7 @@ def test_compiler_receives_only_request_scoped_files() -> None:
 
 def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
-    bridge = (ROOT / "apps/paper_workspace/codex_bridge/server.mjs").read_text(encoding="utf-8")
+    bridge = source_group("apps/paper_workspace/codex_bridge", "*.mjs")
     collaboration = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
 
     assert "PAPER_MAX_CONCURRENT_COMPILES" in compiler
@@ -942,12 +950,14 @@ def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:
     assert "BrokenPipeError, ConnectionResetError" in compiler
     assert "detached: true" in bridge
     assert "process.kill(-child.pid, 'SIGKILL')" in bridge
-    assert "await rm(outputPath, { force: true })" in bridge
+    assert "const directory = await mkdtemp" in bridge
+    assert "const outputPath = join(directory" in bridge
+    assert "finally {\n    await rm(directory, { recursive: true, force: true })" in bridge
     assert "MAX_RATE_CLIENTS" in bridge
     assert "calls.size >= MAX_RATE_CLIENTS" in bridge
     assert "calls.delete(client)" in bridge
     assert "bootstrapReady && isBootstrapLeader()" in collaboration
-    collaboration_server = (ROOT / "apps/paper_workspace/collaboration/server.cjs").read_text(encoding="utf-8")
+    collaboration_server = source_group("apps/paper_workspace/collaboration", "*.cjs")
     assert "persistence.provider.flushDocument" in collaboration_server
     assert "process.once('SIGTERM'" in collaboration_server
 
@@ -955,7 +965,7 @@ def test_backend_workers_have_bounded_and_clean_failure_paths() -> None:
 def test_server_paper_sources_are_manifest_staged_and_versioned() -> None:
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")
     app = (ROOT / "apps/paper_workspace/static/app.js").read_text(encoding="utf-8")
-    collaboration = (ROOT / "apps/paper_workspace/collaboration/server.cjs").read_text(encoding="utf-8")
+    collaboration = source_group("apps/paper_workspace/collaboration", "*.cjs")
     assert "PAPER_PROJECT_DIR" in compose
     workspace_config = compose[compose.index("  workspace:"):compose.index("  caddy-storage-init:")]
     assert "project_runtime:/usr/share/nginx/html/project-runtime:ro" in workspace_config

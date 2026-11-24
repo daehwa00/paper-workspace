@@ -106,22 +106,37 @@ const mergeTextVersions = (base, web, server) => {
 }
 
 const mergeTextHistory = (history, web, server) => {
-  const candidates = [...new Set((Array.isArray(history) ? history : []).filter(value => typeof value === 'string'))]
-  if (!candidates.length) return { conflict: true, reason: 'missing-base' }
-  // On equal distance prefer the oldest retained common version. A local
-  // editor may have started before a newer browser writeback and can later
-  // save that stale base; choosing the newest tie would silently legitimize
-  // the stale overwrite instead of reporting an overlap.
-  let selected = candidates[0]
-  let selectedCost = Number.POSITIVE_INFINITY
-  for (const candidate of candidates) {
-    const difference = sequenceEdits(candidate, server)
-    if (difference && difference.cost < selectedCost) {
-      selected = candidate
-      selectedCost = difference.cost
+  const versions = (Array.isArray(history) ? history : []).filter(value => typeof value === 'string')
+  if (!versions.length) return { conflict: true, reason: 'missing-base' }
+  const latest = versions.at(-1)
+  const latestDiff = sequenceEdits(latest, server)
+  const latestMerge = { ...mergeTextVersions(latest, web, server), base: latest }
+  if (server === latest || web === server || !latestDiff) return latestMerge
+
+  const latestLines = new Set(latestDiff.baseLines)
+  const serverLines = new Set(linesOf(server))
+  let bestCost = latestDiff.cost
+  let best = latestMerge
+  for (const base of new Set(versions.slice(0, -1))) {
+    if (base === latest) continue
+    if (base === server) return { conflict: true, reason: 'stale-server-base', base }
+    const difference = sequenceEdits(base, server)
+    if (!difference || difference.cost > bestCost) continue
+    const result = { ...mergeTextVersions(base, web, server), base }
+    if (difference.cost === bestCost) {
+      if (result.conflict || best.conflict || result.value !== best.value) {
+        best = { conflict: true, reason: 'ambiguous-server-base', base }
+      }
+      continue
     }
+    // An absent line alone could be a deletion from the latest version.
+    // Require surviving, distinctive content from the older buffer before
+    // reapplying changes introduced by the latest version.
+    if (!difference.baseLines.some(line => !latestLines.has(line) && serverLines.has(line))) continue
+    bestCost = difference.cost
+    best = result
   }
-  return { ...mergeTextVersions(selected, web, server), base: selected }
+  return best
 }
 
 module.exports = {

@@ -1102,24 +1102,24 @@ test('oversized messages close only the offending websocket', async t => {
   assert.equal(await websocketOutcome(url, 'https://paper.example'), 'open')
 })
 
-test('storage accounting tolerates files removed during LevelDB compaction', () => {
+test('storage accounting tolerates files removed during LevelDB compaction', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-collab-compaction-'))
   const transient = path.join(directory, 'MANIFEST-transient')
   fs.writeFileSync(transient, 'manifest')
-  const originalStatSync = fs.statSync
-  fs.statSync = (filename, ...args) => {
+  const originalLstat = fs.promises.lstat
+  fs.promises.lstat = async (filename, ...args) => {
     if (filename === transient) {
       fs.rmSync(transient, { force: true })
       const error = new Error('file replaced during compaction')
       error.code = 'ENOENT'
       throw error
     }
-    return originalStatSync(filename, ...args)
+    return originalLstat(filename, ...args)
   }
   try {
-    assert.equal(require('./server.cjs').directoryBytes(directory), 0)
+    assert.equal(await require('./server.cjs').directoryBytes(directory), 0)
   } finally {
-    fs.statSync = originalStatSync
+    fs.promises.lstat = originalLstat
     fs.rmSync(directory, { force: true, recursive: true })
   }
 })
@@ -1209,4 +1209,228 @@ test('viewer receives the shared document but cannot publish Yjs changes', async
   assert.equal(text.toString(), 'private baseline')
   text.insert(text.length, ' owner change')
   await waitFor(() => local.getMap('files').get('paper/main.tex').toString().includes('owner change'), 'viewer receives owner changes')
+})
+
+test('response restore rejects concurrent changes and updates only the selected response', async t => {
+  const instance = createCollaborationServer({ allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['history-test']) })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const room = 'paper-workspace:paper.example:history-test'
+  const document = getYDoc(`collab/${room}`)
+  t.after(() => { document.destroy(); docs.delete(`collab/${room}`) })
+  const response = new Y.Text('current')
+  const other = new Y.Text('other response')
+  const paper = new Y.Text('paper contents')
+  document.getMap('rebuttalResponses').set('response-one', response)
+  document.getMap('rebuttalResponses').set('response-two', other)
+  document.getMap('files').set('main.tex', paper)
+  const peer = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, peer, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { provider.destroy(); peer.destroy() })
+  await waitForProviderSync(provider)
+  const url = `http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}?response-restore=1`
+  const headers = { 'X-Paper-Role': 'editor', 'X-Paper-Allowed-Projects': 'history-test' }
+  assert.equal((await postJson(url, {key:'response-one',expected:'old',replacement:'restored'},headers)).status,409)
+  assert.equal((await postJson(url, {key:'response-one',expected:'current',replacement:'restored'},{...headers,'X-Paper-Role':'viewer'})).status,403)
+  assert.equal((await postJson(url, {key:'response-one',expected:'current',replacement:'restored'},headers)).status,200)
+  assert.equal(response.toString(),'restored')
+  await waitFor(() => peer.getMap('rebuttalResponses').get('response-one')?.toString() === 'restored', 'peer did not receive restored response')
+  assert.equal(other.toString(),'other response')
+  assert.equal(paper.toString(),'paper contents')
+})
+
+test('source writeback continues past a failed file and retries it without new edits', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-writeback-independent-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  writeSourceProject(root, 'main baseline')
+  const manifestPath = path.join(root, 'project.json')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  manifest.files.push({ path: 'notes.tex', managed: true })
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+  const mainPath = path.join(root, 'main.tex')
+  const notesPath = path.join(root, 'notes.tex')
+  fs.writeFileSync(notesPath, 'notes baseline')
+  const room = 'paper-workspace:paper.example:example-paper'
+  const document = getYDoc(`collab/${room}`)
+  const files = document.getMap('files')
+  for (const [key, value] of [['paper/main.tex', 'main baseline'], ['paper/notes.tex', 'notes baseline']]) {
+    files.set(key, new Y.Text(value))
+  }
+
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['example-paper']),
+    defaultProjectSlugs: new Set(['example-paper']), defaultProjectSourceDir: root, sourceWritebackDebounceMs: 5
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const client = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, client, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { provider.destroy(); client.destroy() })
+  await waitForProviderSync(provider)
+
+  const originalRename = fs.renameSync
+  let fail = true
+  let notesWrites = 0
+  fs.renameSync = (from, to) => {
+    if (to === mainPath && fail) throw Object.assign(new Error('transient writeback error'), { code: 'EIO' })
+    if (to === notesPath) notesWrites += 1
+    return originalRename(from, to)
+  }
+  try {
+    document.transact(() => {
+      files.get('paper/main.tex').insert(0, 'web ')
+      files.get('paper/notes.tex').insert(0, 'web ')
+    })
+    await waitFor(() => fs.readFileSync(notesPath, 'utf8') === 'web notes baseline', 'the healthy source did not write back')
+    assert.equal(fs.readFileSync(mainPath, 'utf8'), 'main baseline')
+    assert.equal(document.getMap('project').get('sourceWritebackStatus').state, 'error')
+    fail = false
+    await waitFor(() => fs.readFileSync(mainPath, 'utf8') === 'web main baseline', 'failed source was not retried')
+    assert.equal(notesWrites, 1)
+  } finally { fs.renameSync = originalRename }
+})
+
+test('writeback preserves an external save to the displaced manuscript inode', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-writeback-race-'))
+  const document = new Y.Doc()
+  t.after(() => { document.destroy(); fs.rmSync(root, { recursive: true, force: true }) })
+  writeSourceProject(root, 'disk baseline')
+  const filename = path.join(root, 'main.tex')
+  const text = new Y.Text('disk baseline')
+  document.getMap('files').set('paper/main.tex', text)
+  const digests = new Map()
+  writeBackManagedSources(document, root, digests)
+  text.insert(0, 'web ')
+  const originalRename = fs.renameSync
+  fs.renameSync = (from, to) => {
+    if (to === filename) fs.writeFileSync(to, 'external edit at rename')
+    return originalRename(from, to)
+  }
+  try {
+    const result = writeBackManagedSources(document, root, digests)
+    assert.deepEqual(result.conflictPaths, ['paper/main.tex'])
+    assert.equal(fs.readFileSync(path.join(root, result.recoveries.get('paper/main.tex')), 'utf8'), 'external edit at rename')
+    assert.equal(text.toString(), 'web disk baseline')
+  } finally { fs.renameSync = originalRename }
+})
+
+test('client-supplied runtime revision and fingerprints cannot bypass sync or discard a draft', async t => {
+  const runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-private-metadata-'))
+  t.after(() => fs.rmSync(runtime, { recursive: true, force: true }))
+  const previous = 'a'.repeat(64)
+  const next = 'b'.repeat(64)
+  writeRuntimeProject(runtime, { revision: next, source: 'staged text' })
+  const room = 'paper-workspace:paper.example:example-paper'
+  const document = getYDoc(`collab/${room}`)
+  document.getMap('project').set('serverRuntimeRevision', previous)
+  document.getMap('project').set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('old baseline') })
+  document.getMap('files').set('paper/main.tex', new Y.Text('web draft'))
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['example-paper']), projectRuntimeDir: runtime
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const local = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, local, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { provider.destroy(); local.destroy() })
+  await waitForProviderSync(provider)
+  local.transact(() => {
+    local.getMap('project').set('serverRuntimeRevision', next)
+    local.getMap('project').set('serverSourceFingerprints', { 'paper/main.tex': sourceFingerprint('web draft') })
+    local.getMap('project').set('attackDelivered', true)
+  })
+  await waitFor(() => document.getMap('project').get('attackDelivered'), 'the client update did not reach the server')
+  assert.equal(document.getMap('project').get('serverRuntimeRevision'), previous)
+  const response = await postJson(`http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}`,
+    { previous_runtime_revision: previous, runtime_revision: next })
+  assert.equal(response.status, 200)
+  assert.equal(response.body.deduplicated, false)
+  assert.equal(response.body.preserved_paths.length, 1)
+  assert.equal(document.getMap('files').get(response.body.preserved_paths[0]).toString(), 'web draft')
+})
+
+test('runtime revision retries complete a failed post-apply baseline flush once', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-retry-runtime-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const source = path.join(root, 'source')
+  const runtime = path.join(root, 'runtime')
+  const history = path.join(root, 'history')
+  const previous = 'a'.repeat(64)
+  const next = 'b'.repeat(64)
+  writeSourceProject(source, 'old manuscript')
+  writeRuntimeProject(runtime, { revision: next, source: 'new manuscript' })
+  const room = 'paper-workspace:paper.example:example-paper'
+  const document = getYDoc(`collab/${room}`)
+  const project = document.getMap('project')
+  project.set('serverRuntimeRevision', previous)
+  const main = new Y.Text('old manuscript')
+  document.getMap('files').set('paper/main.tex', main)
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['example-paper']),
+    projectsSourceDir: path.dirname(source), defaultProjectSourceDir: source, defaultProjectSlugs: new Set(['example-paper']),
+    projectRuntimeDir: runtime, sourceHistoryDir: history
+  })
+  fs.renameSync(path.join(runtime, 'projects/example-paper'), path.join(runtime, 'project'))
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const local = new Y.Doc()
+  const provider = new WebsocketProvider(`ws://127.0.0.1:${port}/collab`, room, local, { WebSocketPolyfill: PaperOriginWebSocket, disableBc: true })
+  t.after(() => { provider.destroy(); local.destroy() })
+  await waitForProviderSync(provider)
+  fs.writeFileSync(path.join(source, 'main.tex'), 'new manuscript')
+  let applications = 0
+  main.observe(() => { applications += 1 })
+  const originalRename = fs.renameSync
+  const url = `http://127.0.0.1:${port}/collab-runtime/${encodeURIComponent(room)}`
+  const signal = { previous_runtime_revision: previous, runtime_revision: next }
+  fs.renameSync = (from, to) => {
+    if (to.startsWith(history) && to.endsWith('.json.gz')) throw Object.assign(new Error('baseline flush failed'), { code: 'EIO' })
+    return originalRename(from, to)
+  }
+  try {
+    assert.equal((await postJson(url, signal)).status, 503)
+  } finally { fs.renameSync = originalRename }
+  assert.equal(main.toString(), 'new manuscript')
+  assert.equal(project.get('serverRuntimeRevision'), previous)
+  const retried = await postJson(url, signal)
+  assert.equal(retried.status, 200)
+  assert.equal(retried.body.deduplicated, false)
+  assert.equal(applications, 1)
+  assert.equal(project.get('serverRuntimeRevision'), next)
+  assert.equal(loadSourceHistories(history, `collab/${room}`)['paper/main.tex'].at(-1), 'new manuscript')
+  assert.equal((await postJson(url, signal)).body.deduplicated, true)
+})
+
+test('async quota scan failures leave existing sockets and health responsive', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paper-quota-io-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const storage = path.join(root, 'storage')
+  fs.mkdirSync(storage)
+  const instance = createCollaborationServer({
+    allowedOrigins: new Set(['https://paper.example']), allowedProjectSlugs: new Set(['example-paper']),
+    persistenceDir: storage, storageCheckMs: 20
+  })
+  t.after(() => instance.close())
+  const port = await listen(instance)
+  const socket = new PaperOriginWebSocket(`ws://127.0.0.1:${port}/collab/paper-workspace:paper.example:example-paper`)
+  t.after(() => socket.terminate())
+  await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject) })
+  const originalRead = fs.promises.readdir
+  let finishScan
+  fs.promises.readdir = (filename, ...args) => {
+    if (filename !== storage) return originalRead(filename, ...args)
+    return new Promise((_resolve, reject) => {
+      finishScan = () => reject(Object.assign(new Error('quota path temporarily unavailable'), { code: 'EACCES' }))
+    })
+  }
+  try {
+    await waitFor(() => finishScan, 'the periodic quota scan did not start')
+    assert.equal(await responseStatus(`http://127.0.0.1:${port}/health`), 200)
+    finishScan()
+    assert.equal(await responseStatus(`http://127.0.0.1:${port}/health`), 200)
+    assert.equal(socket.readyState, WebSocket.OPEN)
+  } finally {
+    fs.promises.readdir = originalRead
+    finishScan?.()
+  }
 })

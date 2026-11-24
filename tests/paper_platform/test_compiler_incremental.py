@@ -218,8 +218,8 @@ def test_compile_and_synctex_caches_have_a_combined_byte_budget(monkeypatch: pyt
     compiler._cache_put("first", b"123456", b"abc", 1)
     compiler._cache_put("second", b"654321", b"xyz", 1)
 
-    total = sum(len(item[1]) + len(item[2]) for item in compiler._compile_cache.values())
-    total += sum(len(item[1]) for item in compiler._synctex_cache.values())
+    total = sum(item.size_bytes for _, item in compiler._compile_cache.values())
+    total += sum(item.size_bytes for _, item in compiler._synctex_cache.values())
     assert total <= 20
     assert len(compiler._compile_cache) + len(compiler._synctex_cache) < 4
 

@@ -16,3 +16,21 @@ def test_collaboration_contract_covers_requested_workflows() -> None:
     assert "mapFor" in client
     assert "collaboration_data:/data" in compose
     assert '"y-websocket"' in package
+
+
+def test_collaboration_image_copies_server_modules() -> None:
+    collaboration = ROOT / "apps/paper_workspace/collaboration"
+    dockerfile = (collaboration / "Dockerfile").read_text(encoding="utf-8")
+
+    for name in (
+        "server.cjs",
+        "atomic-source.cjs",
+        "http-helpers.cjs",
+        "rebuttal-sources.cjs",
+        "runtime-sync.cjs",
+        "source-merge.cjs",
+        "storage-quota.cjs",
+        "writeback.cjs",
+    ):
+        assert (collaboration / name).is_file()
+        assert f"apps/paper_workspace/collaboration/{name}" in dockerfile

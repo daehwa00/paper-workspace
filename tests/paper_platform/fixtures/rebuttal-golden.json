@@ -1,0 +1,2002 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic fixtures. Mock results validate mechanics only; run the evaluator with a live bridge separately for LLM quality.",
+  "cases": [
+    {
+      "id": "synthetic-01-ablation",
+      "category": "direct",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the ablation experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the ablation experiment with three seeds."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-02-ablation",
+      "category": "partial",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the ablation experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the ablation experiment with three seeds."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": [
+              "Provide remaining ablation evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-03-ablation",
+      "category": "related",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We mention ablation in the introduction."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We mention ablation in the introduction."
+              }
+            ],
+            "coverage": "related",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-04-ablation",
+      "category": "missing",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "Thank you for the feedback."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected a typo."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [],
+            "coverage": "missing",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-05-ablation",
+      "category": "multi_document",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the ablation experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The ablation experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the ablation experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The ablation experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-06-ablation",
+      "category": "appropriate_concession",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We agree that broader ablation evaluation is needed; our claim is restricted to this benchmark."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "Acknowledge limitations of ablation",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "limitations"
+              }
+            ],
+            "strategy": "accept"
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We agree that broader ablation evaluation is needed; our claim is restricted to this benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-07-ablation",
+      "category": "unfulfilled_promise",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We will investigate ablation; results are not available."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We will investigate ablation; results are not available."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": [
+              "Provide remaining ablation evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-08-ablation",
+      "category": "many_to_many",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain ablation evidence and limitations."
+            }
+          },
+          {
+            "id": "r2",
+            "reviewer_id": "rv2",
+            "fields": {
+              "review": "What supports the ablation claim?"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the ablation experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The ablation experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "ablation evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "ablation evidence"
+              }
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "Support for ablation",
+            "reviewer_id": "rv2",
+            "source_spans": [
+              {
+                "review_id": "r2",
+                "field": "review",
+                "quote": "ablation claim"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the ablation experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The ablation experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          },
+          {
+            "concern_id": "c2",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the ablation experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The ablation experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic ablation judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-09-runtime",
+      "category": "direct",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the runtime experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the runtime experiment with three seeds."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-10-runtime",
+      "category": "partial",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the runtime experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the runtime experiment with three seeds."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": [
+              "Provide remaining runtime evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-11-runtime",
+      "category": "related",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We mention runtime in the introduction."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We mention runtime in the introduction."
+              }
+            ],
+            "coverage": "related",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-12-runtime",
+      "category": "missing",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "Thank you for the feedback."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected a typo."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [],
+            "coverage": "missing",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-13-runtime",
+      "category": "multi_document",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the runtime experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The runtime experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the runtime experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The runtime experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-14-runtime",
+      "category": "appropriate_concession",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We agree that broader runtime evaluation is needed; our claim is restricted to this benchmark."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "Acknowledge limitations of runtime",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "limitations"
+              }
+            ],
+            "strategy": "accept"
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We agree that broader runtime evaluation is needed; our claim is restricted to this benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-15-runtime",
+      "category": "unfulfilled_promise",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We will investigate runtime; results are not available."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We will investigate runtime; results are not available."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": [
+              "Provide remaining runtime evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-16-runtime",
+      "category": "many_to_many",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain runtime evidence and limitations."
+            }
+          },
+          {
+            "id": "r2",
+            "reviewer_id": "rv2",
+            "fields": {
+              "review": "What supports the runtime claim?"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the runtime experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The runtime experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "runtime evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "runtime evidence"
+              }
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "Support for runtime",
+            "reviewer_id": "rv2",
+            "source_spans": [
+              {
+                "review_id": "r2",
+                "field": "review",
+                "quote": "runtime claim"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the runtime experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The runtime experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          },
+          {
+            "concern_id": "c2",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the runtime experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The runtime experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic runtime judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-17-dataset",
+      "category": "direct",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the dataset experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-18-dataset",
+      "category": "partial",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the dataset experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": [
+              "Provide remaining dataset evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-19-dataset",
+      "category": "related",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We mention dataset in the introduction."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We mention dataset in the introduction."
+              }
+            ],
+            "coverage": "related",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-20-dataset",
+      "category": "missing",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "Thank you for the feedback."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected a typo."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [],
+            "coverage": "missing",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-21-dataset",
+      "category": "multi_document",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the dataset experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The dataset experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The dataset experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-22-dataset",
+      "category": "appropriate_concession",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We agree that broader dataset evaluation is needed; our claim is restricted to this benchmark."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "Acknowledge limitations of dataset",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "limitations"
+              }
+            ],
+            "strategy": "accept"
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We agree that broader dataset evaluation is needed; our claim is restricted to this benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-23-dataset",
+      "category": "unfulfilled_promise",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We will investigate dataset; results are not available."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We will investigate dataset; results are not available."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": [
+              "Provide remaining dataset evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-24-dataset",
+      "category": "many_to_many",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          },
+          {
+            "id": "r2",
+            "reviewer_id": "rv2",
+            "fields": {
+              "review": "What supports the dataset claim?"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the dataset experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The dataset experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "Support for dataset",
+            "reviewer_id": "rv2",
+            "source_spans": [
+              {
+                "review_id": "r2",
+                "field": "review",
+                "quote": "dataset claim"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The dataset experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          },
+          {
+            "concern_id": "c2",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The dataset experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-25-robustness",
+      "category": "direct",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the robustness experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the robustness experiment with three seeds."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-26-robustness",
+      "category": "partial",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the robustness experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the robustness experiment with three seeds."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": [
+              "Provide remaining robustness evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-27-robustness",
+      "category": "related",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We mention robustness in the introduction."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We mention robustness in the introduction."
+              }
+            ],
+            "coverage": "related",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-28-robustness",
+      "category": "missing",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "Thank you for the feedback."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected a typo."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [],
+            "coverage": "missing",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-29-robustness",
+      "category": "multi_document",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the robustness experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The robustness experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence and limitations",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence and limitations"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the robustness experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The robustness experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-30-robustness",
+      "category": "appropriate_concession",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We agree that broader robustness evaluation is needed; our claim is restricted to this benchmark."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "Acknowledge limitations of robustness",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "limitations"
+              }
+            ],
+            "strategy": "accept"
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We agree that broader robustness evaluation is needed; our claim is restricted to this benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-31-robustness",
+      "category": "unfulfilled_promise",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We will investigate robustness; results are not available."
+          },
+          {
+            "id": "d2",
+            "text": "We corrected typographical errors in the appendix."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We will investigate robustness; results are not available."
+              }
+            ],
+            "coverage": "partial",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": [
+              "Provide remaining robustness evidence."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic-32-robustness",
+      "category": "many_to_many",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain robustness evidence and limitations."
+            }
+          },
+          {
+            "id": "r2",
+            "reviewer_id": "rv2",
+            "fields": {
+              "review": "What supports the robustness claim?"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the robustness experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The robustness experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "robustness evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "robustness evidence"
+              }
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "Support for robustness",
+            "reviewer_id": "rv2",
+            "source_spans": [
+              {
+                "review_id": "r2",
+                "field": "review",
+                "quote": "robustness claim"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the robustness experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The robustness experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          },
+          {
+            "concern_id": "c2",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the robustness experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The robustness experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic robustness judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    }
+  ]
+}
