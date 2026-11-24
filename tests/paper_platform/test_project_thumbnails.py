@@ -139,3 +139,53 @@ def test_one_broken_pdf_does_not_block_other_project_thumbnails(tmp_path: Path) 
 
     assert updated == ["healthy"]
     assert (tmp_path / "output/healthy/thumbnail.png").is_file()
+
+
+def test_thumbnail_digest_detects_same_size_same_timestamp_change(tmp_path):
+    import os
+
+    catalog = tmp_path / "projects/index.json"
+    project = catalog.parent / "paper"
+    output = tmp_path / "output"
+    write_json(catalog, {"projects": [{"slug": "paper"}]})
+    write_json(project / "project.json", {"entrypoint": "main.tex"})
+    pdf = project / "main.pdf"
+    pdf.write_bytes(b"first")
+    original = pdf.stat()
+
+    def render(source, destination):
+        destination.write_bytes(source.read_bytes())
+
+    THUMBNAILS.scan_projects(catalog, project, catalog.parent, output, render)
+    pdf.write_bytes(b"other")
+    os.utime(pdf, ns=(original.st_atime_ns, original.st_mtime_ns))
+    assert THUMBNAILS.scan_projects(catalog, project, catalog.parent, output, render) == ["paper"]
+    assert (output / "paper/thumbnail.png").read_bytes() == b"other"
+
+
+def test_thumbnail_once_rejects_symlinked_roots_and_cleans_stale_outputs(tmp_path):
+    import subprocess
+    import sys
+
+    catalog = tmp_path / "projects/index.json"
+    output = tmp_path / "output"
+    outside = tmp_path / "outside"
+    write_json(catalog, {"projects": [{"slug": "linked"}]})
+    write_json(outside / "project.json", {"entrypoint": "main.tex"})
+    (outside / "main.pdf").write_bytes(b"outside")
+    (catalog.parent / "linked").symlink_to(outside, target_is_directory=True)
+    for slug in ("linked", "removed"):
+        directory = output / slug
+        directory.mkdir(parents=True)
+        (directory / "thumbnail.png").write_bytes(b"stale")
+        (directory / ".fingerprint").write_text("stale")
+    result = subprocess.run(
+        [sys.executable, str(MODULE_PATH), "--catalog", str(catalog), "--default-project", str(outside),
+         "--projects", str(catalog.parent), "--output", str(output), "--once"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "invalid project root" in result.stdout
+    assert not list(output.glob("*/thumbnail.png"))
+    assert not list(output.glob("*/.fingerprint"))
+    assert THUMBNAILS.resolve_project_pdf(catalog.parent / "linked") is None

@@ -395,3 +395,93 @@ def test_runtime_rejects_manifest_symlinks_without_replacing_last_good_copy(tmp_
 
     assert (output / "project/main.tex").read_text() == previous
     assert not (output / "project/private-draft.tex").exists()
+
+
+def test_runtime_writes_validated_catalog_and_transforms_validated_manifest(tmp_path, monkeypatch):
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    projects.mkdir()
+    catalog = projects / "index.json"
+    initial_catalog = b'{ "projects": [{"slug":"default-paper","source":"default"}] }\n'
+    catalog.write_bytes(initial_catalog)
+    read = runtime.read_json_object
+
+    def change_after_read(path):
+        parsed = read(path)
+        if path in {catalog, default / "project.json"}:
+            path.write_text('{"unsafeReplacement":true}')
+        return parsed
+
+    monkeypatch.setattr(runtime, "read_json_object", change_after_read)
+    runtime.sync_runtime(default, projects, output)
+    assert (output / "projects/index.json").read_bytes() == initial_catalog
+    manifest = json.loads((output / "project/project.json").read_text())
+    assert manifest["id"] == "default-paper"
+    assert "unsafeReplacement" not in manifest
+
+
+def test_runtime_unchanged_input_skips_full_copy(tmp_path, monkeypatch):
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    projects.mkdir()
+    (projects / "index.json").write_text('{"projects":[]}')
+    first = runtime.sync_runtime(default, projects, output)
+    monkeypatch.setattr(runtime.shutil, "copyfile", lambda *_: pytest.fail("unexpected unchanged copy"))
+    assert runtime.sync_runtime(default, projects, output) == first
+
+
+def test_runtime_once_reports_broken_projects_after_publishing_healthy_updates(tmp_path):
+    import subprocess
+    import sys
+
+    runtime = load_runtime_module()
+    default = tmp_path / "default"
+    projects = tmp_path / "projects"
+    output = tmp_path / "runtime"
+    write_project(default, "default-paper")
+    write_project(projects / "healthy", "healthy")
+    write_project(projects / "broken", "broken")
+    (projects / "index.json").write_text('{"projects":[{"slug":"healthy"},{"slug":"broken"}]}')
+    runtime.sync_runtime(default, projects, output)
+    (projects / "broken/project.json").write_text("malformed JSON")
+    (projects / "healthy/main.tex").write_text("updated healthy source")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--default-project", str(default), "--projects", str(projects),
+         "--output", str(output), "--once"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "projects/broken" in result.stdout
+    assert (output / "projects/broken/main.tex").read_text() == "main broken"
+    assert (output / "projects/healthy/main.tex").read_text() == "updated healthy source"
+
+
+def test_runtime_replacement_keeps_live_tree_if_swap_fails(tmp_path, monkeypatch):
+    import errno
+
+    runtime = load_runtime_module()
+    live = tmp_path / "live"
+    staged = tmp_path / "staged"
+    live.mkdir()
+    staged.mkdir()
+    (live / "content").write_text("old")
+    (staged / "content").write_text("new")
+    monkeypatch.setattr(runtime.ctypes, "CDLL", lambda *_args, **_kwargs: object())
+    replace = runtime.os.replace
+
+    def fail_staged_replace(source, destination):
+        if source == staged:
+            raise OSError(errno.EIO, "exchange failed")
+        return replace(source, destination)
+
+    monkeypatch.setattr(runtime.os, "replace", fail_staged_replace)
+    with pytest.raises(OSError, match="exchange failed"):
+        runtime.replace_tree(staged, live)
+    assert (live / "content").read_text() == "old"
+    assert (staged / "content").read_text() == "new"

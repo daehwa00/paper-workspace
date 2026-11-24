@@ -876,7 +876,7 @@ def test_performance_paths_avoid_eager_assets_and_redundant_compile_work() -> No
     storage = (ROOT / "apps/paper_workspace/static/workspace-storage.js").read_text(encoding="utf-8")
     core = (ROOT / "apps/paper_workspace/static/workspace-core.js").read_text(encoding="utf-8")
     compiler = (ROOT / "apps/paper_workspace/compiler/server.py").read_text(encoding="utf-8")
-    backup = (ROOT / "apps/paper_workspace/backup/server.py").read_text(encoding="utf-8")
+    backup = (ROOT / "apps/paper_workspace/backup/store.py").read_text(encoding="utf-8")
     collaboration = (ROOT / "apps/paper_workspace/collaboration/client.js").read_text(encoding="utf-8")
     nginx = (ROOT / "infra/paper-workspace/nginx.conf").read_text(encoding="utf-8")
     compose = (ROOT / "infra/paper-workspace/compose.yaml").read_text(encoding="utf-8")

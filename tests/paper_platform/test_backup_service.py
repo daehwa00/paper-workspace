@@ -130,7 +130,7 @@ def test_snapshot_validation_rejects_unsafe_file_paths(path: str) -> None:
 
 def test_snapshot_validation_rejects_oversized_or_invalid_content(monkeypatch: pytest.MonkeyPatch) -> None:
     backup = load_backup_module()
-    monkeypatch.setattr(backup, "MAX_SNAPSHOT_BYTES", 100)
+    monkeypatch.setattr(backup.snapshot, "MAX_SNAPSHOT_BYTES", 100)
     with pytest.raises(backup.ValidationError, match="too large"):
         backup.canonical_snapshot(snapshot_payload("x" * 200))
     with pytest.raises(backup.ValidationError, match="files"):
@@ -149,13 +149,13 @@ def test_database_contains_canonical_json_not_pickle(tmp_path: Path) -> None:
 
 def test_corrupt_or_expanding_stored_snapshots_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     backup = load_backup_module()
-    monkeypatch.setattr(backup, "MAX_SNAPSHOT_BYTES", 32)
+    monkeypatch.setattr(backup.snapshot, "MAX_SNAPSHOT_BYTES", 32)
     with pytest.raises(backup.ValidationError, match="expands"):
         backup.decompress_snapshot_payload(backup.zlib.compress(b"x" * 33))
     with pytest.raises(backup.ValidationError, match="compression"):
         backup.decompress_snapshot_payload(b"not-zlib")
 
-    monkeypatch.setattr(backup, "MAX_SNAPSHOT_BYTES", 10_000_000)
+    monkeypatch.setattr(backup.snapshot, "MAX_SNAPSHOT_BYTES", 10_000_000)
     store = backup.BackupStore(tmp_path / "backups.sqlite3")
     metadata, _ = store.create("paper-one", snapshot_payload(), None, None)
     with store._connect() as connection:
@@ -654,3 +654,155 @@ def test_main_page_count_metadata_is_bounded_and_does_not_allow_arbitrary_json(t
             store.put('example', path, content)
     with pytest.raises(module.ValidationError):
         store.put('example', 'arbitrary.json', body)
+
+
+def test_export_io_failure_returns_json_and_preserves_prior_retention(tmp_path, monkeypatch):
+    backup = load_backup_module()
+    monkeypatch.setenv("BACKUP_DB_PATH", str(tmp_path / "backups.sqlite3"))
+    monkeypatch.setenv("BACKUP_EXPORT_DIR", str(tmp_path / "exports"))
+    monkeypatch.setenv("BACKUP_ASSET_DIR", str(tmp_path / "assets"))
+    monkeypatch.setenv("BACKUP_RETENTION", "1")
+    monkeypatch.setenv("BACKUP_HOST", "127.0.0.1")
+    monkeypatch.setenv("BACKUP_PORT", "0")
+    monkeypatch.delenv("BACKUP_PROJECT_RUNTIME", raising=False)
+
+    with backup.create_server() as server:
+        store = server.RequestHandlerClass.store
+        first, _ = store.create("paper-one", snapshot_payload("first"))
+        prior_exports = set((tmp_path / "exports/paper-one").iterdir())
+        replace = backup.os.replace
+
+        def fail_export(source, destination):
+            if destination.suffix == ".zlib":
+                raise OSError("simulated export volume failure")
+            return replace(source, destination)
+
+        monkeypatch.setattr(backup.os, "replace", fail_export)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/projects/paper-one/snapshots",
+                data=json.dumps({"snapshot": snapshot_payload("next")}).encode(), method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=2)
+            assert caught.value.code == 503
+            assert json.load(caught.value) == {"error": "backup storage unavailable"}
+            assert store.list("paper-one")[0]["id"] == first["id"]
+            assert set((tmp_path / "exports/paper-one").iterdir()) == prior_exports
+            monkeypatch.setattr(backup.os, "replace", replace)
+            with urllib.request.urlopen(request, timeout=2) as response:
+                assert response.status == 201
+            assert len(store.list("paper-one")) == 1
+
+            def sqlite_busy(*_args):
+                raise backup.sqlite3.OperationalError("database is locked")
+
+            monkeypatch.setattr(store, "list", sqlite_busy)
+            with pytest.raises(urllib.error.HTTPError) as held:
+                urllib.request.urlopen(request.full_url, timeout=2)
+            assert held.value.code == 503
+            assert json.load(held.value) == {"error": "backup storage unavailable"}
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+
+def test_activity_fallback_uses_latest_checked_timestamp(tmp_path):
+    backup = load_backup_module()
+    store = backup.BackupStore(tmp_path / "backups.sqlite3")
+    first, _ = store.create("paper-one", snapshot_payload("first"), "editor-one")
+    second, _ = store.create("paper-one", snapshot_payload("next"), "editor-two")
+    with store._connect() as connection:
+        connection.execute("UPDATE snapshots SET created_at=?, checked_at=NULL WHERE id=?",
+                           ("2020-01-02T00:00:00Z", second["id"]))
+        connection.execute("UPDATE snapshots SET created_at=?, checked_at=? WHERE id=?",
+                           ("2020-01-01T00:00:00Z", "2020-01-03T00:00:00Z", first["id"]))
+    assert store.list("paper-one")[0]["id"] == first["id"]
+    assert store.list_activity() == [
+        {"project_id": "paper-one", "modified_at": "2020-01-03T00:00:00Z",
+         "actor": "editor-one", "reason": None}
+    ]
+
+
+def test_wal_is_selected_only_during_initialization(tmp_path, monkeypatch):
+    backup = load_backup_module()
+    statements = []
+    connect = backup.sqlite3.connect
+
+    def trace_connection(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    monkeypatch.setattr(backup.sqlite3, "connect", trace_connection)
+    store = backup.BackupStore(tmp_path / "backups.sqlite3")
+    store.list_activity()
+    store.list("paper-one")
+    assert statements.count("PRAGMA journal_mode = WAL") == 1
+
+
+def test_assets_lock_is_per_project_and_delete_prunes_directories(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    backup = load_backup_module()
+    root = tmp_path / "assets"
+    assets = backup.AssetStore(root)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with assets._project_lock("paper-one"):
+            assert pool.submit(assets.put, "paper-two", "a/b/figure.png", PNG_BYTES).result(timeout=2)
+            assert pool.submit(assets.list, "paper-two").result(timeout=2)
+    assets.delete("paper-two", "a/b/figure.png")
+    assert root.is_dir()
+    assert not (root / "paper-two").exists()
+
+
+def test_project_allowlist_retries_after_transient_catalog_or_manifest_disappearance(tmp_path):
+    backup = load_backup_module()
+    catalog = tmp_path / "projects/index.json"
+    default = tmp_path / "project/project.json"
+    catalog.parent.mkdir()
+    default.parent.mkdir()
+    default.write_text('{"id":"default-paper"}')
+    catalog.write_text('{"projects":[]}')
+    allowlist = backup.ProjectAllowlist(tmp_path)
+    catalog.unlink()
+    assert allowlist.snapshot() == {"default-paper"}
+    catalog.write_text('{"projects":[{"slug":"different"}]}')
+    assert allowlist.snapshot() == {"default-paper"}
+    manifest = catalog.parent / "different/project.json"
+    manifest.parent.mkdir()
+    manifest.write_text('{"id":"different"}')
+    assert allowlist.snapshot() == {"default-paper", "different"}
+
+
+def test_export_pruning_rechecks_retention_after_another_store_commits(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    backup = load_backup_module()
+    database = tmp_path / "backups.sqlite3"
+    exports = tmp_path / "exports"
+    first = backup.BackupStore(database, retention=1, export_dir=exports)
+    second = backup.BackupStore(database, retention=1, export_dir=exports)
+    pruning = threading.Event()
+    resume = threading.Event()
+    original_prune = first._prune_exports
+
+    def wait_to_prune(project):
+        pruning.set()
+        assert resume.wait(2)
+        original_prune(project)
+
+    monkeypatch.setattr(first, "_prune_exports", wait_to_prune)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(first.create, "paper-one", snapshot_payload("old"))
+        try:
+            assert pruning.wait(2)
+            latest, _ = second.create("paper-one", snapshot_payload("new"))
+        finally:
+            resume.set()
+        pending.result(timeout=2)
+    assert {path.name for path in (exports / "paper-one").iterdir()} == {
+        f"{latest['id']}-{latest['hash'][:12]}.json.zlib"
+    }

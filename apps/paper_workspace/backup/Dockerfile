@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-COPY --chmod=644 apps/paper_workspace/backup/server.py /app/server.py
+COPY --chmod=644 apps/paper_workspace/backup/*.py /app/
 RUN useradd --system --uid 10001 backupsvc \
     && mkdir -p /data /exports \
     && chmod 755 /app \

@@ -5,18 +5,22 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 
-SLUG_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+if __package__:
+    from .runtime_common import SLUG_PATTERN, checked_source, file_digest, read_object, safe_relative
+else:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from runtime_common import SLUG_PATTERN, checked_source, file_digest, read_object, safe_relative
 THUMBNAIL_PATTERN = re.compile(
     r"/projects/(?P<slug>[A-Za-z0-9][A-Za-z0-9_-]{0,63})/"
     r"(?P<filename>thumbnail\.(?P<extension>png|jpe?g|webp))"
@@ -27,29 +31,18 @@ RENDER_VERSION = "3"
 
 
 def _safe_relative(value: object) -> Path | None:
-    if not isinstance(value, str) or not value or "\\" in value:
+    try:
+        return safe_relative(value)
+    except ValueError:
         return None
-    path = Path(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        return None
-    return path
-
-
-def _read_json(path: Path) -> dict[str, object]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"expected a JSON object in {path}")
-    return payload
 
 
 def resolve_project_pdf(project_root: Path) -> Path | None:
     """Return the canonical preview PDF without considering arbitrary asset PDFs."""
-    try:
-        resolved_root = project_root.resolve(strict=True)
-    except OSError:
+    if project_root.is_symlink() or not project_root.is_dir():
         return None
     manifest_path = project_root / "project.json"
-    manifest = _read_json(manifest_path) if manifest_path.is_file() else {}
+    manifest = read_object(manifest_path) if manifest_path.exists() or manifest_path.is_symlink() else {}
     entrypoint = _safe_relative(manifest.get("entrypoint")) or Path("main.tex")
     preview_pdf = _safe_relative(manifest.get("preview_pdf"))
     entrypoint_pdf = entrypoint.with_suffix(".pdf")
@@ -66,20 +59,18 @@ def resolve_project_pdf(project_root: Path) -> Path | None:
         if relative is None or relative in seen:
             continue
         seen.add(relative)
-        candidate = project_root / relative
         try:
-            resolved = candidate.resolve(strict=True)
-            if not resolved.is_relative_to(resolved_root):
-                continue
-            size = resolved.stat().st_size
-        except OSError:
+            candidate = checked_source(project_root, relative, max_bytes=MAX_PDF_BYTES)
+            if candidate.stat().st_size:
+                return candidate
+        except (OSError, ValueError):
             continue
-        if resolved.is_file() and 0 < size <= MAX_PDF_BYTES:
-            return resolved
     return None
 
 
 def _ensure_output_directory(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError(f"invalid thumbnail output directory: {path}")
     path.mkdir(mode=0o755, parents=True, exist_ok=True)
     path.chmod(0o755)
 
@@ -166,30 +157,48 @@ def _publish_static_thumbnail(source: Path, destination: Path) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def _clean_thumbnails(directory: Path, keep: str | None = None) -> None:
+    if directory.is_symlink() or not directory.is_dir():
+        return
+    for filename in ("thumbnail.png", "thumbnail.jpg", "thumbnail.jpeg", "thumbnail.webp", ".fingerprint"):
+        if filename != keep and (keep is None or filename != ".fingerprint"):
+            (directory / filename).unlink(missing_ok=True)
+
+
 def scan_projects(
     catalog_path: Path,
     default_project_root: Path,
     projects_root: Path,
     output_root: Path,
     renderer: Callable[[Path, Path], None] = render_pdf_thumbnail,
+    *,
+    strict: bool = False,
 ) -> list[str]:
-    catalog = _read_json(catalog_path)
+    if projects_root.is_symlink():
+        raise ValueError(f"invalid project library root: {projects_root}")
+    catalog = read_object(catalog_path)
     projects = catalog.get("projects", [])
     if not isinstance(projects, list):
         raise ValueError("project catalog must contain a projects list")
 
     updated: list[str] = []
+    failures: list[str] = []
+    seen: set[str] = set()
+    _ensure_output_directory(output_root)
     for project in projects:
         if not isinstance(project, dict):
             continue
         slug = project.get("slug")
         if not isinstance(slug, str) or not SLUG_PATTERN.fullmatch(slug):
             continue
+        seen.add(slug)
+        destination_root = output_root / slug
         try:
             project_root = default_project_root if project.get("source") == "default" else projects_root / slug
             thumbnail = project.get("thumbnail")
             thumbnail_match = THUMBNAIL_PATTERN.fullmatch(thumbnail) if isinstance(thumbnail, str) else None
-            destination_root = output_root / slug
+            if project_root.is_symlink() or not project_root.is_dir():
+                raise ValueError(f"invalid project root: {project_root}")
             _ensure_output_directory(destination_root)
             fingerprint_path = destination_root / ".fingerprint"
             if thumbnail_match and thumbnail_match.group("slug") == slug:
@@ -199,6 +208,7 @@ def scan_projects(
                 static_fingerprint = _static_thumbnail_fingerprint(static_source, extension)
                 if static_fingerprint is not None:
                     destination = destination_root / filename
+                    _clean_thumbnails(destination_root, keep=filename)
                     if destination.is_file() and fingerprint_path.is_file():
                         if fingerprint_path.read_text(encoding="utf-8") == static_fingerprint:
                             continue
@@ -207,14 +217,16 @@ def scan_projects(
                     updated.append(slug)
                     continue
                 if extension != "png":
+                    _clean_thumbnails(destination_root)
                     continue
 
             source = resolve_project_pdf(project_root)
             if source is None:
+                _clean_thumbnails(destination_root)
                 continue
 
-            stat = source.stat()
-            fingerprint = f"{RENDER_VERSION}:pdf:{stat.st_size}:{stat.st_mtime_ns}\n"
+            fingerprint = f"{RENDER_VERSION}:pdf:{file_digest(source)}\n"
+            _clean_thumbnails(destination_root, keep="thumbnail.png")
             destination = destination_root / "thumbnail.png"
             if destination.is_file() and fingerprint_path.is_file():
                 if fingerprint_path.read_text(encoding="utf-8") == fingerprint:
@@ -224,7 +236,15 @@ def scan_projects(
             _write_atomic(fingerprint_path, fingerprint)
             updated.append(slug)
         except Exception as error:
+            _clean_thumbnails(destination_root)
+            failures.append(slug)
             print(f"thumbnail generation failed for {slug}: {error}", flush=True)
+
+    for directory in output_root.iterdir():
+        if SLUG_PATTERN.fullmatch(directory.name) and directory.name not in seen:
+            _clean_thumbnails(directory)
+    if strict and failures:
+        raise ValueError(f"thumbnail generation failed for {', '.join(failures)}")
     return updated
 
 
@@ -235,7 +255,9 @@ def main() -> None:
     parser.add_argument("--projects", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--watch-seconds", type=float, default=30)
+    parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    once = args.once or args.watch_seconds <= 0
 
     args.output.mkdir(mode=0o755, parents=True, exist_ok=True)
     while True:
@@ -245,13 +267,16 @@ def main() -> None:
                 args.default_project,
                 args.projects,
                 args.output,
+                strict=once,
             )
             if updated:
                 print(f"updated project thumbnails: {', '.join(updated)}", flush=True)
             _write_atomic(args.output / ".ready", f"{time.time_ns()}\n")
         except Exception as error:
             print(f"project thumbnail scan failed: {error}", flush=True)
-        if args.watch_seconds <= 0:
+            if once:
+                raise SystemExit(1) from error
+        if once:
             break
         time.sleep(max(args.watch_seconds, 1))
 

@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
+import fcntl
+import sys
 import hashlib
 import json
 import os
@@ -11,13 +15,22 @@ import re
 import shutil
 import tempfile
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 
-SLUG_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
-MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+if __package__:
+    from .runtime_common import (
+        SLUG_PATTERN, MAX_MANIFEST_BYTES, MAX_RUNTIME_FILE_BYTES,
+        checked_source, file_digest, read_json_object, read_object, safe_relative,
+    )
+else:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from runtime_common import (
+        SLUG_PATTERN, MAX_MANIFEST_BYTES, MAX_RUNTIME_FILE_BYTES,
+        checked_source, file_digest, read_json_object, read_object, safe_relative,
+    )
+
 MAX_RUNTIME_FILES = 240
-MAX_RUNTIME_FILE_BYTES = 64 * 1024 * 1024
 MAX_RUNTIME_PROJECT_BYTES = 512 * 1024 * 1024
 AUTO_ASSET_EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg", ".eps")
 AUTO_TEXT_EXTENSIONS = {".bib", ".bst", ".cls", ".csv", ".dat", ".json", ".sty", ".tex", ".txt"}
@@ -25,43 +38,6 @@ AUTO_EXTENSIONS = set(AUTO_ASSET_EXTENSIONS) | AUTO_TEXT_EXTENSIONS
 INPUT_PATTERN = re.compile(r"\\(?:input|include)\{([^{}]+)\}")
 GRAPHICS_PATTERN = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{([^{}]+)\}")
 PREVIEW_FIELDS = ("preview_pdf", "preview_synctex")
-
-
-def safe_relative(value: object) -> Path:
-    if not isinstance(value, str) or not value or len(value) > 240 or "\\" in value:
-        raise ValueError("invalid project manifest path")
-    path = PurePosixPath(value)
-    if path.is_absolute() or len(path.parts) > 12 or any(part in {"", ".", ".."} for part in path.parts):
-        raise ValueError("invalid project manifest path")
-    if any(part.startswith(".") for part in path.parts):
-        raise ValueError("hidden project paths are not publishable")
-    return Path(*path.parts)
-
-
-def read_object(path: Path) -> dict[str, object]:
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_MANIFEST_BYTES:
-        raise ValueError(f"invalid JSON manifest: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"expected a JSON object in {path}")
-    return payload
-
-
-def checked_source(root: Path, relative: Path) -> Path:
-    candidate = root / relative
-    current = root
-    if root.is_symlink() or not root.is_dir():
-        raise ValueError(f"invalid project root: {root}")
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            raise ValueError(f"project symlinks are not publishable: {relative.as_posix()}")
-    if not candidate.is_file():
-        raise ValueError(f"manifest file is missing: {relative.as_posix()}")
-    size = candidate.stat().st_size
-    if size > MAX_RUNTIME_FILE_BYTES:
-        raise ValueError(f"manifest file is too large: {relative.as_posix()}")
-    return candidate
 
 
 def declared_source_exists(root: Path, relative: Path) -> bool:
@@ -153,8 +129,11 @@ def automatic_dependency_entries(
 
 
 def project_spec(project_root: Path) -> tuple[list[Path], list[dict[str, object]], set[Path]]:
-    manifest_path = checked_source(project_root, Path("project.json"))
-    manifest = read_object(manifest_path)
+    manifest = read_object(checked_source(project_root, Path("project.json")))
+    return _project_spec(project_root, manifest)
+
+
+def _project_spec(project_root: Path, manifest: dict[str, object]):
     entries = manifest.get("files")
     if not isinstance(entries, list) or len(entries) > MAX_RUNTIME_FILES:
         raise ValueError("project manifest files must be a bounded list")
@@ -198,11 +177,7 @@ def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[s
     combined = hashlib.sha256()
     for relative in paths:
         source = checked_source(project_root, relative)
-        digest = hashlib.sha256()
-        with source.open("rb") as handle:
-            while chunk := handle.read(64 * 1024):
-                digest.update(chunk)
-        revision = digest.hexdigest()
+        revision = file_digest(source)
         relative_name = relative.as_posix()
         revisions[relative_name] = revision
         combined.update(relative_name.encode("utf-8"))
@@ -213,15 +188,24 @@ def project_revision(project_root: Path, paths: list[Path]) -> tuple[str, dict[s
 
 
 def copy_project(project_root: Path, destination: Path) -> None:
-    paths, automatic_entries, missing = project_spec(project_root)
+    manifest = read_json_object(checked_source(project_root, Path("project.json")))
+    _copy_project(project_root, destination, manifest, _project_spec(project_root, manifest[0]))
+
+
+def _copy_project(project_root: Path, destination: Path, validated_manifest, spec) -> dict[str, str]:
+    runtime_manifest, manifest_bytes = validated_manifest
+    paths, automatic_entries, missing = spec
+    destination.mkdir(mode=0o755, parents=True, exist_ok=True)
     for relative in paths:
-        source = checked_source(project_root, relative)
         target = destination / relative
         target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
+        if relative == Path("project.json"):
+            target.write_bytes(manifest_bytes)
+        else:
+            shutil.copyfile(checked_source(project_root, relative), target)
         target.chmod(0o644)
+    runtime_manifest = dict(runtime_manifest)
     runtime_manifest_path = destination / "project.json"
-    runtime_manifest = read_object(runtime_manifest_path)
     runtime_manifest["files"] = [
         entry
         for entry in runtime_manifest["files"]
@@ -256,7 +240,6 @@ def copy_project(project_root: Path, destination: Path) -> None:
     # a non-recursive hash of its own final bytes. Source and preview entries are
     # the cacheable artifacts consumers need to verify independently.
     file_revisions.pop("project.json", None)
-    runtime_manifest = read_object(runtime_manifest_path)
     runtime_manifest["runtime_revision"] = runtime_revision
     runtime_manifest["runtime_file_revisions"] = file_revisions
     runtime_manifest_path.write_text(
@@ -264,10 +247,16 @@ def copy_project(project_root: Path, destination: Path) -> None:
         encoding="utf-8",
     )
     runtime_manifest_path.chmod(0o644)
+    return file_revisions
 
 
 def catalog_projects(catalog_path: Path) -> tuple[dict[str, object], list[dict[str, object]]]:
-    catalog = read_object(catalog_path)
+    catalog, _, projects = _catalog_projects(catalog_path)
+    return catalog, projects
+
+
+def _catalog_projects(catalog_path: Path):
+    catalog, raw = read_json_object(catalog_path)
     projects = catalog.get("projects")
     if not isinstance(projects, list) or len(projects) > MAX_RUNTIME_FILES:
         raise ValueError("project catalog must contain a bounded projects list")
@@ -282,76 +271,129 @@ def catalog_projects(catalog_path: Path) -> tuple[dict[str, object], list[dict[s
             raise ValueError("project catalog contains duplicate slugs")
         slugs.add(project["slug"])
         valid.append(project)
-    return catalog, valid
+    return catalog, raw, valid
+
+
+def _remove_tree(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
 
 
 def replace_tree(staged: Path, destination: Path) -> None:
+    if not destination.exists() and not destination.is_symlink():
+        os.replace(staged, destination)
+        return
+    # Docker runs on Linux. The exchange leaves no instant where the live
+    # project directory is missing, even for directory-to-symlink transitions.
+    rename_exchange = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    if rename_exchange is not None:
+        if rename_exchange(-100, os.fsencode(staged), -100, os.fsencode(destination), 2) == 0:
+            return
+        code = ctypes.get_errno()
+        if code not in {errno.ENOSYS, errno.ENOTSUP, errno.EINVAL}:
+            raise OSError(code, os.strerror(code), str(destination))
     previous = destination.with_name(f".{destination.name}.previous")
-    shutil.rmtree(previous, ignore_errors=True)
-    if destination.exists():
-        os.replace(destination, previous)
+    _remove_tree(previous)
+    os.replace(destination, previous)
     try:
         os.replace(staged, destination)
-    except Exception:
-        if previous.exists() and not destination.exists():
-            os.replace(previous, destination)
+    except BaseException:
+        os.replace(previous, destination)
         raise
-    shutil.rmtree(previous, ignore_errors=True)
+    _remove_tree(previous)
+
+
+def _input_fingerprint(manifest_bytes: bytes, automatic_entries, revisions: dict[str, str]) -> str:
+    digest = hashlib.sha256(manifest_bytes)
+    digest.update(json.dumps(automatic_entries, sort_keys=True).encode())
+    digest.update(json.dumps(revisions, sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+def _publish_project(project_root: Path, staged: Path, destination: Path, previous: object) -> str:
+    manifest = read_json_object(checked_source(project_root, Path("project.json")))
+    spec = _project_spec(project_root, manifest[0])
+    paths, automatic_entries, _ = spec
+    if previous and not destination.is_symlink() and (destination / "project.json").is_file():
+        _, revisions = project_revision(project_root, [path for path in paths if path != Path("project.json")])
+        fingerprint = _input_fingerprint(manifest[1], automatic_entries, revisions)
+        if fingerprint == previous:
+            return fingerprint
+    revisions = _copy_project(project_root, staged, manifest, spec)
+    replace_tree(staged, destination)
+    return _input_fingerprint(manifest[1], automatic_entries, revisions)
+
+
+def _write_atomic(path: Path, value: bytes, staging: Path) -> None:
+    temporary = staging / path.name
+    temporary.write_bytes(value)
+    temporary.chmod(0o644)
+    os.replace(temporary, path)
 
 
 def sync_runtime(default_project: Path, projects_root: Path, output_root: Path) -> str:
-    catalog_path = checked_source(projects_root, Path("index.json"))
-    _, projects = catalog_projects(catalog_path)
     output_root.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with (output_root / ".sync.lock").open("ab") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _sync_runtime(default_project, projects_root, output_root)
+
+
+def _sync_runtime(default_project: Path, projects_root: Path, output_root: Path) -> str:
+    _, catalog_bytes, projects = _catalog_projects(checked_source(projects_root, Path("index.json")))
+    state_path = output_root / ".input-fingerprints"
+    previous = read_object(state_path) if state_path.is_file() else {}
+    current = {}
+    failures = []
+    runtime_projects = output_root / "projects"
+    runtime_projects.mkdir(mode=0o755, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".runtime-", dir=output_root) as temporary:
         staging = Path(temporary)
-        staged_default = staging / "project"
-        staged_projects = staging / "projects"
-        staged_default.mkdir()
-        staged_projects.mkdir()
-        copy_project(default_project, staged_default)
-        shutil.copyfile(catalog_path, staged_projects / "index.json")
-        (staged_projects / "index.json").chmod(0o644)
-        for project in projects:
-            slug = str(project["slug"])
-            if project.get("source") == "default":
-                # The edge maps generic /p/<slug>/project requests to this
-                # directory. Keep default-source catalog aliases usable without
-                # duplicating the staged canonical project tree.
-                os.symlink("../project", staged_projects / slug)
+        jobs = [("project", default_project, output_root / "project")]
+        jobs.extend(
+            (f"projects/{entry['slug']}", projects_root / entry["slug"], runtime_projects / entry["slug"])
+            for entry in projects if entry.get("source") != "default"
+        )
+        for index, (key, source, destination) in enumerate(jobs):
+            try:
+                current[key] = _publish_project(source, staging / f"tree-{index}", destination, previous.get(key))
+            except (OSError, ValueError) as error:
+                if key in previous:
+                    current[key] = previous[key]
+                failures.append((key, error))
+
+        if current != previous:
+            _write_atomic(state_path, json.dumps(current, sort_keys=True).encode(), staging)
+        if failures:
+            detail = "; ".join(f"{key}: {error}" for key, error in failures)
+            raise ValueError(detail) from failures[0][1]
+
+        for entry in projects:
+            if entry.get("source") != "default":
                 continue
-            copy_project(projects_root / slug, staged_projects / slug)
-        digest = hashlib.sha256()
-        for path in sorted(staging.rglob("*")):
-            relative = path.relative_to(staging).as_posix()
-            if path.is_symlink():
-                # Runtime aliases are part of the served tree.  Hash the link
-                # itself and its target without following it; source symlinks
-                # remain rejected by checked_source before this staging step.
-                digest.update(b"symlink\0")
-                digest.update(relative.encode())
-                digest.update(b"\0")
-                digest.update(os.fsencode(os.readlink(path)))
-                digest.update(b"\0")
-            elif path.is_file():
-                digest.update(relative.encode())
-                with path.open("rb") as handle:
-                    while chunk := handle.read(64 * 1024):
-                        digest.update(chunk)
+            destination = runtime_projects / entry["slug"]
+            if destination.is_symlink() and destination.readlink() == Path("../project"):
+                continue
+            staged = staging / "alias"
+            staged.symlink_to("../project")
+            replace_tree(staged, destination)
+            _remove_tree(staged)
+
+        index_path = runtime_projects / "index.json"
+        if not index_path.is_file() or index_path.read_bytes() != catalog_bytes:
+            _write_atomic(index_path, catalog_bytes, staging)
+        slugs = {entry["slug"] for entry in projects}
+        for child in runtime_projects.iterdir():
+            if SLUG_PATTERN.fullmatch(child.name) and child.name not in slugs:
+                _remove_tree(child)
+
+        digest = hashlib.sha256(catalog_bytes)
+        digest.update(json.dumps(current, sort_keys=True).encode())
         fingerprint = digest.hexdigest()
         fingerprint_path = output_root / ".fingerprint"
-        previous_fingerprint = (
-            fingerprint_path.read_text(encoding="utf-8").strip()
-            if fingerprint_path.is_file()
-            else ""
-        )
-        if previous_fingerprint == fingerprint:
-            return fingerprint
-        replace_tree(staged_default, output_root / "project")
-        replace_tree(staged_projects, output_root / "projects")
-        temporary_fingerprint = output_root / ".fingerprint.tmp"
-        temporary_fingerprint.write_text(f"{fingerprint}\n", encoding="utf-8")
-        os.replace(temporary_fingerprint, fingerprint_path)
+        if not fingerprint_path.is_file() or fingerprint_path.read_text().strip() != fingerprint:
+            _write_atomic(fingerprint_path, f"{fingerprint}\n".encode(), staging)
         return fingerprint
 
 
@@ -367,7 +409,9 @@ def main() -> None:
     parser.add_argument("--projects", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--watch-seconds", type=float, default=10)
+    parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    once = args.once or args.watch_seconds <= 0
     args.output.mkdir(mode=0o755, parents=True, exist_ok=True)
     while True:
         try:
@@ -375,7 +419,9 @@ def main() -> None:
             write_ready(args.output / ".ready")
         except Exception as error:
             print(f"project runtime sync failed: {error}", flush=True)
-        if args.watch_seconds <= 0:
+            if once:
+                raise SystemExit(1) from error
+        if once:
             break
         time.sleep(max(args.watch_seconds, 1))
 

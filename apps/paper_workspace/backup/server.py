@@ -1,573 +1,65 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 import sqlite3
-import tempfile
-import threading
+import sys
 import urllib.parse
 import zlib
-from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import import_module
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+# Support package imports, standalone container entrypoints and file-based callers.
+package = __package__
+if not package:
+    package_directory = Path(__file__).resolve().parent
+    sys.path.insert(0, str(package_directory.parent))
+    package = package_directory.name
+
+snapshot = import_module(".snapshot", package)
+asset_store = import_module(".assets", package)
+backup_store = import_module(".store", package)
+project_allowlist = import_module(".project_allowlist", package)
+BoundedHTTPServer = import_module(".backup_http", package).BoundedHTTPServer
+
+# Keep the original server module's domain API as a compatibility entrypoint.
+AssetStore = asset_store.AssetStore
+BackupStore = backup_store.BackupStore
+ProjectAllowlist = project_allowlist.ProjectAllowlist
+allowed_project_ids = project_allowlist.allowed_project_ids
+ALLOWED_ASSET_MIME_TYPES = snapshot.ALLOWED_ASSET_MIME_TYPES
+DEFAULT_MAX_ASSET_BYTES = snapshot.DEFAULT_MAX_ASSET_BYTES
+DEFAULT_MAX_PROJECT_ASSET_BYTES = snapshot.DEFAULT_MAX_PROJECT_ASSET_BYTES
+DEFAULT_RETENTION = snapshot.DEFAULT_RETENTION
+MAX_PROJECT_FILES = snapshot.MAX_PROJECT_FILES
+MAX_SNAPSHOT_BYTES = snapshot.MAX_SNAPSHOT_BYTES
+PROJECT_ID_PATTERN = snapshot.PROJECT_ID_PATTERN
+MetadataConflict = snapshot.MetadataConflict
+SnapshotNotFound = snapshot.SnapshotNotFound
+ValidationError = snapshot.ValidationError
+canonical_snapshot = snapshot.canonical_snapshot
+decompress_snapshot_payload = snapshot.decompress_snapshot_payload
+safe_asset_content_type = snapshot.safe_asset_content_type
+validate_asset_content = snapshot.validate_asset_content
+validate_optional_text = snapshot.validate_optional_text
+validate_project_id = snapshot.validate_project_id
+validate_project_path = snapshot.validate_project_path
+validate_rebuttal_snapshot = snapshot.validate_rebuttal_snapshot
+
 MAX_REQUEST_BYTES = 12_000_000
-MAX_SNAPSHOT_BYTES = 10_000_000
-MAX_PROJECT_FILES = 240
-DEFAULT_RETENTION = 50
-PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/?$")
 ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/snapshots/([1-9][0-9]*)/?$")
 ACTIVITY_COLLECTION_PATTERN = re.compile(r"^/activity/?$")
 ACTIVITY_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/activity/?$")
+PROJECT_METADATA_PATTERN = re.compile(r"^/projects/([^/]+)/metadata/?$")
 ASSET_COLLECTION_PATTERN = re.compile(r"^/projects/([^/]+)/assets/?$")
 ASSET_ITEM_PATTERN = re.compile(r"^/projects/([^/]+)/assets/(.+)$")
-DEFAULT_MAX_ASSET_BYTES = 16 * 1024 * 1024
-DEFAULT_MAX_PROJECT_ASSET_BYTES = 128 * 1024 * 1024
 DEFAULT_SHARED_ACTOR = "Shared user"
 TRUSTED_ACTOR_HEADER = "X-Paper-Actor"
-ALLOWED_ASSET_MIME_TYPES = {
-    ".pdf": "application/pdf",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".eps": "application/postscript",
-}
-
-
-class ValidationError(ValueError):
-    pass
-
-
-class SnapshotNotFound(LookupError):
-    pass
-
-
-def validate_project_id(project_id: object) -> str:
-    if not isinstance(project_id, str) or not PROJECT_ID_PATTERN.fullmatch(project_id):
-        raise ValidationError("invalid project id")
-    return project_id
-
-
-def allowed_project_ids(runtime_root: str | Path) -> set[str]:
-    root = Path(runtime_root)
-    catalog = json.loads((root / "projects/index.json").read_text(encoding="utf-8"))
-    projects = catalog.get("projects") if isinstance(catalog, dict) else None
-    if not isinstance(projects, list):
-        raise ValueError("project runtime catalog is invalid")
-    allowed: set[str] = set()
-    default_manifest = json.loads((root / "project/project.json").read_text(encoding="utf-8"))
-    default_id = validate_project_id(default_manifest.get("id"))
-    allowed.add(default_id)
-    for entry in projects:
-        if not isinstance(entry, dict):
-            raise ValueError("project runtime catalog entry is invalid")
-        slug = validate_project_id(entry.get("slug"))
-        allowed.add(slug)
-        if entry.get("activity_id") is not None:
-            allowed.add(validate_project_id(entry["activity_id"]))
-        if entry.get("source") == "default":
-            allowed.add(default_id)
-            continue
-        manifest_path = root / "projects" / slug / "project.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict):
-            raise ValueError("project runtime manifest is invalid")
-        allowed.add(validate_project_id(manifest.get("id")))
-    return allowed
-
-
-class ProjectAllowlist:
-    """Reload the trusted runtime catalog after its atomic replacement."""
-
-    def __init__(self, runtime_root: str | Path) -> None:
-        self.runtime_root = Path(runtime_root)
-        self._lock = threading.RLock()
-        self._signature = -1
-        self._allowed: set[str] = set()
-        self._refresh()
-
-    def _refresh(self) -> None:
-        catalog = self.runtime_root / "projects/index.json"
-        signature = catalog.stat().st_mtime_ns
-        if signature == self._signature:
-            return
-        allowed = allowed_project_ids(self.runtime_root)
-        self._allowed = allowed
-        self._signature = signature
-
-    def snapshot(self) -> set[str]:
-        with self._lock:
-            self._refresh()
-            return set(self._allowed)
-
-    def contains(self, project: str) -> bool:
-        return project in self.snapshot()
-
-
-def validate_project_path(name: object) -> str:
-    if not isinstance(name, str) or not name or len(name) > 240 or "\\" in name:
-        raise ValidationError("invalid project path")
-    if name.startswith("/") or "//" in name:
-        raise ValidationError("invalid project path")
-    parts = name.split("/")
-    if len(parts) > 12 or any(part in {"", ".", ".."} for part in parts):
-        raise ValidationError("invalid project path")
-    if any(any(ord(character) < 32 for character in part) for part in parts):
-        raise ValidationError("invalid project path")
-    if PurePosixPath(name).is_absolute():
-        raise ValidationError("invalid project path")
-    return name
-
-
-def canonical_snapshot(snapshot: object) -> tuple[dict[str, Any], bytes]:
-    if not isinstance(snapshot, dict):
-        raise ValidationError("snapshot must be an object")
-    files = snapshot.get("files")
-    assets = snapshot.get("assets", {})
-    if not isinstance(files, dict) or not files:
-        raise ValidationError("snapshot files must be a non-empty object")
-    if not isinstance(assets, dict) or len(files) + len(assets) > MAX_PROJECT_FILES:
-        raise ValidationError("snapshot contains too many project files")
-    for collection in (files, assets):
-        for name, content in collection.items():
-            validate_project_path(name)
-            if not isinstance(content, str):
-                raise ValidationError("project file contents must be strings")
-    if set(files) & set(assets):
-        raise ValidationError("a path cannot be both a source file and an asset")
-    title = snapshot.get("title")
-    if title is not None and (not isinstance(title, str) or len(title) > 500):
-        raise ValidationError("invalid project title")
-    comments = snapshot.get("comments")
-    if comments is not None and not isinstance(comments, (list, dict)):
-        raise ValidationError("invalid comments")
-    tasks = snapshot.get("tasks")
-    if tasks is not None and (not isinstance(tasks, list) or len(tasks) > 500):
-        raise ValidationError("invalid tasks")
-    try:
-        encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    except (TypeError, ValueError) as error:
-        raise ValidationError("snapshot must contain JSON values") from error
-    if len(encoded) > MAX_SNAPSHOT_BYTES:
-        raise ValidationError("snapshot is too large")
-    # Decode the canonical representation so callers cannot mutate the stored value
-    # through a reference retained from the request object.
-    return json.loads(encoded), encoded
-
-
-def decompress_snapshot_payload(payload: bytes) -> bytes:
-    try:
-        decompressor = zlib.decompressobj()
-        decoded = decompressor.decompress(payload, MAX_SNAPSHOT_BYTES + 1)
-        if len(decoded) > MAX_SNAPSHOT_BYTES or decompressor.unconsumed_tail:
-            raise ValidationError("stored snapshot expands beyond the size limit")
-        decoded += decompressor.flush(MAX_SNAPSHOT_BYTES + 1 - len(decoded))
-        if len(decoded) > MAX_SNAPSHOT_BYTES or not decompressor.eof or decompressor.unused_data:
-            raise ValidationError("stored snapshot is truncated or invalid")
-        return decoded
-    except zlib.error as error:
-        raise ValidationError("stored snapshot compression is invalid") from error
-
-
-def validate_optional_text(value: object, field: str, maximum: int) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str) or len(value) > maximum or any(ord(character) < 32 for character in value):
-        raise ValidationError(f"invalid {field}")
-    return value
-
-
-def validate_asset_content(name: object, content: bytes) -> str:
-    clean_name = validate_project_path(name)
-    if clean_name == "__paper_workspace/main-page-count.json":
-        try:
-            if len(content) > 1024:
-                raise ValueError("metadata is too large")
-            metadata = json.loads(content)
-            if not isinstance(metadata, dict) or set(metadata) != {"page_count", "entrypoint"}:
-                raise ValueError("invalid metadata fields")
-            count = metadata["page_count"]
-            if type(count) is not int or not 1 <= count <= 1000:
-                raise ValueError("invalid page count")
-            if not validate_project_path(metadata["entrypoint"]).endswith(".tex"):
-                raise ValueError("invalid entrypoint")
-        except (ValueError, TypeError, UnicodeDecodeError) as error:
-            raise ValidationError("invalid main document page metadata") from error
-        return "application/json"
-    if clean_name.lower().endswith(".synctex.gz"):
-        if not content.startswith(b"\x1f\x8b"):
-            raise ValidationError("asset content does not match its file type")
-        return "application/gzip"
-    suffix = PurePosixPath(clean_name).suffix.lower()
-    content_type = ALLOWED_ASSET_MIME_TYPES.get(suffix)
-    if content_type is None:
-        raise ValidationError("asset type is not allowed")
-    valid_signature = (
-        suffix == ".pdf" and content.startswith(b"%PDF-")
-        or suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n")
-        or suffix in {".jpg", ".jpeg"} and content.startswith(b"\xff\xd8\xff")
-        or suffix == ".eps"
-        and content.startswith(b"%!PS-Adobe-")
-        and b" EPSF-" in content.splitlines()[0]
-    )
-    if not valid_signature:
-        raise ValidationError("asset content does not match its file type")
-    return content_type
-
-
-def safe_asset_content_type(name: object, content: bytes) -> str:
-    try:
-        return validate_asset_content(name, content)
-    except ValidationError:
-        # Files created before validation was introduced remain retrievable, but
-        # never with an executable or browser-sniffable media type.
-        return "application/octet-stream"
-
-
-class BackupStore:
-    def __init__(self, database_path: str | Path, retention: int = DEFAULT_RETENTION, export_dir: str | Path | None = None) -> None:
-        if not 1 <= retention <= 1000:
-            raise ValueError("retention must be between 1 and 1000")
-        self.database_path = Path(database_path)
-        self.retention = retention
-        self.export_dir = Path(export_dir) if export_dir else None
-        self._lock = threading.RLock()
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.export_dir:
-            self.export_dir.mkdir(parents=True, exist_ok=True)
-        self._initialize()
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout = 10000")
-        connection.execute("PRAGMA journal_mode = WAL")
-        return connection
-
-    def _initialize(self) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    checked_at TEXT,
-                    content_hash TEXT NOT NULL,
-                    actor TEXT,
-                    reason TEXT,
-                    size_bytes INTEGER NOT NULL,
-                    payload BLOB NOT NULL,
-                    payload_encoding TEXT NOT NULL DEFAULT 'json',
-                    UNIQUE(project_id, content_hash)
-                )
-                """
-            )
-            columns = {row[1] for row in connection.execute("PRAGMA table_info(snapshots)")}
-            if "payload_encoding" not in columns:
-                connection.execute("ALTER TABLE snapshots ADD COLUMN payload_encoding TEXT NOT NULL DEFAULT 'json'")
-            if "checked_at" not in columns:
-                connection.execute("ALTER TABLE snapshots ADD COLUMN checked_at TEXT")
-                connection.execute("UPDATE snapshots SET checked_at = created_at WHERE checked_at IS NULL")
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS snapshots_project_order ON snapshots(project_id, id DESC)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS project_activity (
-                    project_id TEXT PRIMARY KEY,
-                    modified_at TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    reason TEXT
-                )
-                """
-            )
-
-    @staticmethod
-    def _metadata(row: sqlite3.Row) -> dict[str, Any]:
-        return {
-            "id": row["id"],
-            "project_id": row["project_id"],
-            "created_at": row["created_at"],
-            "checked_at": row["checked_at"] or row["created_at"],
-            "hash": row["content_hash"],
-            "actor": row["actor"],
-            "reason": row["reason"],
-            "size_bytes": row["size_bytes"],
-        }
-
-    def create(
-        self,
-        project_id: object,
-        snapshot: object,
-        actor: object = None,
-        reason: object = None,
-    ) -> tuple[dict[str, Any], bool]:
-        project = validate_project_id(project_id)
-        _, encoded = canonical_snapshot(snapshot)
-        author = validate_optional_text(actor, "actor", 120)
-        backup_reason = validate_optional_text(reason, "reason", 80)
-        digest = hashlib.sha256(encoded).hexdigest()
-        with self._lock:
-            created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-            with self._connect() as connection:
-                cursor = connection.execute(
-                    """
-                    INSERT OR IGNORE INTO snapshots(
-                        project_id, created_at, checked_at, content_hash, actor, reason, size_bytes, payload, payload_encoding
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (project, created_at, created_at, digest, author, backup_reason, len(encoded), zlib.compress(encoded, level=6), "zlib"),
-                )
-                if cursor.rowcount == 0:
-                    connection.execute(
-                        """
-                        UPDATE snapshots
-                        SET checked_at = ?, actor = ?, reason = ?
-                        WHERE project_id = ? AND content_hash = ?
-                        """,
-                        (created_at, author, backup_reason, project, digest),
-                    )
-                    existing = connection.execute(
-                        "SELECT * FROM snapshots WHERE project_id = ? AND content_hash = ?", (project, digest)
-                    ).fetchone()
-                    assert existing is not None
-                    metadata = self._metadata(existing)
-                    deduplicated = True
-                else:
-                    snapshot_id = cursor.lastrowid
-                    row = connection.execute("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,)).fetchone()
-                    assert row is not None
-                    metadata = self._metadata(row)
-                    deduplicated = False
-                retained_ids = {
-                    row["id"]
-                    for row in connection.execute(
-                        """
-                        SELECT id FROM snapshots WHERE project_id = ?
-                        ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
-                        """,
-                        (project, self.retention),
-                    )
-                }
-                connection.execute(
-                    "DELETE FROM snapshots WHERE project_id = ? AND id NOT IN ("
-                    "SELECT id FROM snapshots WHERE project_id = ? "
-                    "ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?)",
-                    (project, project, self.retention),
-                )
-            self._export(project, metadata, encoded, retained_ids)
-        return metadata, deduplicated
-
-    def _export(
-        self,
-        project: str,
-        metadata: dict[str, Any],
-        encoded: bytes,
-        retained_ids: set[int],
-    ) -> None:
-        if not self.export_dir:
-            return
-        with self._lock:
-            project_dir = self.export_dir / project
-            project_dir.mkdir(parents=True, exist_ok=True)
-            target = project_dir / f"{metadata['id']}-{metadata['hash'][:12]}.json.zlib"
-            if not target.exists():
-                with tempfile.NamedTemporaryFile(dir=project_dir, delete=False) as temporary:
-                    temporary.write(zlib.compress(encoded, level=6))
-                    temporary_path = Path(temporary.name)
-                os.replace(temporary_path, target)
-            with self._connect() as connection:
-                retained = connection.execute(
-                    """
-                    SELECT id, content_hash FROM snapshots
-                    WHERE project_id = ? AND id IN ({})
-                    ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?
-                    """.format(",".join("?" for _ in retained_ids)),
-                    (project, *sorted(retained_ids), self.retention),
-                ).fetchall()
-            retained_names = {
-                f"{row['id']}-{row['content_hash'][:12]}.json.zlib" for row in retained
-            }
-            for export in project_dir.glob("*.json.zlib"):
-                if export.name not in retained_names:
-                    export.unlink(missing_ok=True)
-
-    def list(self, project_id: object) -> list[dict[str, Any]]:
-        project = validate_project_id(project_id)
-        with self._connect() as connection:
-            rows = connection.execute(
-                """SELECT id, project_id, created_at, checked_at, content_hash,
-                          actor, reason, size_bytes
-                   FROM snapshots WHERE project_id = ?
-                   ORDER BY COALESCE(checked_at, created_at) DESC, id DESC LIMIT ?""",
-                (project, self.retention),
-            ).fetchall()
-        return [self._metadata(row) for row in rows]
-
-    def get(self, project_id: object, snapshot_id: object) -> dict[str, Any]:
-        project = validate_project_id(project_id)
-        if not isinstance(snapshot_id, int) or snapshot_id < 1:
-            raise ValidationError("invalid snapshot id")
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM snapshots WHERE project_id = ? AND id = ?", (project, snapshot_id)
-            ).fetchone()
-        if row is None:
-            raise SnapshotNotFound("snapshot not found")
-        raw_payload = bytes(row["payload"]) if isinstance(row["payload"], (bytes, bytearray, memoryview)) else str(row["payload"]).encode("utf-8")
-        if row["payload_encoding"] == "zlib":
-            raw_payload = decompress_snapshot_payload(raw_payload)
-        elif row["payload_encoding"] != "json":
-            raise ValidationError("stored snapshot encoding is unsupported")
-        if len(raw_payload) != row["size_bytes"] or hashlib.sha256(raw_payload).hexdigest() != row["content_hash"]:
-            raise ValidationError("stored snapshot integrity check failed")
-        try:
-            payload = json.loads(raw_payload.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ValidationError("stored snapshot JSON is invalid") from error
-        canonical_snapshot(payload)
-        return {**self._metadata(row), "payload": payload}
-
-    def record_activity(self, project_id: object, actor: object, reason: object = None) -> dict[str, Any]:
-        project = validate_project_id(project_id)
-        author = validate_optional_text(actor, "actor", 120)
-        if author is None or not author.strip():
-            raise ValidationError("actor is required")
-        activity_reason = validate_optional_text(reason, "reason", 80)
-        modified_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO project_activity(project_id, modified_at, actor, reason)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(project_id) DO UPDATE SET
-                    modified_at = excluded.modified_at,
-                    actor = excluded.actor,
-                    reason = excluded.reason
-                """,
-                (project, modified_at, author.strip(), activity_reason),
-            )
-        return {"project_id": project, "modified_at": modified_at, "actor": author.strip(), "reason": activity_reason}
-
-    def list_activity(self, allowed_projects: set[str] | None = None) -> list[dict[str, Any]]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT project_id, modified_at, actor, reason FROM project_activity
-                UNION ALL
-                SELECT snapshots.project_id, snapshots.created_at, snapshots.actor, snapshots.reason
-                FROM snapshots
-                WHERE snapshots.id = (
-                    SELECT MAX(latest.id) FROM snapshots AS latest
-                    WHERE latest.project_id = snapshots.project_id
-                )
-                AND NOT EXISTS (
-                    SELECT 1 FROM project_activity WHERE project_activity.project_id = snapshots.project_id
-                )
-                ORDER BY modified_at DESC
-                """
-            ).fetchall()
-        return [
-            {"project_id": row["project_id"], "modified_at": row["modified_at"], "actor": row["actor"], "reason": row["reason"]}
-            for row in rows if allowed_projects is None or row["project_id"] in allowed_projects
-        ]
-
-    def healthcheck(self) -> None:
-        with self._connect() as connection:
-            connection.execute("SELECT 1").fetchone()
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute("UPDATE project_activity SET reason = reason WHERE 0")
-            connection.rollback()
-
-
-class AssetStore:
-    def __init__(self, root: str | Path, max_file_bytes: int = DEFAULT_MAX_ASSET_BYTES,
-                 max_project_bytes: int = DEFAULT_MAX_PROJECT_ASSET_BYTES) -> None:
-        self.root = Path(root)
-        self.max_file_bytes = max_file_bytes
-        self.max_project_bytes = max_project_bytes
-        if min(max_file_bytes, max_project_bytes) < 1 or max_file_bytes > max_project_bytes:
-            raise ValueError("invalid asset quotas")
-        self._lock = threading.RLock()
-        self.root.mkdir(parents=True, exist_ok=True)
-
-    def healthcheck(self) -> None:
-        with self._lock:
-            if self.root.is_symlink() or not self.root.is_dir():
-                raise OSError("asset store is unavailable")
-            with tempfile.NamedTemporaryFile(prefix=".health-", dir=self.root) as probe:
-                probe.write(b"ok")
-                probe.flush()
-                os.fsync(probe.fileno())
-
-    def _path(self, project_id: object, name: object) -> Path:
-        project = validate_project_id(project_id)
-        clean_name = validate_project_path(name)
-        root = self.root.resolve()
-        target = self.root / project / clean_name
-        try:
-            target.resolve(strict=False).relative_to(root)
-        except ValueError as error:
-            raise ValidationError("asset path escapes the storage root") from error
-        cursor = target
-        while True:
-            if cursor.is_symlink():
-                raise ValidationError("symbolic links are not allowed in asset storage")
-            if cursor == self.root:
-                break
-            cursor = cursor.parent
-        return target
-
-    def list(self, project_id: object) -> list[dict[str, Any]]:
-        project = validate_project_id(project_id)
-        project_dir = self._path(project, "__inventory__.pdf").parent
-        with self._lock:
-            if not project_dir.exists():
-                return []
-            return [{
-                "path": path.relative_to(project_dir).as_posix(),
-                "size_bytes": path.stat().st_size,
-                "modified_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            } for path in sorted(project_dir.rglob("*")) if path.is_file() and not path.is_symlink()]
-
-    def put(self, project_id: object, name: object, content: bytes) -> dict[str, Any]:
-        if len(content) > self.max_file_bytes:
-            raise ValidationError("asset is too large")
-        validate_asset_content(name, content)
-        target = self._path(project_id, name)
-        project_dir = self.root / validate_project_id(project_id)
-        with self._lock:
-            current_size = target.stat().st_size if target.exists() else 0
-            total = sum(path.stat().st_size for path in project_dir.rglob("*") if path.is_file()) if project_dir.exists() else 0
-            if total - current_size + len(content) > self.max_project_bytes:
-                raise ValidationError("project asset quota exceeded")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as temporary:
-                temporary.write(content)
-                temporary_path = Path(temporary.name)
-            os.replace(temporary_path, target)
-        return {"path": validate_project_path(name), "size_bytes": len(content)}
-
-    def get(self, project_id: object, name: object) -> bytes:
-        target = self._path(project_id, name)
-        with self._lock:
-            if not target.is_file():
-                raise SnapshotNotFound("asset not found")
-            return target.read_bytes()
-
-    def delete(self, project_id: object, name: object) -> None:
-        target = self._path(project_id, name)
-        with self._lock:
-            if not target.is_file():
-                raise SnapshotNotFound("asset not found")
-            target.unlink()
 
 
 class BackupHandler(BaseHTTPRequestHandler):
@@ -602,7 +94,11 @@ class BackupHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"status": "ok"})
                 return
             if ACTIVITY_COLLECTION_PATTERN.fullmatch(path):
-                self._json(HTTPStatus.OK, {"projects": self.store.list_activity(self._allowed_projects())})
+                allowed = self._allowed_projects()
+                self._json(HTTPStatus.OK, {"projects": self.store.list_activity(allowed), "metadata": self.store.list_project_metadata(allowed)})
+                return
+            if match := PROJECT_METADATA_PATTERN.fullmatch(path):
+                self._json(HTTPStatus.OK, {"metadata": self.store.project_metadata(self._project_id(match.group(1)))})
                 return
             if match := ASSET_COLLECTION_PATTERN.fullmatch(path):
                 self._json(HTTPStatus.OK, {"assets": self.assets.list(self._project_id(match.group(1)))})
@@ -628,6 +124,8 @@ class BackupHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except SnapshotNotFound as error:
             self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+        except (sqlite3.Error, OSError):
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -644,6 +142,8 @@ class BackupHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
             except SnapshotNotFound as error:
                 self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+            except (sqlite3.Error, OSError):
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
             return
         match = COLLECTION_PATTERN.fullmatch(path)
         if match is None:
@@ -665,23 +165,49 @@ class BackupHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except SnapshotNotFound as error:
             self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+        except (sqlite3.Error, OSError):
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
 
     def do_PUT(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if metadata_match := PROJECT_METADATA_PATTERN.fullmatch(path):
+            try:
+                role = self.headers.get("X-Paper-Role")
+                if role == "viewer" or self.actor_mode == "proxy" and role not in {"owner", "editor"}:
+                    self._json(HTTPStatus.FORBIDDEN, {"error": "project edit access required"})
+                    return
+                project = self._project_id(metadata_match.group(1))
+                payload = self._request_json()
+                self._request_actor(payload.pop("actor", None))
+                self._json(HTTPStatus.OK, {"metadata": self.store.update_project_metadata(project, payload)})
+            except MetadataConflict as error:
+                self._json(HTTPStatus.CONFLICT, {"error": str(error), "metadata": error.current})
+            except ValidationError as error:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            except SnapshotNotFound as error:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+            except (sqlite3.Error, OSError):
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
+            return
         match = ASSET_ITEM_PATTERN.fullmatch(path)
         if match is None:
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         try:
             size = self._content_length(self.assets.max_file_bytes)
+            content = self.rfile.read(size)
+            if len(content) != size:
+                raise ValidationError("incomplete asset request")
             metadata = self.assets.put(
-                self._project_id(match.group(1)), urllib.parse.unquote(match.group(2)), self.rfile.read(size)
+                self._project_id(match.group(1)), urllib.parse.unquote(match.group(2)), content
             )
             self._json(HTTPStatus.CREATED, {"asset": metadata})
         except ValidationError as error:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except SnapshotNotFound as error:
             self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+        except (sqlite3.Error, OSError):
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
 
     def do_DELETE(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
@@ -697,6 +223,8 @@ class BackupHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(error)})
         except SnapshotNotFound as error:
             self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
+        except (sqlite3.Error, OSError):
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "backup storage unavailable"})
 
     def _content_length(self, maximum: int) -> int:
         try:
@@ -762,25 +290,28 @@ class BackupHandler(BaseHTTPRequestHandler):
 
 
 def create_server() -> ThreadingHTTPServer:
+    class ConfiguredBackupHandler(BackupHandler):
+        pass
+
     database_path = os.environ.get("BACKUP_DB_PATH", "/data/backups.sqlite3")
     try:
         retention = int(os.environ.get("BACKUP_RETENTION", str(DEFAULT_RETENTION)))
     except ValueError as error:
         raise ValueError("BACKUP_RETENTION must be an integer") from error
-    BackupHandler.store = BackupStore(database_path, retention, os.environ.get("BACKUP_EXPORT_DIR"))
-    BackupHandler.assets = AssetStore(
+    ConfiguredBackupHandler.store = BackupStore(database_path, retention, os.environ.get("BACKUP_EXPORT_DIR"))
+    ConfiguredBackupHandler.assets = AssetStore(
         os.environ.get("BACKUP_ASSET_DIR", "/data/assets"),
         int(os.environ.get("BACKUP_MAX_ASSET_BYTES", str(DEFAULT_MAX_ASSET_BYTES))),
         int(os.environ.get("BACKUP_MAX_PROJECT_ASSET_BYTES", str(DEFAULT_MAX_PROJECT_ASSET_BYTES))),
     )
-    BackupHandler.actor_mode = os.environ.get("BACKUP_ACTOR_MODE", "shared").strip().lower()
-    if BackupHandler.actor_mode not in {"shared", "display", "proxy"}:
+    ConfiguredBackupHandler.actor_mode = os.environ.get("BACKUP_ACTOR_MODE", "shared").strip().lower()
+    if ConfiguredBackupHandler.actor_mode not in {"shared", "display", "proxy"}:
         raise ValueError("BACKUP_ACTOR_MODE must be shared, display, or proxy")
-    BackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
+    ConfiguredBackupHandler.shared_actor = os.environ.get("BACKUP_SHARED_ACTOR", DEFAULT_SHARED_ACTOR)
     runtime_root = os.environ.get("BACKUP_PROJECT_RUNTIME", "").strip()
-    BackupHandler.project_allowlist = ProjectAllowlist(runtime_root) if runtime_root else None
-    BackupHandler.allowed_projects = BackupHandler.project_allowlist.snapshot() if BackupHandler.project_allowlist else None
-    return ThreadingHTTPServer(("0.0.0.0", 8010), BackupHandler)
+    ConfiguredBackupHandler.project_allowlist = ProjectAllowlist(runtime_root) if runtime_root else None
+    ConfiguredBackupHandler.allowed_projects = ConfiguredBackupHandler.project_allowlist.snapshot() if ConfiguredBackupHandler.project_allowlist else None
+    return BoundedHTTPServer((os.environ.get("BACKUP_HOST", "0.0.0.0"), int(os.environ.get("BACKUP_PORT", "8010"))), ConfiguredBackupHandler)
 
 
 if __name__ == "__main__":
