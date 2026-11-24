@@ -1,0 +1,182 @@
+[
+  {
+    "theme": "light",
+    "width": 320,
+    "selectedLabelFullyVisible": true,
+    "nav": {
+      "x": 13,
+      "y": 686,
+      "width": 294,
+      "height": 57
+    },
+    "scrollWidth": 522,
+    "documentOverflow": 0,
+    "buttons": [
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-document",
+        "width": 200,
+        "height": 44,
+        "visible": true
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "selectedLabelFullyVisible": true,
+    "nav": {
+      "x": 13,
+      "y": 686,
+      "width": 364,
+      "height": 57
+    },
+    "scrollWidth": 522,
+    "documentOverflow": 0,
+    "buttons": [
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-document",
+        "width": 200,
+        "height": 44,
+        "visible": true
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "selectedLabelFullyVisible": true,
+    "nav": {
+      "x": 13,
+      "y": 686,
+      "width": 294,
+      "height": 57
+    },
+    "scrollWidth": 522,
+    "documentOverflow": 0,
+    "buttons": [
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-document",
+        "width": 200,
+        "height": 44,
+        "visible": true
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "selectedLabelFullyVisible": true,
+    "nav": {
+      "x": 13,
+      "y": 686,
+      "width": 364,
+      "height": 57
+    },
+    "scrollWidth": 522,
+    "documentOverflow": 0,
+    "buttons": [
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "reviewer-mate-click",
+        "width": 44,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-review",
+        "width": 113,
+        "height": 44,
+        "visible": true
+      },
+      {
+        "action": "open-document",
+        "width": 200,
+        "height": 44,
+        "visible": true
+      }
+    ]
+  }
+]

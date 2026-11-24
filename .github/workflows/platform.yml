@@ -28,10 +28,14 @@ jobs:
       - name: Verify Python and JavaScript
         run: |
           pytest -q tests/paper_platform
-          node --test apps/paper_workspace/collaboration/server.test.cjs
+          node --test apps/paper_workspace/collaboration/server.test.cjs apps/paper_workspace/collaboration/rebuttal-backup.test.cjs apps/paper_workspace/collaboration/rebuttal-sources.test.cjs apps/paper_workspace/collaboration/rebuttal-concurrency.test.cjs
           node --check apps/paper_workspace/static/app.js
           node --check apps/paper_workspace/static/workspace-core.js
           node --check apps/paper_workspace/static/workspace-storage.js
+          node --check apps/paper_workspace/static/rebuttal.js
+          node --check apps/paper_workspace/static/project-presence.js
+          node --check apps/paper_workspace/static/rebuttal-model.js
+          node --check apps/paper_workspace/static/rebuttal-backup.js
           node --check apps/paper_workspace/collaboration/client.js
           node --check apps/paper_workspace/collaboration/server.cjs
           node --check apps/paper_workspace/codex_bridge/server.mjs
@@ -41,6 +45,17 @@ jobs:
         run: |
           npm audit --prefix apps/paper_workspace/collaboration --audit-level=high
           docker compose -f infra/paper-workspace/compose.yaml config --quiet
+
+  production-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Build and smoke production account images
+        run: python scripts/paper_platform/smoke_production_images.py
 
   browser:
     runs-on: ubuntu-latest

@@ -1,0 +1,15 @@
+{
+  "javascriptSyntax": 11,
+  "pythonCompile": "pass",
+  "bundledClientConsistency": {
+    "paper-collab.js": {
+      "matches": true,
+      "sha256": "e2181c873cf33c01d7bdb0e54971cd710889613a5bde9ddbce8fca3f0202d0d1"
+    },
+    "paper-editor.js": {
+      "matches": true,
+      "sha256": "d51187a0473a31022a2779275a594a8690b49f66d7835935c4565cbb3f40729e"
+    }
+  },
+  "composeConfig": "pass"
+}

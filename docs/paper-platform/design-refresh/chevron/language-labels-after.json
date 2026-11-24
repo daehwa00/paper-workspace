@@ -1,0 +1,74 @@
+[
+  {
+    "viewportWidth": 320,
+    "lang": "en",
+    "controlWidth": 58,
+    "padding": "0px 26px 0px 7px",
+    "label": "EN",
+    "client": 23,
+    "scroll": 23
+  },
+  {
+    "viewportWidth": 320,
+    "lang": "ko",
+    "controlWidth": 68,
+    "padding": "0px 26px 0px 7px",
+    "label": "한국어",
+    "client": 33,
+    "scroll": 33
+  },
+  {
+    "viewportWidth": 390,
+    "lang": "en",
+    "controlWidth": 58,
+    "padding": "0px 26px 0px 7px",
+    "label": "EN",
+    "client": 23,
+    "scroll": 23
+  },
+  {
+    "viewportWidth": 390,
+    "lang": "ko",
+    "controlWidth": 68,
+    "padding": "0px 26px 0px 7px",
+    "label": "한국어",
+    "client": 33,
+    "scroll": 33
+  },
+  {
+    "viewportWidth": 1024,
+    "lang": "en",
+    "controlWidth": 58,
+    "padding": "0px 26px 0px 9px",
+    "label": "EN",
+    "client": 21,
+    "scroll": 21
+  },
+  {
+    "viewportWidth": 1024,
+    "lang": "ko",
+    "controlWidth": 70,
+    "padding": "0px 26px 0px 9px",
+    "label": "한국어",
+    "client": 33,
+    "scroll": 33
+  },
+  {
+    "viewportWidth": 1600,
+    "lang": "en",
+    "controlWidth": 58,
+    "padding": "0px 26px 0px 9px",
+    "label": "EN",
+    "client": 21,
+    "scroll": 21
+  },
+  {
+    "viewportWidth": 1600,
+    "lang": "ko",
+    "controlWidth": 70,
+    "padding": "0px 26px 0px 9px",
+    "label": "한국어",
+    "client": 33,
+    "scroll": 33
+  }
+]

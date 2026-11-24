@@ -1,0 +1,1322 @@
+{
+  "release": "20261027-085530-linear-components",
+  "transport": {
+    "origin": "https://paper.glowme.kr",
+    "address": "203.253.145.46",
+    "certificateValidation": true
+  },
+  "checks": [
+    {
+      "id": "unauthenticated-/projects/index.json",
+      "passed": true
+    },
+    {
+      "id": "unauthenticated-/project/main.tex",
+      "passed": true
+    },
+    {
+      "id": "unauthenticated-/api/backups/activity",
+      "passed": true
+    },
+    {
+      "id": "unauthenticated-/api/rebuttal/projects/__access_probe__/state",
+      "passed": true
+    },
+    {
+      "id": "public-login-font",
+      "passed": true
+    },
+    {
+      "id": "authenticated-catalog",
+      "passed": true
+    },
+    {
+      "id": "projects-available",
+      "passed": true
+    },
+    {
+      "id": "populated-review-available",
+      "passed": true
+    },
+    {
+      "id": "ungranted-project-denied",
+      "passed": true
+    },
+    {
+      "id": "served-source-bootstrap.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-theme.css",
+      "passed": true
+    },
+    {
+      "id": "served-source-theme.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-app.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-components.css",
+      "passed": true
+    },
+    {
+      "id": "served-source-project-frame.css",
+      "passed": true
+    },
+    {
+      "id": "served-source-workspace-i18n.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-hub.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-hub.css",
+      "passed": true
+    },
+    {
+      "id": "served-source-rebuttal.js",
+      "passed": true
+    },
+    {
+      "id": "served-source-rebuttal.css",
+      "passed": true
+    },
+    {
+      "id": "served-source-login.css",
+      "passed": true
+    },
+    {
+      "id": "hub-en-light-http",
+      "passed": true
+    },
+    {
+      "id": "hub-list-en-light",
+      "passed": true
+    },
+    {
+      "id": "hub-sort-en-light",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-light-1600",
+      "passed": true
+    },
+    {
+      "id": "workspace-en-light-http",
+      "passed": true
+    },
+    {
+      "id": "actual-pdf-en-light",
+      "passed": true
+    },
+    {
+      "id": "tool-comments-en-light",
+      "passed": true
+    },
+    {
+      "id": "tool-sources-en-light",
+      "passed": true
+    },
+    {
+      "id": "tool-checks-en-light",
+      "passed": true
+    },
+    {
+      "id": "tool-tasks-en-light",
+      "passed": true
+    },
+    {
+      "id": "tool-assist-en-light",
+      "passed": true
+    },
+    {
+      "id": "anchored-composer-en-light",
+      "passed": true
+    },
+    {
+      "id": "model-menu-en-light",
+      "passed": true
+    },
+    {
+      "id": "file-menu-en-light",
+      "passed": true
+    },
+    {
+      "id": "manuscript-unchanged-en-light",
+      "passed": true
+    },
+    {
+      "id": "actual-project-picker-en-light",
+      "passed": true
+    },
+    {
+      "id": "project-search-en-light",
+      "passed": true
+    },
+    {
+      "id": "theme-real-change-en-light",
+      "passed": true
+    },
+    {
+      "id": "theme-modal-close-en-light",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-light-1600",
+      "passed": true
+    },
+    {
+      "id": "review-en-light-http",
+      "passed": true
+    },
+    {
+      "id": "review-document-panes-en-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-round-select-en-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-reviewer-select-en-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-document-select-en-light",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-en-light",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-light-1600",
+      "passed": true
+    },
+    {
+      "id": "hub-en-dark-http",
+      "passed": true
+    },
+    {
+      "id": "hub-list-en-dark",
+      "passed": true
+    },
+    {
+      "id": "hub-sort-en-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-en-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "workspace-en-dark-http",
+      "passed": true
+    },
+    {
+      "id": "actual-pdf-en-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-comments-en-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-sources-en-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-checks-en-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-tasks-en-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-assist-en-dark",
+      "passed": true
+    },
+    {
+      "id": "anchored-composer-en-dark",
+      "passed": true
+    },
+    {
+      "id": "model-menu-en-dark",
+      "passed": true
+    },
+    {
+      "id": "file-menu-en-dark",
+      "passed": true
+    },
+    {
+      "id": "manuscript-unchanged-en-dark",
+      "passed": true
+    },
+    {
+      "id": "actual-project-picker-en-dark",
+      "passed": true
+    },
+    {
+      "id": "project-search-en-dark",
+      "passed": true
+    },
+    {
+      "id": "theme-real-change-en-dark",
+      "passed": true
+    },
+    {
+      "id": "theme-modal-close-en-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-en-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "review-en-dark-http",
+      "passed": true
+    },
+    {
+      "id": "review-document-panes-en-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-round-select-en-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-reviewer-select-en-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-document-select-en-dark",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-en-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-review-en-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "hub-ko-light-http",
+      "passed": true
+    },
+    {
+      "id": "hub-list-ko-light",
+      "passed": true
+    },
+    {
+      "id": "hub-sort-ko-light",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-light-1600",
+      "passed": true
+    },
+    {
+      "id": "workspace-ko-light-http",
+      "passed": true
+    },
+    {
+      "id": "actual-pdf-ko-light",
+      "passed": true
+    },
+    {
+      "id": "tool-comments-ko-light",
+      "passed": true
+    },
+    {
+      "id": "tool-sources-ko-light",
+      "passed": true
+    },
+    {
+      "id": "tool-checks-ko-light",
+      "passed": true
+    },
+    {
+      "id": "tool-tasks-ko-light",
+      "passed": true
+    },
+    {
+      "id": "tool-assist-ko-light",
+      "passed": true
+    },
+    {
+      "id": "anchored-composer-ko-light",
+      "passed": true
+    },
+    {
+      "id": "model-menu-ko-light",
+      "passed": true
+    },
+    {
+      "id": "file-menu-ko-light",
+      "passed": true
+    },
+    {
+      "id": "manuscript-unchanged-ko-light",
+      "passed": true
+    },
+    {
+      "id": "actual-project-picker-ko-light",
+      "passed": true
+    },
+    {
+      "id": "project-search-ko-light",
+      "passed": true
+    },
+    {
+      "id": "theme-real-change-ko-light",
+      "passed": true
+    },
+    {
+      "id": "theme-modal-close-ko-light",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-light-1600",
+      "passed": true
+    },
+    {
+      "id": "review-ko-light-http",
+      "passed": true
+    },
+    {
+      "id": "review-document-panes-ko-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-round-select-ko-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-reviewer-select-ko-light",
+      "passed": true
+    },
+    {
+      "id": "review-property-document-select-ko-light",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-ko-light",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-light-320",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-light-390",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-light-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-light-1600",
+      "passed": true
+    },
+    {
+      "id": "hub-ko-dark-http",
+      "passed": true
+    },
+    {
+      "id": "hub-list-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "hub-sort-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-hub-ko-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "workspace-ko-dark-http",
+      "passed": true
+    },
+    {
+      "id": "actual-pdf-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-comments-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-sources-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-checks-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-tasks-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "tool-assist-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "anchored-composer-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "model-menu-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "file-menu-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "manuscript-unchanged-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "actual-project-picker-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "project-search-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "theme-real-change-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "theme-modal-close-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-workspace-ko-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "review-ko-dark-http",
+      "passed": true
+    },
+    {
+      "id": "review-document-panes-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-round-select-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-reviewer-select-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "review-property-document-select-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-ko-dark",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-dark-320",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-dark-390",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-dark-1024",
+      "passed": true
+    },
+    {
+      "id": "layout-review-ko-dark-1600",
+      "passed": true
+    },
+    {
+      "id": "no-LLM-requests",
+      "passed": true
+    },
+    {
+      "id": "no-review-mutations",
+      "passed": true
+    },
+    {
+      "id": "no-page-errors",
+      "passed": true
+    },
+    {
+      "id": "logout",
+      "passed": true
+    },
+    {
+      "id": "logged-out-catalog-denied",
+      "passed": true
+    }
+  ],
+  "layouts": [
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "login",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "en",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "en",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    },
+    {
+      "surface": "review",
+      "locale": "ko",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "language": "ko",
+      "fonts": "loaded"
+    }
+  ],
+  "pageErrors": [],
+  "llmRequests": 0,
+  "explicitDataMutations": 0,
+  "assets": [
+    {
+      "name": "bootstrap.js",
+      "matched": true
+    },
+    {
+      "name": "theme.css",
+      "matched": true
+    },
+    {
+      "name": "theme.js",
+      "matched": true
+    },
+    {
+      "name": "app.js",
+      "matched": true
+    },
+    {
+      "name": "components.css",
+      "matched": true
+    },
+    {
+      "name": "project-frame.css",
+      "matched": true
+    },
+    {
+      "name": "workspace-i18n.js",
+      "matched": true
+    },
+    {
+      "name": "hub.js",
+      "matched": true
+    },
+    {
+      "name": "hub.css",
+      "matched": true
+    },
+    {
+      "name": "rebuttal.js",
+      "matched": true
+    },
+    {
+      "name": "rebuttal.css",
+      "matched": true
+    },
+    {
+      "name": "login.css",
+      "matched": true
+    }
+  ],
+  "ok": true
+}

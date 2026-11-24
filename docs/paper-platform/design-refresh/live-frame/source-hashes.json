@@ -1,0 +1,11 @@
+{
+  "note": "Source hashes after frame/locale refinement; working tree also includes preserved user changes.",
+  "files": {
+    "theme.css": "781f1784a8303902d4882e174fb1c0fba195157bf7de2f40a21f543f7e7afc7d",
+    "project-frame.css": "f4d12408513f21ac0125d2ef6ffdbed98d899a4e93aeb7450b5883291f67a965",
+    "ux.css": "74bdc2e1661b91323163a9dee1f20bb4e727f69a3b4c3ad2899746d6473bfd43",
+    "hub.css": "cda3daa68124c341b6d869c8bd8a94c9ef448664376148fa6d85feec4959e3ec",
+    "app.js": "76d14250a1263a4ea14d0bed591f3f274b1bd98113fa6e6cc9d312cd6464ccb2",
+    "rebuttal.js": "b911e1b100154f804307f00f36ff9311c459534375cc91a1cb10f31eccc9a71b"
+  }
+}

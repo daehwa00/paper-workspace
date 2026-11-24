@@ -1,0 +1,10 @@
+{
+  "screens": 48,
+  "overflow": 0,
+  "languageMismatch": 0,
+  "javascriptErrors": 0,
+  "reviewScreens": 16,
+  "reviewOverflow": 0,
+  "reviewErrors": 0,
+  "visualComparison": "Before/after at same 1600x1000, DPR1, fonts ready and reduced motion. Overview board displayed at 50%; native originals saved separately. Change map is diagnostic and not a similarity score."
+}

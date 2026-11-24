@@ -1,0 +1,6 @@
+{
+  "disagreement_pixels": 1,
+  "mask_pixels": 672,
+  "radius_css_px": 7.5,
+  "limitation": "Normalized corner silhouette only. Text, icon, width and parent background differences excluded; not overall similarity."
+}

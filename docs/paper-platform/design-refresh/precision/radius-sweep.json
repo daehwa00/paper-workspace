@@ -1,0 +1,54 @@
+{
+  "reference_original_box": [
+    812,
+    1128,
+    1532,
+    1296
+  ],
+  "normalized_height": 28,
+  "corner_strip_width": 12,
+  "mask_pixels": 672,
+  "method": "Closest RGB to fill/parent; content excluded, background contexts normalized. Secondary geometry diagnostic only, not overall similarity.",
+  "candidates": [
+    {
+      "css_radius": 7.25,
+      "corner_mask_disagreement_pixels": 1
+    },
+    {
+      "css_radius": 7.375,
+      "corner_mask_disagreement_pixels": 2
+    },
+    {
+      "css_radius": 7.5,
+      "corner_mask_disagreement_pixels": 1
+    },
+    {
+      "css_radius": 7.625,
+      "corner_mask_disagreement_pixels": 2
+    },
+    {
+      "css_radius": 7.75,
+      "corner_mask_disagreement_pixels": 3
+    },
+    {
+      "css_radius": 8,
+      "corner_mask_disagreement_pixels": 10
+    },
+    {
+      "css_radius": 8.25,
+      "corner_mask_disagreement_pixels": 14
+    },
+    {
+      "css_radius": 8.5,
+      "corner_mask_disagreement_pixels": 24
+    },
+    {
+      "css_radius": 8.75,
+      "corner_mask_disagreement_pixels": 25
+    },
+    {
+      "css_radius": 9,
+      "corner_mask_disagreement_pixels": 34
+    }
+  ]
+}

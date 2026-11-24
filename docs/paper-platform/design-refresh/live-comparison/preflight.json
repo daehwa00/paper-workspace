@@ -1,0 +1,14 @@
+{
+  "runtimeConfigUnchanged": true,
+  "retainedComposeLayers": 54,
+  "changedService": "workspace",
+  "patchFiles": [
+    "app.js",
+    "components.css",
+    "workspace-i18n.js"
+  ],
+  "htmlCacheHashesUpdated": true,
+  "exactValidatedCandidate": true,
+  "sourceSecretScan": "pass",
+  "databaseSnapshots": 2
+}

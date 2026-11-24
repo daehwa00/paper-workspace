@@ -1,0 +1,50 @@
+{
+  "url": "https://linear.app/demo",
+  "body": "Network error while loading\n\nSomething might be wrong with your connection. Reload the app to try again.\n\nReload\nContact support",
+  "errors": [
+    {
+      "url": "https://static.linear.app/client/assets/html.BChdQ1Sk.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-boot.ah6BePIx.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-boot-vendor.CB4VC9VP.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/rolldown-runtime.DkW27tQK.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-root-vendor.Dcyde_ba.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-root.C4r315BR.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/Root.BVDPfwXl.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-entry.C77JsiFI.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-entry-vendor.B9tSX6hZ.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/entry.CSLyVVbJ.js",
+      "error": "net::ERR_CONNECTION_RESET"
+    },
+    {
+      "url": "https://static.linear.app/fonts/InterVariable.woff2",
+      "error": "net::ERR_CONNECTION_RESET"
+    }
+  ]
+}

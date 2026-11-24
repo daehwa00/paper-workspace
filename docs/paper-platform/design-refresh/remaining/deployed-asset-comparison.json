@@ -1,0 +1,62 @@
+[
+  {
+    "service": "workspace",
+    "asset": "theme.css",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "app.js",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "workspace-i18n.js",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "bootstrap.js",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "login.css",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "hub.css",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "workspace",
+    "asset": "hub.js",
+    "match": true,
+    "image": "paper-workspace-workspace:20261027-085530-linear-components"
+  },
+  {
+    "service": "password-gate",
+    "asset": "server.py",
+    "match": true,
+    "image": "paper-workspace-password-gate:20261027-085530-linear-components"
+  },
+  {
+    "service": "password-gate",
+    "asset": "login.css",
+    "match": true,
+    "image": "paper-workspace-password-gate:20261027-085530-linear-components"
+  },
+  {
+    "service": "password-gate",
+    "asset": "theme.css",
+    "match": true,
+    "image": "paper-workspace-password-gate:20261027-085530-linear-components"
+  }
+]

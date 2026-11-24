@@ -1,0 +1,126 @@
+{
+  "cases": 8,
+  "results": [
+    {
+      "viewport": 320,
+      "theme": "light",
+      "lang": "en",
+      "controlWidth": 58,
+      "controlHeight": 28,
+      "label": "EN",
+      "client": 23,
+      "scroll": 23,
+      "popup": {
+        "left": 53,
+        "right": 243
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "theme": "light",
+      "lang": "ko",
+      "controlWidth": 68,
+      "controlHeight": 28,
+      "label": "한국어",
+      "client": 33,
+      "scroll": 33,
+      "popup": {
+        "left": 53,
+        "right": 243
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "theme": "light",
+      "lang": "en",
+      "controlWidth": 58,
+      "controlHeight": 28,
+      "label": "EN",
+      "client": 23,
+      "scroll": 23,
+      "popup": {
+        "left": 123,
+        "right": 313
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "theme": "light",
+      "lang": "ko",
+      "controlWidth": 68,
+      "controlHeight": 28,
+      "label": "한국어",
+      "client": 33,
+      "scroll": 33,
+      "popup": {
+        "left": 123,
+        "right": 313
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "theme": "dark",
+      "lang": "en",
+      "controlWidth": 58,
+      "controlHeight": 28,
+      "label": "EN",
+      "client": 23,
+      "scroll": 23,
+      "popup": {
+        "left": 53,
+        "right": 243
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "theme": "dark",
+      "lang": "ko",
+      "controlWidth": 68,
+      "controlHeight": 28,
+      "label": "한국어",
+      "client": 33,
+      "scroll": 33,
+      "popup": {
+        "left": 53,
+        "right": 243
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "theme": "dark",
+      "lang": "en",
+      "controlWidth": 58,
+      "controlHeight": 28,
+      "label": "EN",
+      "client": 23,
+      "scroll": 23,
+      "popup": {
+        "left": 123,
+        "right": 313
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "theme": "dark",
+      "lang": "ko",
+      "controlWidth": 68,
+      "controlHeight": 28,
+      "label": "한국어",
+      "client": 33,
+      "scroll": 33,
+      "popup": {
+        "left": 123,
+        "right": 313
+      },
+      "overflow": false
+    }
+  ],
+  "errors": []
+}

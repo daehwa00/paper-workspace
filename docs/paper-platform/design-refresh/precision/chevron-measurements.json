@@ -1,0 +1,20 @@
+{
+  "reference_original_ink_px": [
+    11,
+    7
+  ],
+  "reference_at_28px_height": [
+    7.333333333333333,
+    4.666666666666667
+  ],
+  "native_ink_px": [
+    8,
+    5
+  ],
+  "reference_and_native_max_rgb": [
+    157,
+    158,
+    161
+  ],
+  "method": "Threshold min(R,G,B)>90; source07 (997,270)-(1020,298); native rightmost chevron region. Normalized source scale, not original CSS px."
+}

@@ -1,0 +1,656 @@
+{
+  "release": "20261027-164230-linear-visual-audit",
+  "origin": "https://paper.glowme.kr",
+  "viewportWidths": [
+    320,
+    390,
+    1024,
+    1600
+  ],
+  "height": 1000,
+  "deviceScaleFactor": 1,
+  "fontLoading": "document.fonts.ready",
+  "reducedMotion": true,
+  "passed": true,
+  "combinations": [
+    {
+      "theme": "light",
+      "width": 320,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 0,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 0,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "light",
+      "width": 1600,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": {
+        "visibleActions": 1,
+        "separatorVisible": false
+      }
+    },
+    {
+      "theme": "light",
+      "width": 1600,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": {
+        "visibleActions": 1,
+        "separatorVisible": false
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 0,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 0,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": null
+    },
+    {
+      "theme": "dark",
+      "width": 1600,
+      "lang": "en",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "Tasks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "Revise",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "Checks",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "Comments",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "Sources",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": {
+        "visibleActions": 1,
+        "separatorVisible": false
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 1600,
+      "lang": "ko",
+      "tabs": [
+        {
+          "id": "tab-tasks",
+          "label": "\uc791\uc5c5",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-assist",
+          "label": "\uc218\uc815",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-checks",
+          "label": "\uac80\uc0ac",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-comments",
+          "label": "\ub313\uae00",
+          "fullLabelVisible": true
+        },
+        {
+          "id": "tab-sources",
+          "label": "\uc790\ub8cc",
+          "fullLabelVisible": true
+        }
+      ],
+      "backupRows": 50,
+      "flatBackupActivity": true,
+      "backupActionsValid": true,
+      "sourceUnchanged": true,
+      "overflow": 0,
+      "menu": {
+        "visibleActions": 1,
+        "separatorVisible": false
+      }
+    }
+  ],
+  "tabHandoffs": 80,
+  "assetHashes": {
+    "app.js": "32f159b75a48c890602af26e0e28674866b1bdeed5d12cdb3ce030806c2bc662",
+    "components.css": "371f7b98a240b00ab19c88a9ab38be2e093104ecbffc1f60653f2c8af04b32eb",
+    "workspace-i18n.js": "c10287b0a0982652d1efc753fba3888bc73c96341e38550ec665525c96105fa9"
+  },
+  "llmRequests": 0,
+  "pageErrors": [],
+  "sourceUnchanged": true,
+  "automaticMaintenanceRequests": 29,
+  "maintenanceNote": "Existing startup behavior: automatic snapshot check/save and manuscript page-count asset. No backup/restore/editor/LLM actions were submitted.",
+  "rollout": {
+    "healthyServices": 10,
+    "changedServices": [
+      "workspace"
+    ],
+    "mountChanges": [],
+    "image": "paper-workspace-workspace:20261027-164230-linear-visual-audit"
+  }
+}

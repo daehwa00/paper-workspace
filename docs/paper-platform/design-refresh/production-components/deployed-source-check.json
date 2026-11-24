@@ -1,0 +1,17 @@
+{
+  "staticFiles": [
+    "app.js",
+    "bootstrap.js",
+    "theme.css",
+    "theme.js",
+    "components.css",
+    "project-frame.css",
+    "rebuttal.js",
+    "hub.js",
+    "hub.css",
+    "workspace-i18n.js",
+    "login.css"
+  ],
+  "matched": true,
+  "htmlBuildTokensReplaced": true
+}

@@ -1,0 +1,313 @@
+{
+  "final_test_log": "/tmp/paper-settings-property-final.log",
+  "passed_tests": 8,
+  "layout_combinations": 32,
+  "dialog_renders": 64,
+  "menu_captures": 32,
+  "overflow_count": 0,
+  "row_counts": [
+    1
+  ],
+  "normal_rows": [
+    {
+      "surface": "hub",
+      "theme": "light",
+      "kind": "appearance",
+      "dialog": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(217, 217, 220)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 560,
+        "height": 248.796875
+      },
+      "group": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(248, 248, 248)",
+        "border": "rgb(229, 229, 229)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 510,
+        "height": 66
+      },
+      "row": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(39, 39, 42)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 480,
+        "height": 64
+      },
+      "label": {
+        "color": "rgb(24, 24, 27)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(24, 24, 27)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "description": {
+        "color": "rgb(98, 98, 105)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(98, 98, 105)",
+        "font": "12px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "control": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)",
+        "border": "rgb(222, 222, 225)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 104,
+        "height": 28
+      },
+      "button": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)",
+        "border": "rgb(109, 120, 231)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 53,
+        "height": 28
+      }
+    },
+    {
+      "surface": "hub",
+      "theme": "dark",
+      "kind": "appearance",
+      "dialog": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(16, 16, 17)",
+        "border": "rgb(57, 59, 66)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 560,
+        "height": 248.796875
+      },
+      "group": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(23, 24, 26)",
+        "border": "rgb(43, 45, 52)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 510,
+        "height": 66
+      },
+      "row": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(230, 230, 231)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 480,
+        "height": 64
+      },
+      "label": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(255, 255, 255)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "description": {
+        "color": "rgb(154, 155, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(154, 155, 158)",
+        "font": "12px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "control": {
+        "color": "rgb(228, 229, 232)",
+        "background": "rgb(36, 39, 47)",
+        "border": "rgb(52, 54, 61)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 104,
+        "height": 28
+      },
+      "button": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)",
+        "border": "rgb(109, 120, 231)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 53,
+        "height": 28
+      }
+    },
+    {
+      "surface": "workspace",
+      "theme": "light",
+      "kind": "appearance",
+      "dialog": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(217, 217, 220)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 560,
+        "height": 248.796875
+      },
+      "group": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(248, 248, 248)",
+        "border": "rgb(229, 229, 229)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 510,
+        "height": 66
+      },
+      "row": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(39, 39, 42)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 480,
+        "height": 64
+      },
+      "label": {
+        "color": "rgb(24, 24, 27)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(24, 24, 27)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "description": {
+        "color": "rgb(98, 98, 105)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(98, 98, 105)",
+        "font": "12px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "control": {
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)",
+        "border": "rgb(222, 222, 225)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 104,
+        "height": 28
+      },
+      "button": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)",
+        "border": "rgb(109, 120, 231)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 53,
+        "height": 28
+      }
+    },
+    {
+      "surface": "workspace",
+      "theme": "dark",
+      "kind": "appearance",
+      "dialog": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(16, 16, 17)",
+        "border": "rgb(57, 59, 66)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 560,
+        "height": 248.796875
+      },
+      "group": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(23, 24, 26)",
+        "border": "rgb(43, 45, 52)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 510,
+        "height": 66
+      },
+      "row": {
+        "color": "rgb(230, 230, 231)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(230, 230, 231)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "19.5px",
+        "width": 480,
+        "height": 64
+      },
+      "label": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(255, 255, 255)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "description": {
+        "color": "rgb(154, 155, 158)",
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgb(154, 155, 158)",
+        "font": "12px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 360,
+        "height": 18
+      },
+      "control": {
+        "color": "rgb(228, 229, 232)",
+        "background": "rgb(36, 39, 47)",
+        "border": "rgb(52, 54, 61)",
+        "font": "13px",
+        "weight": "400",
+        "lineHeight": "18px",
+        "width": 104,
+        "height": 28
+      },
+      "button": {
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)",
+        "border": "rgb(109, 120, 231)",
+        "font": "13px",
+        "weight": "500",
+        "lineHeight": "18px",
+        "width": 53,
+        "height": 28
+      }
+    }
+  ]
+}

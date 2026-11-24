@@ -9,14 +9,14 @@
 A self-hosted workspace that keeps source, PDF, collaborators, review,<br />
 and optional Codex editing assistance in one focused place.
 
-[Quick start](#quick-start) · [Features](#one-workspace-for-the-whole-paper) · [Architecture](docs/paper-platform/architecture.md) · [Operations](docs/paper-platform/operations.md) · [한국어](README.ko.md)
+[Quick start](#quick-start) · [Features](#one-workspace-for-the-whole-paper) · [Rebuttal Studio](#rebuttal-studio) · [Architecture](docs/paper-platform/architecture.md) · [Operations](docs/paper-platform/operations.md) · [한국어](README.ko.md)
 
 ![License](https://img.shields.io/badge/license-MIT-2457D6?style=flat-square)
 ![LaTeX](https://img.shields.io/badge/LaTeX-TeX%20Live-2457D6?style=flat-square)
 ![Collaboration](https://img.shields.io/badge/collaboration-Yjs-2457D6?style=flat-square)
 ![Languages](https://img.shields.io/badge/UI-English%20%7C%20한국어-2457D6?style=flat-square)
 
-<img src="apps/paper_workspace/static/assets/share-preview-v2.png" alt="Paper Workspace character writing at a laptop" width="100%" />
+<img src="apps/paper_workspace/static/assets/share-preview-v3.png" alt="Paper Workspace Folio brand mark" width="100%" />
 
 <em>Your manuscript, rendered paper, and research conversation—kept in sync.</em>
 
@@ -43,7 +43,9 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 
 ### Projects and files
 
-- Manage multiple papers from a searchable project hub with stable URLs, recent-activity sorting, the latest editor, and server-recorded modification time.
+- Manage multiple papers from a project hub with stable URLs, first-page PDF thumbnails, compact activity summaries with the latest editor and edit time, and recent-activity sorting. Successful manuscript builds update page counts automatically.
+- Browse the monthly conference deadline calendar for upcoming milestones in Korea Standard Time and links to official schedules.
+- Edit the target venue and project description in the hub. Optimistic revision checks prevent concurrent edits from being overwritten and preserve your draft when a save conflicts.
 - Search the project tree by full path; archival `drafts` start collapsed without overriding later personal choices.
 - Create, rename, move, and delete files or folders; drag in individual files or complete directory trees.
 - Keep text files and binary assets shared with the project instead of trapping them in one browser.
@@ -76,7 +78,7 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 - Keep local edits available while collaboration reconnects, then merge queued work before claiming it is shared.
 - Attach comments to a selected passage and revision, show inline comment anchors, jump back to context, and resolve completed threads.
 - Turn selected text into shared tasks with completion state, assignee context, file location, and direct source navigation.
-- Track the latest editor and activity time at project level so “recently active” reflects server activity rather than one browser's history. Shared-password deployments use the browser profile name as convenient, unverified display metadata; OAuth deployments use the authenticated email.
+- Track the latest editor and activity time at project level so “recently active” reflects server activity rather than one browser's history. Shared-password deployments use the browser profile name as convenient, unverified display metadata; OAuth deployments use the authenticated email, and personal accounts use the account identity supplied by the authentication proxy.
 - Inspect collaboration, save, PDF, and backup freshness together in the workspace health center.
 
 ### Codex revision workflow
@@ -112,6 +114,31 @@ This demo uses the public Example Paper and a real LaTeX build. It contains no r
 </details>
 
 English is the default interface. Korean browsers select Korean automatically unless a preference already exists; the language picker remembers explicit choices. Add `?lang=en` or `?lang=ko` to share a language-specific link.
+
+## Rebuttal Studio
+
+<p align="center">
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/blue.png" alt="Blue Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/mint-v2.png" alt="Mint Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/pink.png" alt="Pink Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/yellow.png" alt="Yellow Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/violet.png" alt="Violet Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/orange.png" alt="Orange Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/green.png" alt="Green Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/red.png" alt="Red Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/indigo.png" alt="Indigo Reviewer Mate" width="52" />
+  <img src="apps/paper_workspace/static/assets/reviewer-mates/turquoise.png" alt="Turquoise Reviewer Mate" width="52" />
+</p>
+
+**Reviewer Mates** are the colorful reviewer avatars in Rebuttal Studio. Enable the studio with `REBUTTAL_ENABLED=true` and optionally limit it to a comma-separated `REBUTTAL_PROJECTS` list. Open `/p/<slug>/rebuttal` or switch from the Paper tab. Both views share the project session and live presence. Paper stays mounted as you switch, and Rebuttal shows the review and response side by side.
+
+1. **Stage and commit reviews.** Import OpenReview by paper URL or forum ID via public v1/v2 REST or the authenticated official SDK with supported MFA. You can also paste plain text or upload TXT, Markdown, JSON, or a text PDF. PDF imports clean up wrapped lines automatically and parse printed OpenReview pages into reviewers and named Official Review fields. Preview the proposed reviewers and fields before committing, or return to pending imports later. Scanned PDFs require manually supplied text.
+2. **Map concerns and collaborate.** Break reviews into structured concerns and connect exact review passages to one or more response passages. Assess coverage, confirm or reject suggested links, and keep evidence, work items, inline collaborative memos, and threaded replies alongside the draft. Write reviewer-specific and optional common responses with Yjs synchronization.
+3. **Draft in English and Korean.** Read inline Korean translations beside the response, and switch between parallel English and Korean drafts. Incremental translation reuses unchanged paragraphs and protects manual edits. Review and response language choices are saved independently per project. Response language switches retain the reading position in the editor and OpenReview preview. The live preview renders Markdown and MathJax SVG equations and synchronizes with source positions.
+4. **Analyze and check.** Request concern extraction, coverage analysis, tone and consistency checks, anticipated reviewer questions, rewrites, or venue-rule research and checks through the sandboxed Codex Bridge. Analysis runs on explicit request. Owners and editors review and apply versioned rules. Check document, assembled target, and total submission limits against the emitted text.
+5. **Freeze, export, and recover.** Freeze the selected response order, text, and applied rules for submission. Export reproducible PDF, ZIP, Markdown, or JSON. Back up and restore the full round, including synchronized Yjs CRDT response text and memo threads. Restore creates new rounds and response IDs so active work stays available.
+
+OpenReview credentials are transient and its tokens are scoped to the authenticated session and held in server memory. Exports and backups use initialized, synchronized response text. See the [Rebuttal workflow and operations](docs/paper-platform/rebuttal.md) and [interface contract](docs/paper-platform/rebuttal-contract.md).
 
 ## Quick start
 
@@ -236,6 +263,23 @@ PAPER_DOMAIN=paper.example.com
 PAPER_BIND_ADDRESS=0.0.0.0
 ```
 
+| Deployment mode | Compose configuration | Authentication and access |
+| --- | --- | --- |
+| Local | `compose.yaml` | Binds to loopback by default for local development. |
+| Shared password | Base + `compose.password.yaml` | One shared password for a small, trusted team. |
+| Google OAuth | Base + `compose.auth.yaml` | Google sign-in restricted to an email allowlist. |
+| Personal accounts and spaces | Base + `compose.password.yaml` + `compose.accounts.yaml` | Individually issued passwords, `/<username>` hubs, and per-project membership. |
+
+In accounts mode, set `PAPER_ACCOUNTS_DIR` and use `scripts/paper_platform/manage_accounts.py` to issue or rotate account passwords and grant or revoke project access. Project `owner` and `editor` members can edit. A `viewer` can read source, PDFs, and backups. Keep all three Compose files when deploying or updating the service.
+
+```bash
+docker compose -f infra/paper-workspace/compose.yaml \
+  -f infra/paper-workspace/compose.password.yaml \
+  -f infra/paper-workspace/compose.accounts.yaml up --build -d
+```
+
+The authentication proxy strips incoming identity headers and supplies the verified account and permissions. Activity is attributed to that account, and the server enforces membership for project listings and access. The personal-spaces operator guide is at `docs/personal-spaces.md` in the source checkout.
+
 With DNS pointed at the server and ports 80/443 open, Caddy manages TLS. For Google OAuth, configure `.env.auth` and `.auth/allowed-emails`, then use `compose.auth.yaml`.
 
 For a trusted small lab, copy the password example, set a unique random password of at least 12 characters and an independent random session secret of at least 32 characters, and start the password override. The gate refuses to become healthy with placeholders or weak values.
@@ -252,14 +296,24 @@ Before a production change, follow the [release, backup, smoke-test, and rollbac
 
 ## Repository layout
 
-```text
-apps/paper_workspace/              application services and UI
-infra/paper-workspace/             Docker Compose, Caddy, nginx
-examples/paper-workspace-project/  minimal public example
-docs/paper-platform/               architecture and security notes
-scripts/paper_platform/            public export tooling
-tests/paper_platform/              regression tests
-```
+| Path | Responsibility |
+| --- | --- |
+| `apps/paper_workspace/compiler/` | Isolated LaTeX and rebuttal PDF rendering, input validation, build state, and SyncTeX |
+| `apps/paper_workspace/collaboration/` | Yjs rooms and WebSockets, storage quotas, atomic writeback, and source merges |
+| `apps/paper_workspace/rebuttal/` | Round API, review imports and OpenReview sessions, versioned data, and analysis jobs |
+| `apps/paper_workspace/codex_bridge/` | Authenticated revision and rebuttal requests with sandboxed execution |
+| `apps/paper_workspace/password_gate/` | Shared-password and personal-account authentication, with login rate limiting |
+| `apps/paper_workspace/backup/` | Snapshots, asset storage, retention, exports, and restores |
+| `apps/paper_workspace/static/` | Shared project frame and presence, `hub-calendar.js`, `workspace-pdf.js`, `workspace-backups.js`, and Rebuttal session, memo, language, reading-position, submission, and recovery modules |
+| `infra/paper-workspace/` | Docker Compose, nginx, and common security headers and project routing in `Caddyfile.shared` |
+| `scripts/paper_platform/` | Shared project runtime logic in `runtime_common.py`, account management, thumbnails, and public export |
+| `examples/paper-workspace-project/`, `docs/paper-platform/`, `tests/paper_platform/` | Minimal public example, architecture and operations guides, and regression tests |
+
+### Security and reliability
+
+- Shared Caddy policies enforce CSP and same-origin framing. The compiler runs on an internal network, and accounts mode scopes build state and SyncTeX tokens to the authenticated actor.
+- The collaboration service enforces project allowlists, WebSocket payload limits, and storage quotas. Atomic file replacement and hash checks protect source writeback, and conflicting edits are retained for recovery.
+- Browser error reports use redacted, size-limited POST bodies. The web image build fingerprints static assets and fails if unresolved tokens remain.
 
 Research manuscripts are mounted at runtime and are not part of the public platform repository.
 
@@ -292,15 +346,21 @@ The exporter excludes manuscripts, experiments, data, and results. `.gitignore` 
 
 ```bash
 pytest -q tests/paper_platform
-node --test apps/paper_workspace/collaboration/server.test.cjs
+npm --prefix apps/paper_workspace/collaboration ci
+npm --prefix apps/paper_workspace/collaboration run test:server
+node --test apps/paper_workspace/collaboration/rebuttal-*.test.mjs \
+  apps/paper_workspace/collaboration/rebuttal-memo-backup.test.cjs \
+  apps/paper_workspace/collaboration/rebuttal-response-language.test.cjs
+(cd apps/paper_workspace/collaboration && npx playwright install chromium)
 node --check apps/paper_workspace/static/app.js
 node --check apps/paper_workspace/collaboration/client.js
 npm --prefix apps/paper_workspace/collaboration run test:e2e:ci
 npm audit --prefix apps/paper_workspace/collaboration --audit-level=high
 python -m compileall -q apps/paper_workspace scripts/paper_platform
 docker compose -f infra/paper-workspace/compose.yaml config --quiet
+docker compose -f infra/paper-workspace/compose.yaml build workspace
 ```
 
-Regenerate the real demo against a local or deployed Example Paper with `npm run capture:demo` from `apps/paper_workspace/collaboration`. ImageMagick is required for the GIF.
+The web image build runs `scripts/paper_platform/verify_static_tokens.sh` on the generated HTML, Rebuttal and PDF modules, and web manifest. To run the same check independently, pass the built file paths as arguments.
 
-For individually issued passwords and project membership, see [Personal spaces](docs/personal-spaces.md).
+Regenerate the real demo against a local or deployed Example Paper with `npm run capture:demo` from `apps/paper_workspace/collaboration`. ImageMagick is required for the GIF.

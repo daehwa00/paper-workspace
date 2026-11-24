@@ -1,0 +1,68 @@
+{
+  "reference": {
+    "image": "07-view-options.png",
+    "control_box": [
+      821,
+      262,
+      1028,
+      304
+    ],
+    "glyph_crop": [
+      990,
+      268,
+      1023,
+      298
+    ],
+    "bbox_in_crop": [
+      13,
+      11,
+      24,
+      18
+    ],
+    "width": 11,
+    "height": 7,
+    "dominant_stroke_rgb": [
+      157,
+      158,
+      161
+    ]
+  },
+  "paper": {
+    "file": "native-select-dark.png",
+    "control_size": [
+      311,
+      28
+    ],
+    "bbox_in_crop": [
+      9,
+      12,
+      17,
+      16
+    ],
+    "width": 8,
+    "height": 4,
+    "dominant_stroke_rgb": [
+      145,
+      145,
+      149
+    ]
+  },
+  "normalization": {
+    "scale": 0.6666666666666666,
+    "reference_normalized_glyph": [
+      7.333333333333333,
+      4.666666666666666
+    ],
+    "paper_native_glyph": [
+      8,
+      4
+    ],
+    "reference_normalized_right_inset": 9.333333333333332,
+    "paper_right_inset": 9
+  },
+  "limits": [
+    "Height normalization is not proof of the original Linear CSS viewport or DPR.",
+    "The source creation date for 07 is unspecified; it is supplementary component evidence.",
+    "Antialiasing and subpixel phase affect the binary mask bounds. No whole-page similarity score is assigned."
+  ]
+}

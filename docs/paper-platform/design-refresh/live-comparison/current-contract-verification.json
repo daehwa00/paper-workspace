@@ -1,0 +1,35 @@
+{
+  "scope": "current repository UI test contracts",
+  "updatedTestFiles": [
+    "apps/paper_workspace/collaboration/tests/linear-reference-controls.spec.js",
+    "apps/paper_workspace/collaboration/tests/accessibility-contract.spec.js"
+  ],
+  "formerFailuresResolved": 4,
+  "initialRun": {
+    "total": 15,
+    "passed": 14,
+    "failed": 1
+  },
+  "finalAffectedRerun": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0
+  },
+  "distinctTestsPassingAfterFixes": 15,
+  "skipped": 0,
+  "productCodeChanged": false,
+  "testSourceHashes": {
+    "apps/paper_workspace/collaboration/tests/linear-reference-controls.spec.js": "ecd4454fd8f29d4ba1b352315e2c53d5817a5c963488ff89ce9fb3ee123c9ff2",
+    "apps/paper_workspace/collaboration/tests/accessibility-contract.spec.js": "fad07ec1a5a795779a675bc1e4b6aa7b4db88e4eeb3a334e49c829e3d2b2003e"
+  },
+  "fullRun": {
+    "executedAt": "2026-10-27T16:58:49+09:00",
+    "total": 15,
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0,
+    "durationSeconds": 10.0,
+    "workers": 2,
+    "log": "current-contracts-full-15.log"
+  }
+}

@@ -1,0 +1,545 @@
+{
+  "cases": 32,
+  "mapping": {
+    "true_positive": 42,
+    "false_positive": 0,
+    "false_negative": 2,
+    "precision": 1.0,
+    "recall": 0.9545454545454546
+  },
+  "sufficiency": {
+    "correct": 28,
+    "total": 36,
+    "accuracy": 0.7777777777777778,
+    "confusion": {
+      "addressed->addressed": 12,
+      "partial->partial": 8,
+      "related->related": 4,
+      "missing->missing": 4,
+      "addressed->partial": 7,
+      "addressed->missing": 1
+    }
+  },
+  "failures": [],
+  "critical_failures": [],
+  "case_results": [
+    {
+      "case": "synthetic-01-ablation",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-02-ablation",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-03-ablation",
+      "expected_coverage": {
+        "c1": "related"
+      },
+      "actual_coverage": {
+        "c1": "related"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-04-ablation",
+      "expected_coverage": {
+        "c1": "missing"
+      },
+      "actual_coverage": {
+        "c1": "missing"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-05-ablation",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-06-ablation",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-07-ablation",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-08-ablation",
+      "expected_coverage": {
+        "c1": "addressed",
+        "c2": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "partial",
+        "c2": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-09-runtime",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-10-runtime",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-11-runtime",
+      "expected_coverage": {
+        "c1": "related"
+      },
+      "actual_coverage": {
+        "c1": "related"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-12-runtime",
+      "expected_coverage": {
+        "c1": "missing"
+      },
+      "actual_coverage": {
+        "c1": "missing"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-13-runtime",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-14-runtime",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-15-runtime",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-16-runtime",
+      "expected_coverage": {
+        "c1": "addressed",
+        "c2": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed",
+        "c2": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-17-dataset",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-18-dataset",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-19-dataset",
+      "expected_coverage": {
+        "c1": "related"
+      },
+      "actual_coverage": {
+        "c1": "related"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-20-dataset",
+      "expected_coverage": {
+        "c1": "missing"
+      },
+      "actual_coverage": {
+        "c1": "missing"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-21-dataset",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-22-dataset",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-23-dataset",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-24-dataset",
+      "expected_coverage": {
+        "c1": "addressed",
+        "c2": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "missing",
+        "c2": "partial"
+      },
+      "false_links": [],
+      "missed_links": [
+        [
+          "c1",
+          "d1"
+        ],
+        [
+          "c1",
+          "d2"
+        ]
+      ]
+    },
+    {
+      "case": "synthetic-25-robustness",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-26-robustness",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-27-robustness",
+      "expected_coverage": {
+        "c1": "related"
+      },
+      "actual_coverage": {
+        "c1": "related"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-28-robustness",
+      "expected_coverage": {
+        "c1": "missing"
+      },
+      "actual_coverage": {
+        "c1": "missing"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-29-robustness",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-30-robustness",
+      "expected_coverage": {
+        "c1": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "addressed"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-31-robustness",
+      "expected_coverage": {
+        "c1": "partial"
+      },
+      "actual_coverage": {
+        "c1": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    },
+    {
+      "case": "synthetic-32-robustness",
+      "expected_coverage": {
+        "c1": "addressed",
+        "c2": "addressed"
+      },
+      "actual_coverage": {
+        "c1": "partial",
+        "c2": "partial"
+      },
+      "false_links": [],
+      "missed_links": []
+    }
+  ],
+  "evaluation_mode": "live_runner",
+  "live_model_calls_requested": true,
+  "quality_evidence": "external runner outputs; inspect runner for model provenance",
+  "runner": "rebuttal_live_runner:bridge",
+  "classification": {
+    "conservative_addressed_to_partial": [
+      {
+        "case": "synthetic-08-ablation",
+        "concern_id": "c1"
+      },
+      {
+        "case": "synthetic-08-ablation",
+        "concern_id": "c2"
+      },
+      {
+        "case": "synthetic-16-runtime",
+        "concern_id": "c2"
+      },
+      {
+        "case": "synthetic-17-dataset",
+        "concern_id": "c1"
+      },
+      {
+        "case": "synthetic-24-dataset",
+        "concern_id": "c2"
+      },
+      {
+        "case": "synthetic-32-robustness",
+        "concern_id": "c1"
+      },
+      {
+        "case": "synthetic-32-robustness",
+        "concern_id": "c2"
+      }
+    ],
+    "other_mismatches": [
+      {
+        "case": "synthetic-24-dataset",
+        "concern_id": "c1",
+        "expected": "addressed",
+        "actual": "missing"
+      }
+    ]
+  },
+  "model": {
+    "profile": "luna-medium",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "medium"
+  },
+  "fixture_sha256": "27e0ca9b8ba77f4921653a10cbffbb4df06a8a6b2fcf63a48eb4de2b3afc0549",
+  "critical_case_inputs": [],
+  "missed_mapping_inputs": [
+    {
+      "id": "synthetic-24-dataset",
+      "category": "many_to_many",
+      "payload": {
+        "reviews": [
+          {
+            "id": "r1",
+            "reviewer_id": "rv1",
+            "fields": {
+              "review": "Please explain dataset evidence and limitations."
+            }
+          },
+          {
+            "id": "r2",
+            "reviewer_id": "rv2",
+            "fields": {
+              "review": "What supports the dataset claim?"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "id": "d1",
+            "text": "We report the dataset experiment with three seeds."
+          },
+          {
+            "id": "d2",
+            "text": "The dataset experiment is limited to one benchmark."
+          }
+        ],
+        "concerns": [
+          {
+            "id": "c1",
+            "title": "dataset evidence",
+            "reviewer_id": "rv1",
+            "source_spans": [
+              {
+                "review_id": "r1",
+                "field": "review",
+                "quote": "dataset evidence"
+              }
+            ]
+          },
+          {
+            "id": "c2",
+            "title": "Support for dataset",
+            "reviewer_id": "rv2",
+            "source_spans": [
+              {
+                "review_id": "r2",
+                "field": "review",
+                "quote": "dataset claim"
+              }
+            ]
+          }
+        ],
+        "glossary": {},
+        "rules": []
+      },
+      "expected": {
+        "mappings": [
+          {
+            "concern_id": "c1",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The dataset experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          },
+          {
+            "concern_id": "c2",
+            "response_spans": [
+              {
+                "document_id": "d1",
+                "quote": "We report the dataset experiment with three seeds."
+              },
+              {
+                "document_id": "d2",
+                "quote": "The dataset experiment is limited to one benchmark."
+              }
+            ],
+            "coverage": "addressed",
+            "reason": "Synthetic dataset judgment; no real research claim.",
+            "missing": []
+          }
+        ]
+      }
+    }
+  ]
+}

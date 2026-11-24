@@ -1,0 +1,176 @@
+{
+  "method": "Source raster sample vs real DOM computed style. Not a design similarity score.",
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "dpr": 1
+  },
+  "samples": [
+    {
+      "role": "menu-surface",
+      "source": "10-autocomplete.png",
+      "point": [
+        1100,
+        600
+      ],
+      "reference_rgb": [
+        255,
+        255,
+        255
+      ],
+      "rendered_rgb": [
+        255,
+        255,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "menu-border",
+      "source": "10-autocomplete.png",
+      "point": [
+        1100,
+        249
+      ],
+      "reference_rgb": [
+        220,
+        220,
+        220
+      ],
+      "rendered_rgb": [
+        220,
+        220,
+        220
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "menu-text",
+      "source": "10-autocomplete.png",
+      "point": [
+        479,
+        492
+      ],
+      "reference_rgb": [
+        27,
+        27,
+        27
+      ],
+      "rendered_rgb": [
+        27,
+        27,
+        27
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "menu-selected",
+      "source": "10-autocomplete.png",
+      "point": [
+        1100,
+        480
+      ],
+      "reference_rgb": [
+        242,
+        242,
+        242
+      ],
+      "rendered_rgb": [
+        242,
+        242,
+        242
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "toolbar-surface",
+      "source": "11-editor-toolbar.png",
+      "point": [
+        450,
+        220
+      ],
+      "reference_rgb": [
+        255,
+        255,
+        255
+      ],
+      "rendered_rgb": [
+        255,
+        255,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "toolbar-border",
+      "source": "11-editor-toolbar.png",
+      "point": [
+        450,
+        211
+      ],
+      "reference_rgb": [
+        214,
+        214,
+        214
+      ],
+      "rendered_rgb": [
+        214,
+        214,
+        214
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "toolbar-icon",
+      "source": "11-editor-toolbar.png",
+      "point": [
+        338,
+        249
+      ],
+      "reference_rgb": [
+        93,
+        93,
+        95
+      ],
+      "rendered_rgb": [
+        93,
+        93,
+        95
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "exact_rgb_matches": 7,
+  "sample_count": 7,
+  "limits": [
+    "Undated source 10/11 component-only evidence; not the 2026 light app frame."
+  ]
+}

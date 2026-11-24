@@ -1,0 +1,296 @@
+{
+  "phase": "after",
+  "transport": "HTTPS through production Caddy at 203.253.145.46; DNS address supplied explicitly, certificate validation enabled",
+  "checks": [
+    {
+      "id": "public-ui-font",
+      "status": 200,
+      "woff2": true
+    },
+    {
+      "id": "unauthenticated",
+      "statuses": {
+        "/projects/index.json": 401,
+        "/api/backups/activity": 401,
+        "/api/rebuttal/projects/not-granted/state": 401,
+        "/collab-runtime/not-granted": 401
+      }
+    },
+    {
+      "id": "login-catalog",
+      "status": 200,
+      "projects": 7
+    },
+    {
+      "id": "populated-review-available",
+      "available": true
+    },
+    {
+      "id": "ungranted-project",
+      "status": 403
+    },
+    {
+      "id": "actual-pdf-light",
+      "rendered": true
+    },
+    {
+      "id": "assistant-tabs-light",
+      "scrollbar": "thin",
+      "overflow": true
+    },
+    {
+      "id": "visible-tab-navigation-light",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-light",
+      "passed": true
+    },
+    {
+      "id": "actual-pdf-dark",
+      "rendered": true
+    },
+    {
+      "id": "assistant-tabs-dark",
+      "scrollbar": "thin",
+      "overflow": true
+    },
+    {
+      "id": "visible-tab-navigation-dark",
+      "passed": true
+    },
+    {
+      "id": "review-keyboard-dark",
+      "passed": true
+    },
+    {
+      "id": "logout",
+      "loginPage": true
+    },
+    {
+      "id": "session-after-logout",
+      "status": 401
+    }
+  ],
+  "layout": [
+    {
+      "surface": "login",
+      "theme": "light",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "light",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "surface": "login",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false
+    },
+    {
+      "surface": "hub",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "light",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "light",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "light",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "hub",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "workspace",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "dark",
+      "width": 320,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "dark",
+      "width": 1024,
+      "overflow": false,
+      "fonts": "loaded"
+    },
+    {
+      "surface": "rebuttal",
+      "theme": "dark",
+      "width": 1600,
+      "overflow": false,
+      "fonts": "loaded"
+    }
+  ],
+  "errors": [],
+  "llmRequests": 0,
+  "ok": true
+}

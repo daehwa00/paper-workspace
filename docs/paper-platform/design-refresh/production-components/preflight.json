@@ -1,0 +1,25 @@
+{
+  "runtimeConfigUnchanged": true,
+  "sourceFiles": 420,
+  "sqliteSnapshots": 2,
+  "registrySnapshot": true,
+  "changedServices": [
+    "workspace",
+    "password-gate"
+  ],
+  "sourceSecretScan": "passed",
+  "historyScan": {
+    "blobs": 1305,
+    "patternMatches": 0
+  },
+  "npmAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "previousRelease": "20261027-084415-linear-remaining",
+  "caddyFontRouteAlreadyDeployed": true
+}

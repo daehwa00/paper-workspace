@@ -1,0 +1,7 @@
+{
+  "dark_matches": 21,
+  "dark_samples": 21,
+  "light_matches": 7,
+  "light_samples": 7,
+  "interpretation": "Matching these RGB role/state samples is not a whole-app visual similarity percentage."
+}

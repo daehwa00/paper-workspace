@@ -1,0 +1,446 @@
+{
+  "checks": [
+    {
+      "theme": "light",
+      "property": "main.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "logo.width",
+      "reference": 48,
+      "paper": 48,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "logo.height",
+      "reference": 48,
+      "paper": 48,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "logo.y",
+      "reference": 308,
+      "paper": 308,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.y",
+      "reference": 388,
+      "paper": 388,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.height",
+      "reference": 21,
+      "paper": 21,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.fontSize",
+      "reference": "18px",
+      "paper": "18px",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.fontWeight",
+      "reference": "500",
+      "paper": "500",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.color",
+      "reference": "rgb(47, 47, 49)",
+      "paper": "rgb(47, 47, 49)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.background",
+      "reference": "rgba(0, 0, 0, 0)",
+      "paper": "rgba(0, 0, 0, 0)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "heading.borderRadius",
+      "reference": "0px",
+      "paper": "0px",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.y",
+      "reference": 433,
+      "paper": 433,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.height",
+      "reference": 44,
+      "paper": 44,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.fontSize",
+      "reference": "13px",
+      "paper": "13px",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.fontWeight",
+      "reference": "400",
+      "paper": "400",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.color",
+      "reference": "rgb(27, 27, 27)",
+      "paper": "rgb(27, 27, 27)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.background",
+      "reference": "rgb(248, 248, 249)",
+      "paper": "rgb(248, 248, 249)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "input.borderRadius",
+      "reference": "10px",
+      "paper": "10px",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.y",
+      "reference": 493,
+      "paper": 493,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.height",
+      "reference": 44,
+      "paper": 44,
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.fontSize",
+      "reference": "13px",
+      "paper": "13px",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.fontWeight",
+      "reference": "500",
+      "paper": "500",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.color",
+      "reference": "rgb(47, 47, 49)",
+      "paper": "rgb(47, 47, 49)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.background",
+      "reference": "rgb(254, 254, 255)",
+      "paper": "rgb(254, 254, 255)",
+      "match": true
+    },
+    {
+      "theme": "light",
+      "property": "button.borderRadius",
+      "reference": "9999px",
+      "paper": "9999px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "main.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "logo.width",
+      "reference": 48,
+      "paper": 48,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "logo.height",
+      "reference": 48,
+      "paper": 48,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "logo.y",
+      "reference": 308,
+      "paper": 308,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.y",
+      "reference": 388,
+      "paper": 388,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.height",
+      "reference": 21,
+      "paper": 21,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.fontSize",
+      "reference": "18px",
+      "paper": "18px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.fontWeight",
+      "reference": "500",
+      "paper": "500",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.color",
+      "reference": "rgb(226, 227, 229)",
+      "paper": "rgb(226, 227, 229)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.background",
+      "reference": "rgba(0, 0, 0, 0)",
+      "paper": "rgba(0, 0, 0, 0)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "heading.borderRadius",
+      "reference": "0px",
+      "paper": "0px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.y",
+      "reference": 433,
+      "paper": 433,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.height",
+      "reference": 44,
+      "paper": 44,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.fontSize",
+      "reference": "13px",
+      "paper": "13px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.fontWeight",
+      "reference": "400",
+      "paper": "400",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.color",
+      "reference": "rgb(255, 255, 255)",
+      "paper": "rgb(255, 255, 255)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.background",
+      "reference": "rgb(17, 18, 18)",
+      "paper": "rgb(17, 18, 18)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "input.borderRadius",
+      "reference": "10px",
+      "paper": "10px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.x",
+      "reference": 656,
+      "paper": 656,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.y",
+      "reference": 493,
+      "paper": 493,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.width",
+      "reference": 288,
+      "paper": 288,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.height",
+      "reference": 44,
+      "paper": 44,
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.fontSize",
+      "reference": "13px",
+      "paper": "13px",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.fontWeight",
+      "reference": "500",
+      "paper": "500",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.color",
+      "reference": "rgb(226, 227, 229)",
+      "paper": "rgb(226, 227, 229)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.background",
+      "reference": "rgb(27, 27, 28)",
+      "paper": "rgb(27, 27, 28)",
+      "match": true
+    },
+    {
+      "theme": "dark",
+      "property": "button.borderRadius",
+      "reference": "9999px",
+      "paper": "9999px",
+      "match": true
+    }
+  ],
+  "matches": 62,
+  "total": 62,
+  "not_a_similarity_score": true,
+  "intentional_differences": [
+    "Paper brand and two-field accounts form",
+    "Readable placeholder contrast",
+    "2px keyboard focus instead of 1px"
+  ]
+}

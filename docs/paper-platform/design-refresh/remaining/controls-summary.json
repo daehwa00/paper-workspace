@@ -1,0 +1,882 @@
+[
+  {
+    "theme": "light",
+    "width": 320,
+    "language": "ko",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 320,
+    "language": "en",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "language": "ko",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "language": "en",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "language": "ko",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "language": "en",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "language": "ko",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "language": "en",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "language": "ko",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "language": "en",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "language": "ko",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "language": "en",
+    "controlHeight": 44,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-option",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button",
+        "height": 44
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 44
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "language": "ko",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "language": "en",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "language": "ko",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "language": "en",
+    "controlHeight": 28,
+    "search": [
+      {
+        "class": "paper-search-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-option",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button",
+        "height": 28
+      },
+      {
+        "class": "paper-search-field paper-search-replace-field",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      },
+      {
+        "class": "paper-search-button paper-search-button-text",
+        "height": 28
+      }
+    ],
+    "overflow": 0,
+    "errors": [],
+    "llmRequests": 0
+  }
+]

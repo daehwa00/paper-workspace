@@ -1,0 +1,13 @@
+{
+  "apps/paper_workspace/static/app.js": "c30fc4c9cebef563bf98fe9d1ede7c25e3adecf5d66c5c63487022220a385d8d",
+  "apps/paper_workspace/static/rebuttal.js": "c763dce19ad33411f74036e2d93bfe1e7ec3e997da04e1b017e97e1391138937",
+  "apps/paper_workspace/static/project-frame.css": "cf3be7d3df0fe70d9f2504c0771607ce344de45d786877e96c59bf57e0df7a06",
+  "apps/paper_workspace/collaboration/dev-server.mjs": "63e12eb428805e3d04d7934eed0d691c0ce1c8d2d3c9914a72ef7a172891a2c4",
+  "tests/paper_platform/test_paper_workspace.py": "11a54b56a43cb38ac17f855dadbb3eefe0e69f459fd1a6c167492dbe26e94ac4",
+  "apps/paper_workspace/collaboration/tests/rebuttal.spec.js": "6c8ab173f60784601c7cc8e4ebe2df7f4026ce664c3c5fdd0f3d07d68205543b",
+  "apps/paper_workspace/collaboration/tests/native-file-control.spec.js": "81bd6fc224150727592cdbf63614ec1511f9aa9a66a03ba070c0dff435f91494",
+  "apps/paper_workspace/collaboration/tests/profile-contrast.spec.js": "058fdf1ef2c895b476c0604f6341153ceda43d19068fea2bc3ae193d78197a7b",
+  "apps/paper_workspace/collaboration/tests/project-navigation.spec.js": "46cb1aad93262b107c1b3fa15a509f89498a7ae03925d20e26ed7d0bb44f22d6",
+  "apps/paper_workspace/collaboration/tests/property-picker-contract.spec.js": "c8e44b4e0f6702fe7703adb22e9d6df45662569265646098ec4a71b136124e64",
+  "apps/paper_workspace/collaboration/tests/workspace.spec.js": "1c8b48a0ff0dea8bc691b80573124f7a8e6e7eeedee613cfb02f7d5a5e948484"
+}

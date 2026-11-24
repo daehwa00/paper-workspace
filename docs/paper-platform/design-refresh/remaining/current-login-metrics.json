@@ -1,0 +1,66 @@
+[
+  {
+    "theme": "light",
+    "main": {
+      "width": 288,
+      "height": 409,
+      "y": 308,
+      "fontSize": "13px",
+      "color": "rgb(47, 47, 49)"
+    },
+    "title": {
+      "width": 288,
+      "height": 21,
+      "y": 388,
+      "fontSize": "18px",
+      "color": "rgb(47, 47, 49)"
+    },
+    "input": {
+      "width": 288,
+      "height": 44,
+      "y": 433,
+      "fontSize": "13px",
+      "color": "rgb(27, 27, 27)"
+    },
+    "button": {
+      "width": 288,
+      "height": 44,
+      "y": 553,
+      "fontSize": "13px",
+      "color": "rgb(47, 47, 49)"
+    },
+    "overflow": false
+  },
+  {
+    "theme": "dark",
+    "main": {
+      "width": 288,
+      "height": 409,
+      "y": 308,
+      "fontSize": "13px",
+      "color": "rgb(226, 227, 229)"
+    },
+    "title": {
+      "width": 288,
+      "height": 21,
+      "y": 388,
+      "fontSize": "18px",
+      "color": "rgb(226, 227, 229)"
+    },
+    "input": {
+      "width": 288,
+      "height": 44,
+      "y": 433,
+      "fontSize": "13px",
+      "color": "rgb(255, 255, 255)"
+    },
+    "button": {
+      "width": 288,
+      "height": 44,
+      "y": 553,
+      "fontSize": "13px",
+      "color": "rgb(226, 227, 229)"
+    },
+    "overflow": false
+  }
+]

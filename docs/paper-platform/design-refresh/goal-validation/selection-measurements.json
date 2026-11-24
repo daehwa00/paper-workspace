@@ -1,0 +1,2018 @@
+[
+  {
+    "theme": "light",
+    "width": 320,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 204,
+        "top": 778,
+        "bottom": 822,
+        "width": 190,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 209,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 320,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 192,
+        "top": 778,
+        "bottom": 822,
+        "width": 178,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 197,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 56,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 320,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 142,
+        "top": 778,
+        "bottom": 822,
+        "width": 128,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 147,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 106,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 320,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 196,
+        "top": 778,
+        "bottom": 822,
+        "width": 182,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 201,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 52,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 274,
+        "top": 778,
+        "bottom": 822,
+        "width": 260,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 279,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 262,
+        "top": 778,
+        "bottom": 822,
+        "width": 248,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 267,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 56,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 212,
+        "top": 778,
+        "bottom": 822,
+        "width": 198,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 217,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 106,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 390,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 266,
+        "top": 778,
+        "bottom": 822,
+        "width": 252,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 271,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 52,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 614,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 620,
+        "right": 926,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 306,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 931,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 44,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 574,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 580,
+        "right": 914,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 334,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 919,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 56,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 614,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 620,
+        "right": 864,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 244,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 869,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 106,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1024,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 574,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 580,
+        "right": 918,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 338,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 923,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 52,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1023.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 629.84375,
+        "right": 935.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 306,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 940.84375,
+        "right": 984.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 44,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 989.84375,
+        "right": 1017.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1063.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 629.84375,
+        "right": 963.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 334,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 968.84375,
+        "right": 1024.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 56,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 1029.84375,
+        "right": 1057.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1023.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 629.84375,
+        "right": 873.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 244,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 878.84375,
+        "right": 984.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 106,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 989.84375,
+        "right": 1017.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "light",
+    "width": 1600,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1063.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 629.84375,
+        "right": 967.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 338,
+        "height": 30.1875,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(255, 255, 255)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 972.84375,
+        "right": 1024.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 52,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 1029.84375,
+        "right": 1057.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(39, 39, 42)",
+        "background": "rgb(245, 245, 245)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 204,
+        "top": 778,
+        "bottom": 822,
+        "width": 190,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 209,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 192,
+        "top": 778,
+        "bottom": 822,
+        "width": 178,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 197,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 56,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 142,
+        "top": 778,
+        "bottom": 822,
+        "width": 128,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 147,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 106,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 320,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 320,
+    "scroll": 320,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 308,
+      "top": 772,
+      "bottom": 828,
+      "width": 300,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 196,
+        "top": 778,
+        "bottom": 822,
+        "width": 182,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 201,
+        "right": 253,
+        "top": 778,
+        "bottom": 822,
+        "width": 52,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 258,
+        "right": 302,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 312,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 304,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 274,
+        "top": 778,
+        "bottom": 822,
+        "width": 260,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 279,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 262,
+        "top": 778,
+        "bottom": 822,
+        "width": 248,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 267,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 56,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 14,
+        "right": 212,
+        "top": 778,
+        "bottom": 822,
+        "width": 198,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 217,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 106,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 390,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 390,
+    "scroll": 390,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 8,
+      "right": 378,
+      "top": 772,
+      "bottom": 828,
+      "width": 370,
+      "height": 56
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 14,
+        "right": 266,
+        "top": 778,
+        "bottom": 822,
+        "width": 252,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 271,
+        "right": 323,
+        "top": 778,
+        "bottom": 822,
+        "width": 52,
+        "height": 44,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 328,
+        "right": 372,
+        "top": 778,
+        "bottom": 822,
+        "width": 44,
+        "height": 44,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 8,
+        "right": 382,
+        "top": 691.21875,
+        "bottom": 752,
+        "width": 374,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 614,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 620,
+        "right": 926,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 306,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 931,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 44,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 574,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 580,
+        "right": 914,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 334,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 919,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 56,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 614,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 620,
+        "right": 864,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 244,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 869,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 106,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1024,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 1024,
+    "scroll": 1024,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 574,
+      "right": 1014,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 580,
+        "right": 918,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 338,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 923,
+        "right": 975,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 52,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 980,
+        "right": 1008,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 646,
+        "right": 1006,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "lang": "ko",
+    "kind": "comment",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1023.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 629.84375,
+        "right": 935.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 306,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 940.84375,
+        "right": 984.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 44,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 989.84375,
+        "right": 1017.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "lang": "ko",
+    "kind": "codex",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1063.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 629.84375,
+        "right": 963.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 334,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 968.84375,
+        "right": 1024.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 56,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 1029.84375,
+        "right": 1057.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "lang": "en",
+    "kind": "comment",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1023.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 400,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-comment-prompt",
+        "left": 629.84375,
+        "right": 873.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 244,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-comment-send",
+        "left": 878.84375,
+        "right": 984.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 106,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-comment-close",
+        "left": 989.84375,
+        "right": 1017.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "width": 1600,
+    "lang": "en",
+    "kind": "codex",
+    "viewport": 1600,
+    "scroll": 1600,
+    "dpr": 1,
+    "fonts": "loaded",
+    "toolbar": {
+      "left": 623.84375,
+      "right": 1063.84375,
+      "top": 156,
+      "bottom": 198.1875,
+      "width": 440,
+      "height": 42.1875
+    },
+    "controls": [
+      {
+        "id": "selection-codex-prompt",
+        "left": 629.84375,
+        "right": 967.84375,
+        "top": 162,
+        "bottom": 192.1875,
+        "width": 338,
+        "height": 30.1875,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(15, 15, 17)"
+      },
+      {
+        "id": "selection-codex-send",
+        "left": 972.84375,
+        "right": 1024.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 52,
+        "height": 28,
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(94, 106, 211)"
+      },
+      {
+        "id": "selection-codex-close",
+        "left": 1029.84375,
+        "right": 1057.84375,
+        "top": 163.09375,
+        "bottom": 191.09375,
+        "width": 28,
+        "height": 28,
+        "color": "rgb(230, 230, 231)",
+        "background": "rgb(42, 44, 51)"
+      }
+    ],
+    "notifications": [
+      {
+        "left": 1222,
+        "right": 1582,
+        "top": 821.21875,
+        "bottom": 882,
+        "width": 360,
+        "height": 60.78125
+      }
+    ]
+  }
+]

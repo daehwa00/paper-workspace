@@ -1,0 +1,68 @@
+{
+  "url": "https://linear.app/demo",
+  "title": "Linear",
+  "body": "Network error while loading\n\nSomething might be wrong with your connection. Reload the app to try again.\n\nReload\nContact support",
+  "buttons": 0,
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "dpr": 1
+  },
+  "fonts": "loaded",
+  "assets": [
+    {
+      "url": "https://static.linear.app/client/assets/html.BChdQ1Sk.js",
+      "bytes": 2786
+    },
+    {
+      "url": "https://static.linear.app/client/assets/rolldown-runtime.DkW27tQK.js",
+      "bytes": 1554
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-boot-vendor.CB4VC9VP.js",
+      "bytes": 226946
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-boot.ah6BePIx.js",
+      "bytes": 62320
+    },
+    {
+      "url": "https://static.linear.app/client/assets/entry.CSLyVVbJ.js",
+      "bytes": 3677
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-entry.C77JsiFI.js",
+      "bytes": 2891718
+    },
+    {
+      "url": "https://static.linear.app/client/assets/Root.BVDPfwXl.js",
+      "bytes": 4424
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-root.C4r315BR.js",
+      "bytes": 6640042
+    }
+  ],
+  "errors": [
+    {
+      "url": "https://static.linear.app/fonts/InterVariable.woff2",
+      "error": "Command failed: curl --fail --silent --show-error --compressed --max-time 20 https://static.linear.app/fonts/InterVariable.woff2?v=4.1\ncurl: (56) OpenSSL SSL_re"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-entry-vendor.B9tSX6hZ.js",
+      "error": "Command failed: curl --fail --silent --show-error --compressed --max-time 20 https://static.linear.app/client/assets/startup-entry-vendor.B9tSX6hZ.js\ncurl: (56)"
+    },
+    {
+      "url": "https://static.linear.app/client/assets/startup-root-vendor.Dcyde_ba.js",
+      "error": "Command failed: curl --fail --silent --show-error --compressed --max-time 20 https://static.linear.app/client/assets/startup-root-vendor.Dcyde_ba.js\ncurl: (56) "
+    },
+    {
+      "url": "https://static.linear.app/client/assets/style-9Lsj3RKA.css",
+      "error": "Command failed: curl --fail --silent --show-error --compressed --max-time 20 https://static.linear.app/client/assets/style-9Lsj3RKA.css\ncurl: (56) OpenSSL SSL_r"
+    },
+    {
+      "stage": "app-ready",
+      "error": "page.waitForFunction: Timeout 60000ms exceeded."
+    }
+  ]
+}

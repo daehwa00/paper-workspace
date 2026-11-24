@@ -26,6 +26,55 @@ Smoke-test through Caddy, not by publishing internal service ports:
 - create a named backup, compare it, restore it only after taking a fresh pre-restore checkpoint, and confirm the activity card changes;
 - upload and delete a disposable passive asset, checking that active HTML/SVG and oversized files are rejected.
 
+## Single-file runtime release
+
+Freeze the exact deployment after resolving all its override files with the default
+`docker compose config --format json`. Store that JSON privately: it contains
+resolved environment values. Do not use `--no-interpolate` or `--no-env-resolution`
+for this input. Separately prepare `images.json` containing every service and its
+already inspected local immutable image ID, for example
+`{"workspace": "sha256:<64 lowercase hexadecimal digits>"}`. Extra or missing
+services and mutable tags are rejected.
+
+```sh
+python scripts/paper_platform/freeze_runtime_release.py \
+  --compose /private/resolved.compose.json \
+  --images /private/images.json \
+  --output /private/releases/release-20261028
+```
+
+The output parent must already exist; the release directory must be new and no
+input or output path component may be a symlink. The tool runs no Docker commands,
+starts no containers, and accesses no application data. It writes a mode `0700`
+directory with `runtime.compose.json` (mode `0600`) and `manifest.json` (mode
+`0644`). The manifest contains only service image IDs and the Compose file's SHA-256
+hash. The runtime file contains secrets and must remain private. Terminal output
+contains only the two generated paths and the service count.
+
+The runtime file removes builds, pins all images to their IDs, preserves resolved
+runtime settings, and makes every explicitly named volume external. Anonymous
+volumes and relative bind sources are rejected. Existing Compose `$$` escapes are
+preserved; lone `$` characters are escaped for one subsequent Compose parse. Bind
+mounts still require the same absolute host paths. Provision the recorded existing
+volumes separately during disaster recovery; Compose will fail if an external
+volume is absent rather than silently creating an empty replacement.
+
+Validate the generated file with `docker compose -f
+/private/releases/release-20261028/runtime.compose.json config --quiet`. For the
+approved rollout, use that single file with `docker compose -f
+/private/releases/release-20261028/runtime.compose.json up -d --no-build
+--pull never`; the previous override chain is no longer required. The images must
+already exist on the host, or be loaded from a separately retained image archive.
+The tool does not export images, source archives, bind contents, or volume backups.
+Retain those artifacts with the release and complete the health and recovery checks
+in this runbook. Never use `down -v`.
+
+For an offline integrity check, import
+`scripts.paper_platform.freeze_runtime_release.verify_release` and call it with a
+`pathlib.Path` to the release directory. It verifies the file hash, image mapping,
+and frozen settings without printing configuration values. This detects accidental
+changes; the manifest is not a signature or an authenticity guarantee.
+
 ## Backup and disaster recovery
 
 Primary collaboration LevelDB, SQLite snapshots/assets, and snapshot exports are different failure domains. Replicate all three outside the host. A source snapshot does not version binary assets, so retain the asset tree alongside database/export generations.

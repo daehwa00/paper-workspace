@@ -1,0 +1,79 @@
+{
+  "comparison": "Native crops of 1600x1000 captures at DPR 1 and scale 1; font loading completed and motion reduced.",
+  "comparisons": [
+    {
+      "theme": "light",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1,
+        "scale": 1
+      },
+      "public_reference": {
+        "navHeight": 28,
+        "navRadius": "8px",
+        "frameRadius": "12px",
+        "headingCenterY": 30.5
+      },
+      "paper": [
+        {
+          "phase": "before",
+          "navHeight": 30,
+          "navRadius": "8px",
+          "frameRadius": "10px 10px 0px 0px",
+          "titleCenterY": 24.0
+        },
+        {
+          "phase": "after",
+          "navHeight": 28,
+          "navRadius": "8px",
+          "frameRadius": "12px 12px 0px 0px",
+          "titleCenterY": 30.0
+        }
+      ]
+    },
+    {
+      "theme": "dark",
+      "viewport": {
+        "width": 1600,
+        "height": 1000,
+        "dpr": 1,
+        "scale": 1
+      },
+      "public_reference": {
+        "navHeight": 28,
+        "navRadius": "8px",
+        "frameRadius": "12px",
+        "headingCenterY": 30.5
+      },
+      "paper": [
+        {
+          "phase": "before",
+          "navHeight": 30,
+          "navRadius": "8px",
+          "frameRadius": "10px 10px 0px 0px",
+          "titleCenterY": 24.0
+        },
+        {
+          "phase": "after",
+          "navHeight": 28,
+          "navRadius": "8px",
+          "frameRadius": "12px 12px 0px 0px",
+          "titleCenterY": 30.0
+        }
+      ]
+    }
+  ],
+  "captureMatrix": {
+    "states": 48,
+    "overflowCount": 0,
+    "languageMismatchCount": 0
+  },
+  "remainingDifferences": [
+    "Public demo build is not proven identical to the March attachment. Attachment colors take priority over its differing theme.",
+    "Paper retains a resizable 224px sidebar default; public demo sidebar is 244px. Saved sidebar widths are preserved.",
+    "Paper title center y=30 differs by 0.5px from demo heading center y=30.5 due to the demo bordered header and Paper editable title geometry.",
+    "Paper keeps product-specific manuscript/review modes, source/PDF/tool panels, titles, content and mobile 44px targets.",
+    "Reference setup/empty content is not evidence for issue-list behavior or unobserved overlays and interactive states."
+  ]
+}

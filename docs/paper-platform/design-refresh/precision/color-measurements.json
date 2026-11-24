@@ -1,0 +1,564 @@
+{
+  "method": "Source raster sample vs real DOM computed style. Not a design similarity score.",
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "dpr": 1,
+    "zoom": "100%",
+    "fontLoading": "loaded"
+  },
+  "samples": [
+    {
+      "role": "nav-background",
+      "source": "01-sidebar.png",
+      "box": [
+        1560,
+        600,
+        2330,
+        680
+      ],
+      "reference_rgb": [
+        8,
+        8,
+        8
+      ],
+      "frequency": 54577,
+      "rendered_rgb": [
+        8,
+        8,
+        8
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "work-surface",
+      "source": "02-top-tabs.png",
+      "box": [
+        150,
+        1400,
+        1900,
+        1600
+      ],
+      "reference_rgb": [
+        15,
+        15,
+        17
+      ],
+      "frequency": 350000,
+      "rendered_rgb": [
+        15,
+        15,
+        17
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "nav-selected",
+      "source": "01-sidebar.png",
+      "box": [
+        1560,
+        710,
+        2340,
+        805
+      ],
+      "reference_rgb": [
+        27,
+        27,
+        30
+      ],
+      "frequency": 69180,
+      "rendered_rgb": [
+        27,
+        27,
+        30
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "nav-selected-text",
+      "source": "01-sidebar.png",
+      "box": [
+        1670,
+        710,
+        2130,
+        810
+      ],
+      "reference_rgb": [
+        255,
+        255,
+        255
+      ],
+      "frequency": 1328,
+      "rendered_rgb": [
+        255,
+        255,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "nav-muted",
+      "source": "01-sidebar.png",
+      "box": [
+        1670,
+        832,
+        2170,
+        945
+      ],
+      "reference_rgb": [
+        137,
+        138,
+        139
+      ],
+      "frequency": 869,
+      "rendered_rgb": [
+        137,
+        138,
+        139
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "tab-selected",
+      "source": "02-top-tabs.png",
+      "box": [
+        850,
+        1150,
+        1450,
+        1250
+      ],
+      "reference_rgb": [
+        30,
+        31,
+        33
+      ],
+      "frequency": 51264,
+      "rendered_rgb": [
+        30,
+        31,
+        33
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "tab-selected-text",
+      "source": "02-top-tabs.png",
+      "box": [
+        995,
+        1155,
+        1410,
+        1250
+      ],
+      "reference_rgb": [
+        234,
+        234,
+        234
+      ],
+      "frequency": 4392,
+      "rendered_rgb": [
+        234,
+        234,
+        234
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "tab-idle",
+      "source": "02-top-tabs.png",
+      "box": [
+        160,
+        1150,
+        300,
+        1250
+      ],
+      "reference_rgb": [
+        19,
+        20,
+        22
+      ],
+      "frequency": 11739,
+      "rendered_rgb": [
+        19,
+        20,
+        22
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "primary-fill",
+      "source": "05-create-issue.png",
+      "box": [
+        1040,
+        430,
+        1041,
+        431
+      ],
+      "reference_rgb": [
+        94,
+        106,
+        211
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        94,
+        106,
+        211
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "primary-border",
+      "source": "05-create-issue.png",
+      "box": [
+        1040,
+        419,
+        1041,
+        420
+      ],
+      "reference_rgb": [
+        109,
+        120,
+        231
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        109,
+        120,
+        231
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "overlay-fill",
+      "source": "07-view-options.png",
+      "box": [
+        550,
+        130,
+        1050,
+        900
+      ],
+      "reference_rgb": [
+        28,
+        29,
+        31
+      ],
+      "frequency": 282013,
+      "rendered_rgb": [
+        28,
+        29,
+        31
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "overlay-border",
+      "source": "07-view-options.png",
+      "box": [
+        547,
+        200,
+        548,
+        201
+      ],
+      "reference_rgb": [
+        57,
+        59,
+        66
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        57,
+        59,
+        66
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "dialog-title",
+      "source": "05-create-issue.png",
+      "box": [
+        83,
+        125,
+        650,
+        155
+      ],
+      "reference_rgb": [
+        255,
+        255,
+        255
+      ],
+      "frequency": 1671,
+      "rendered_rgb": [
+        255,
+        255,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "select-fill",
+      "source": "07-view-options.png",
+      "box": [
+        825,
+        263,
+        1027,
+        304
+      ],
+      "reference_rgb": [
+        42,
+        44,
+        51
+      ],
+      "frequency": 7460,
+      "rendered_rgb": [
+        42,
+        44,
+        51
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "select-border",
+      "source": "07-view-options.png",
+      "box": [
+        821,
+        280,
+        822,
+        281
+      ],
+      "reference_rgb": [
+        57,
+        59,
+        66
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        57,
+        59,
+        66
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "select-text",
+      "source": "07-view-options.png",
+      "box": [
+        832,
+        270,
+        934,
+        296
+      ],
+      "reference_rgb": [
+        255,
+        255,
+        255
+      ],
+      "frequency": 110,
+      "rendered_rgb": [
+        255,
+        255,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "secondary-text",
+      "source": "05-create-issue.png",
+      "box": [
+        930,
+        70,
+        1050,
+        95
+      ],
+      "reference_rgb": [
+        229,
+        230,
+        234
+      ],
+      "frequency": 166,
+      "rendered_rgb": [
+        229,
+        230,
+        234
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "switch-on",
+      "source": "07-view-options.png",
+      "box": [
+        995,
+        478,
+        996,
+        479
+      ],
+      "reference_rgb": [
+        94,
+        106,
+        211
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        94,
+        106,
+        211
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "switch-thumb",
+      "source": "07-view-options.png",
+      "box": [
+        1007,
+        470,
+        1025,
+        489
+      ],
+      "reference_rgb": [
+        255,
+        254,
+        255
+      ],
+      "frequency": 213,
+      "rendered_rgb": [
+        255,
+        254,
+        255
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "switch-caption",
+      "source": "07-view-options.png",
+      "box": [
+        578,
+        465,
+        960,
+        495
+      ],
+      "reference_rgb": [
+        157,
+        158,
+        161
+      ],
+      "frequency": 360,
+      "rendered_rgb": [
+        157,
+        158,
+        161
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "role": "switch-off",
+      "source": "07-view-options.png",
+      "box": [
+        1018,
+        395,
+        1019,
+        396
+      ],
+      "reference_rgb": [
+        113,
+        113,
+        116
+      ],
+      "frequency": 1,
+      "rendered_rgb": [
+        113,
+        113,
+        116
+      ],
+      "absolute_rgb_difference": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "exact_rgb_matches": 21,
+  "sample_count": 21,
+  "limits": [
+    "05 and 07 have no production date; component-only supplementary evidence.",
+    "Raster DPR/zoom unknown. Color agreement does not prove geometry, type or interaction identity."
+  ]
+}

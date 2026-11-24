@@ -1,0 +1,8 @@
+{
+  "score": 94,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [],
+  "suggestions": [],
+  "reasoning": "The bounded assistant-tab, activity-history and file-menu comparisons pass after completing label visibility, flat history rows with full-width titles and quiet actions, and conditional menu separators. This is a qualitative component verdict, not whole-app similarity or a claim of pixel equality."
+}

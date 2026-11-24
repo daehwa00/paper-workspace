@@ -1,0 +1,22 @@
+{
+  "reference_coordinate_original_px": [
+    900,
+    1160
+  ],
+  "reference_rgb": [
+    30,
+    31,
+    33
+  ],
+  "paper_rgb": [
+    30,
+    31,
+    33
+  ],
+  "absolute_channel_difference": [
+    0,
+    0,
+    0
+  ],
+  "limitation": "Flat background color only. Not a visual similarity score. Font, text width and original DPR differ."
+}

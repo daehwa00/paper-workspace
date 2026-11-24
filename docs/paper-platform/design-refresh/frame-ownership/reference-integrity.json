@@ -1,0 +1,125 @@
+{
+  "images": 20,
+  "results": [
+    {
+      "number": 1,
+      "file": "screenshots/01-sidebar.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 2,
+      "file": "screenshots/02-top-tabs.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 3,
+      "file": "screenshots/03-my-issues.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 4,
+      "file": "screenshots/04-issue-details.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 5,
+      "file": "screenshots/05-create-issue.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 6,
+      "file": "screenshots/06-filters.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 7,
+      "file": "screenshots/07-view-options.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 8,
+      "file": "screenshots/08-sharing.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 9,
+      "file": "screenshots/09-search.webp",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 10,
+      "file": "screenshots/10-autocomplete.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 11,
+      "file": "screenshots/11-editor-toolbar.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 12,
+      "file": "screenshots/12-document.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 13,
+      "file": "screenshots/13-document-agent.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 14,
+      "file": "screenshots/14-comments.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 15,
+      "file": "screenshots/15-project.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 16,
+      "file": "screenshots/16-board.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 17,
+      "file": "screenshots/17-preferences.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 18,
+      "file": "screenshots/18-team-settings.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 19,
+      "file": "screenshots/19-inbox.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    },
+    {
+      "number": 20,
+      "file": "screenshots/20-light-dark.png",
+      "hash_matches": true,
+      "dimensions_match": true
+    }
+  ]
+}

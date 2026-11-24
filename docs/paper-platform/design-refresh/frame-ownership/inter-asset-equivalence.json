@@ -1,0 +1,8 @@
+{
+  "official_url": "https://static.linear.app/fonts/InterVariable.woff2",
+  "local_asset": "apps/paper_workspace/static/assets/inter-variable.woff2",
+  "official_sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+  "local_sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+  "same_bytes": true,
+  "limitation": "Byte equivalence of the current public font asset, not proof of identical CSS font settings or all source screenshot builds."
+}
